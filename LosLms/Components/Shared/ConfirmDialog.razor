@@ -1,0 +1,61 @@
+@* Reusable confirmation dialog.
+
+   Replaces window.confirm(), which blocks the browser's main thread and would freeze the SignalR
+   circuit underneath a Blazor Server page. Follows the same backdrop/Escape pattern as the
+   Dashboard drawer and the Stage 3/4 modals. *@
+
+<div class="confirm-backdrop" @onclick="OnCancel">
+    <div class="confirm-panel" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title"
+         tabindex="-1" @ref="_panel"
+         @onclick:stopPropagation="true"
+         @onkeydown="HandleKeyDown">
+
+        <div class="confirm-title" id="confirm-title">@Title</div>
+        <p class="confirm-message">@Message</p>
+
+        <div class="confirm-actions">
+            <button type="button" class="confirm-cancel" @onclick="OnCancel">@CancelLabel</button>
+            <button type="button" class="confirm-ok @(Destructive ? "is-destructive" : null)"
+                    @onclick="OnConfirm">@ConfirmLabel</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public string Message { get; set; } = string.Empty;
+
+    [Parameter] public string ConfirmLabel { get; set; } = "Confirm";
+
+    [Parameter] public string CancelLabel { get; set; } = "Cancel";
+
+    /// <summary>Renders the confirm action in risk colouring for irreversible operations.</summary>
+    [Parameter] public bool Destructive { get; set; }
+
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private ElementReference _panel;
+    private bool _shouldFocus = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocus)
+        {
+            _shouldFocus = false;
+            await _panel.FocusAsync();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        // Escape cancels — never confirms. Enter is deliberately not bound: a confirmation the user
+        // can trigger by leaning on the keyboard is not a confirmation.
+        if (e.Key == "Escape")
+        {
+            await OnCancel.InvokeAsync();
+        }
+    }
+}

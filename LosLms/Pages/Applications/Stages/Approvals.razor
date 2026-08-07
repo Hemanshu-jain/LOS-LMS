@@ -1,0 +1,1136 @@
+@page "/applications/{ApplicationId}/approvals"
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Approvals · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">
+                No application exists with the reference <strong>@ApplicationId</strong>.
+            </p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="stage-page">
+        <div class="stage-card">
+
+            @* The primary action sanctions rather than advancing a stage, and the secondary opens
+               the send-back panel rather than saving — hence both labels are overridden. *@
+            <StageSubHeader ApplicationId="@_application.Id"
+                            SecondaryLabel="Send back"
+                            PrimaryLabel="Sanction"
+                            CompleteBlocked="!_decision.SanctionConfirmed"
+                            BlockedReason="Confirm the sanction on the Sanction Confirmation tab first."
+                            OnSaveDraft="ToggleSendBack"
+                            OnCompleteStage="SanctionAsync" />
+
+            @if (_sendBackOpen)
+            {
+                <div class="send-back-band">
+                    <div class="send-back-field">
+                        <span class="send-back-label">Send back to</span>
+                        <select class="field-input" aria-label="Stage to send back to" @bind="_sendBackStage">
+                            <option value="0">— Select stage —</option>
+                            @foreach (var (number, label, _) in SendBackTargets)
+                            {
+                                <option value="@number">@number · @label</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="send-back-field is-grow">
+                        <span class="send-back-label">Reason</span>
+                        <input type="text" class="field-input" placeholder="Why is this going back?"
+                               aria-label="Reason for sending back"
+                               @bind="_sendBackReason" @bind:event="oninput" />
+                    </div>
+
+                    <button type="button" class="send-back-confirm"
+                            disabled="@SendBackBlocked"
+                            @onclick="ConfirmSendBackAsync">Confirm send back</button>
+
+                    <button type="button" class="send-back-cancel" @onclick="CancelSendBack">Cancel</button>
+                </div>
+            }
+
+            <div class="stepper-band">
+                <StageStepper CurrentStep="7" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">08</span>
+                        <span class="stage-title-text">STAGE 7 — APPROVALS</span>
+                        <span class="stage-title-of">Stage 7 of 8</span>
+                    </div>
+
+                    <div class="ap-tabs" role="tablist" aria-label="Approval sections">
+                        @foreach (var (tab, complete) in TabState)
+                        {
+                            <button type="button" role="tab"
+                                    class="ap-tab @(_activeTab == tab ? "is-active" : null) @(tab == SanctionTab ? "is-sanction" : null)"
+                                    aria-selected="@(_activeTab == tab)"
+                                    @onclick="() => _activeTab = tab">
+                                @tab
+                                @if (complete)
+                                {
+                                    <span class="tab-check" aria-label="complete">✓</span>
+                                }
+                            </button>
+                        }
+                    </div>
+
+                    @* ---------- Tab 1: Business details ---------- *@
+                    @if (_activeTab == BusinessTab)
+                    {
+                        <Panel Title="Business details">
+                            <div class="stacked">
+                                <div class="field-grid">
+                                    <FormField Label="Firm name" For="ap-firm">
+                                        <input id="ap-firm" class="field-input" @bind="_business.FirmName" @bind:event="oninput" />
+                                    </FormField>
+
+                                    <FormField Label="Constitution" For="ap-constitution">
+                                        <select id="ap-constitution" class="field-input" @bind="_business.Constitution">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in ConstitutionOptions) { <option value="@o">@o</option> }
+                                        </select>
+                                    </FormField>
+
+                                    <FormField Label="Date of incorporation" For="ap-incorp">
+                                        <input id="ap-incorp" type="date" class="field-input" @bind="_business.IncorpDate" />
+                                    </FormField>
+
+                                    <FormField Label="GSTIN" For="ap-gstin">
+                                        <input id="ap-gstin" class="field-input" maxlength="15" @bind="_business.Gstin" @bind:event="oninput" />
+                                    </FormField>
+
+                                    <FormField Label="Business vintage" For="ap-vintage">
+                                        <select id="ap-vintage" class="field-input" @bind="_business.Vintage">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in VintageOptions) { <option value="@o">@o</option> }
+                                        </select>
+                                    </FormField>
+
+                                    <FormField Label="Annual turnover" For="ap-turnover">
+                                        <div class="currency-input">
+                                            <span class="currency-symbol">₹</span>
+                                            <input id="ap-turnover" type="number" min="0" step="1" class="field-input"
+                                                   @bind="_business.Turnover" @bind:event="oninput" />
+                                        </div>
+                                    </FormField>
+                                </div>
+
+                                <div class="sub-block">
+                                    <div class="sub-block-header">
+                                        <span class="sub-block-label">Partners / directors</span>
+                                        <button type="button" class="add-row-button" @onclick="AddPartner">
+                                            + Add partner / director
+                                        </button>
+                                    </div>
+
+                                    <div class="table-scroll">
+                                        <table class="row-table partner-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Name</th>
+                                                    <th>Role</th>
+                                                    <th>Shareholding %</th>
+                                                    <th>PAN</th>
+                                                    <th>DOB</th>
+                                                    <th>Contact</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @if (_partners.Count == 0)
+                                                {
+                                                    <tr><td colspan="7" class="empty-row">No partners or directors recorded.</td></tr>
+                                                }
+
+                                                @foreach (var row in _partners)
+                                                {
+                                                    <tr @key="row">
+                                                        <td><input class="cell-input w-name" aria-label="Partner name" @bind="row.Name" @bind:event="oninput" /></td>
+                                                        <td><input class="cell-input w-name" aria-label="Partner role" @bind="row.Role" @bind:event="oninput" /></td>
+                                                        <td><input class="cell-input w-small" type="number" min="0" step="0.01" aria-label="Shareholding percentage" @bind="row.Shareholding" /></td>
+                                                        <td><input class="cell-input w-pan" maxlength="10" aria-label="Partner PAN" @bind="row.Pan" @bind:event="oninput" /></td>
+                                                        <td><input class="cell-input" type="date" aria-label="Partner date of birth" @bind="row.Dob" /></td>
+                                                        <td><input class="cell-input w-contact" maxlength="10" aria-label="Partner contact number" @bind="row.Contact" /></td>
+                                                        <td>
+                                                            <button type="button" class="remove-button" aria-label="Remove this partner"
+                                                                    @onclick="() => _partners.Remove(row)">×</button>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div class="sub-block">
+                                    <span class="sub-block-label">Business process narrative</span>
+                                    <textarea class="long-text" rows="3"
+                                              aria-label="Business process narrative"
+                                              placeholder="How the business earns, routes operated, counterparties, seasonality…"
+                                              @bind="_business.Narrative" @bind:event="oninput"></textarea>
+                                </div>
+                            </div>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 2: TVR ---------- *@
+                    @if (_activeTab == TvrTab)
+                    {
+                        <Panel Title="TVR · tele-verification">
+                            <div class="stacked">
+                                <div class="field-grid">
+                                    <FormField Label="TVR agent" For="ap-agent">
+                                        <input id="ap-agent" class="field-input" @bind="_tvr.Agent" @bind:event="oninput" />
+                                    </FormField>
+
+                                    <FormField Label="Call date &amp; time" For="ap-calltime">
+                                        <input id="ap-calltime" type="datetime-local" class="field-input" @bind="_tvr.CallDateTime" />
+                                    </FormField>
+
+                                    <FormField Label="Person contacted" For="ap-contacted">
+                                        <input id="ap-contacted" class="field-input" @bind="_tvr.PersonContacted" @bind:event="oninput" />
+                                    </FormField>
+
+                                    <FormField Label="Relationship" For="ap-relationship">
+                                        <select id="ap-relationship" class="field-input" @bind="_tvr.Relationship">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in RelationshipOptions) { <option value="@o">@o</option> }
+                                        </select>
+                                    </FormField>
+
+                                    <FormField Label="TVR status" For="ap-tvrstatus">
+                                        <select id="ap-tvrstatus" class="field-input status-select status-@TvrBand"
+                                                @bind="_tvr.Status">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in TvrStatusOptions) { <option value="@o">@o</option> }
+                                        </select>
+                                    </FormField>
+
+                                    <FormField Label="Recording ref." For="ap-recording">
+                                        <input id="ap-recording" class="field-input" @bind="_tvr.RecordingRef" @bind:event="oninput" />
+                                    </FormField>
+                                </div>
+
+                                <div class="sub-block">
+                                    <span class="sub-block-label">Response summary / discrepancies noted</span>
+                                    <textarea class="long-text" rows="2"
+                                              aria-label="Response summary"
+                                              @bind="_tvr.Summary" @bind:event="oninput"></textarea>
+                                </div>
+                            </div>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 3: Approval note ---------- *@
+                    @if (_activeTab == NoteTab)
+                    {
+                        <Panel Title="Approval note">
+                            <div class="note-layout">
+                                <textarea class="long-text note-box" rows="7"
+                                          aria-label="Approval note"
+                                          placeholder="Written rationale for recommending this application…"
+                                          @bind="_decision.ApprovalNote" @bind:event="oninput"></textarea>
+
+                                <div class="reference-card">
+                                    <span class="sub-block-label">For reference</span>
+
+                                    <div class="ref-row">
+                                        <span class="ref-label">Eligible amount</span>
+                                        <span class="ref-value">
+                                            @(_eligibility.Ready ? FormatInr(_eligibility.Eligible) : "Not calculated")
+                                        </span>
+                                    </div>
+
+                                    <div class="ref-row">
+                                        <span class="ref-label">Deviation</span>
+                                        <span class="ref-value @(_eligibility.Ready && _eligibility.DeviationPct < 0 ? "is-risk" : null)">
+                                            @(_eligibility.Ready
+                                                ? _eligibility.DeviationPct.ToString("0.0", CultureInfo.InvariantCulture) + "%"
+                                                : "—")
+                                        </span>
+                                    </div>
+
+                                    <div class="ref-row">
+                                        <span class="ref-label">RCU outcome</span>
+                                        <span class="ref-value @(_rcuStatus == RcuOutcomes.NotRecommended ? "is-risk" : null)">
+                                            @RcuStatusLabel
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 4: Approver & recommender ---------- *@
+                    @if (_activeTab == SignOffTab)
+                    {
+                        <Panel Title="Approver &amp; recommender">
+                            <div class="stacked">
+                                <div class="signoff-blocks">
+                                    <div class="signature-block">
+                                        <span class="sub-block-label">Recommender</span>
+                                        <select class="field-input" aria-label="Recommender name"
+                                                value="@(_decision.RecommenderName ?? string.Empty)"
+                                                @onchange="e => SetSignatory(recommender: true, (string?)e.Value)">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in _officers) { <option value="@o.Name">@o.Name</option> }
+                                        </select>
+                                        <select class="field-input" aria-label="Recommender role" @bind="_decision.RecommenderRole">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in RoleOptions) { <option value="@o">@o</option> }
+                                        </select>
+                                        <span class="signed-line">
+                                            @(_decision.RecommenderDate is { } rd
+                                                ? "Signed " + rd.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
+                                                : "Not yet signed")
+                                        </span>
+                                    </div>
+
+                                    <div class="signature-block">
+                                        <span class="sub-block-label">Approver</span>
+                                        <select class="field-input" aria-label="Approver name"
+                                                value="@(_decision.ApproverName ?? string.Empty)"
+                                                @onchange="e => SetSignatory(recommender: false, (string?)e.Value)">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in _officers) { <option value="@o.Name">@o.Name</option> }
+                                        </select>
+                                        <select class="field-input" aria-label="Approver role" @bind="_decision.ApproverRole">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var o in RoleOptions) { <option value="@o">@o</option> }
+                                        </select>
+                                        <span class="signed-line">
+                                            @(_decision.ApproverDate is { } ad
+                                                ? "Signed " + ad.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
+                                                : "Not yet signed")
+                                        </span>
+                                    </div>
+                                </div>
+
+                                @if (SameSignatory)
+                                {
+                                    <p class="inline-error" role="alert">
+                                        ⚠ Recommender and Approver cannot be the same person
+                                    </p>
+                                }
+                            </div>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 5: Sanction confirmation ---------- *@
+                    @if (_activeTab == SanctionTab)
+                    {
+                        <Panel Title="Sanction confirmation">
+                            <div class="stacked sanction-panel">
+                                <div class="field-grid">
+                                    <FormField Label="Sanctioned amount" For="ap-sanc-amount">
+                                        @if (_decision.SanctionConfirmed)
+                                        {
+                                            <div class="locked-value">
+                                                @(_decision.SanctionedAmount is { } a ? FormatInr(a) : "—")
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="currency-input">
+                                                <span class="currency-symbol">₹</span>
+                                                <input id="ap-sanc-amount" type="number" min="0" step="1" class="field-input"
+                                                       @bind="_decision.SanctionedAmount" @bind:event="oninput" />
+                                            </div>
+                                        }
+                                    </FormField>
+
+                                    <FormField Label="Sanctioned ROI" For="ap-sanc-roi">
+                                        @if (_decision.SanctionConfirmed)
+                                        {
+                                            <div class="locked-value">@(_decision.SanctionedRoi?.ToString() ?? "—")%</div>
+                                        }
+                                        else
+                                        {
+                                            <input id="ap-sanc-roi" type="number" min="0" step="0.01" class="field-input"
+                                                   @bind="_decision.SanctionedRoi" />
+                                        }
+                                    </FormField>
+
+                                    <FormField Label="Sanctioned tenure" For="ap-sanc-tenure">
+                                        @if (_decision.SanctionConfirmed)
+                                        {
+                                            <div class="locked-value">@(_decision.SanctionedTenure?.ToString() ?? "—") mo</div>
+                                        }
+                                        else
+                                        {
+                                            <input id="ap-sanc-tenure" type="number" min="0" step="1" class="field-input"
+                                                   @bind="_decision.SanctionedTenure" />
+                                        }
+                                    </FormField>
+
+                                    <FormField Label="Validity date" For="ap-validity">
+                                        @if (_decision.SanctionConfirmed)
+                                        {
+                                            <div class="locked-value">@(_decision.ValidityDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")</div>
+                                        }
+                                        else
+                                        {
+                                            <input id="ap-validity" type="date" class="field-input" @bind="_decision.ValidityDate" />
+                                        }
+                                    </FormField>
+
+                                    <FormField Label="Approval authority" For="ap-authority">
+                                        @if (_decision.SanctionConfirmed)
+                                        {
+                                            <div class="locked-value">@(string.IsNullOrWhiteSpace(_decision.Authority) ? "—" : _decision.Authority)</div>
+                                        }
+                                        else
+                                        {
+                                            <input id="ap-authority" class="field-input" @bind="_decision.Authority" @bind:event="oninput" />
+                                        }
+                                    </FormField>
+                                </div>
+
+                                @if (SanctionedBelowRequested)
+                                {
+                                    <span class="below-requested">
+                                        @BelowRequestedPct.ToString("0.0", CultureInfo.InvariantCulture)% below requested amount
+                                    </span>
+                                }
+
+                                <div class="sub-block">
+                                    <span class="sub-block-label">Conditions / deviations</span>
+                                    @if (_decision.SanctionConfirmed)
+                                    {
+                                        <div class="locked-text">
+                                            @(string.IsNullOrWhiteSpace(_decision.Conditions) ? "—" : _decision.Conditions)
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <textarea class="long-text" rows="2" aria-label="Conditions or deviations"
+                                                  @bind="_decision.Conditions" @bind:event="oninput"></textarea>
+                                    }
+                                </div>
+
+                                @if (_decision.SanctionConfirmed)
+                                {
+                                    <div class="sanction-confirmed">✓ Sanction confirmed — locked</div>
+                                }
+                                else
+                                {
+                                    <button type="button" class="confirm-sanction-button"
+                                            disabled="@ConfirmSanctionBlocked"
+                                            @onclick="() => _showSanctionConfirm = true">Confirm sanction</button>
+
+                                    @if (ConfirmSanctionBlocked)
+                                    {
+                                        <span class="blocked-note">Complete first: @string.Join(", ", MissingTabs)</span>
+                                    }
+                                }
+                            </div>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 6: Charges ---------- *@
+                    @if (_activeTab == ChargesTab)
+                    {
+                        <Panel Title="Charges">
+                            <div class="table-scroll">
+                                <table class="row-table charges-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Charge head</th>
+                                            <th>Basis</th>
+                                            <th>Amount</th>
+                                            <th>GST</th>
+                                            <th>Deducted from</th>
+                                            <th>Waive</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in _charges)
+                                        {
+                                            <tr @key="row" class="@(row.Waived ? "is-waived" : null)">
+                                                <td class="charge-head">@row.Head</td>
+                                                <td class="charge-basis">@row.Basis</td>
+
+                                                <td>
+                                                    @if (row.Locked)
+                                                    {
+                                                        <span class="charge-pulled-value">@FormatInr(row.Amount)</span>
+                                                        <span class="charge-pulled-tag"
+                                                              title="Read-only — pulled from Loan &amp; Security (Stage 2)">(pulled)</span>
+                                                    }
+                                                    else if (row.Waived)
+                                                    {
+                                                        <span class="charge-struck">@FormatInr(row.Amount)</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <input class="cell-input w-money" type="number" min="0" step="1"
+                                                               aria-label="@(row.Head + " amount")"
+                                                               @bind="row.Amount" @bind:event="oninput" />
+                                                    }
+                                                </td>
+
+                                                <td>
+                                                    @if (row.Locked)
+                                                    {
+                                                        <span class="charge-pulled-value">@FormatInr(row.Gst)</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <input class="cell-input w-money" type="number" min="0" step="1"
+                                                               aria-label="@(row.Head + " GST")"
+                                                               disabled="@row.Waived"
+                                                               @bind="row.Gst" @bind:event="oninput" />
+                                                    }
+                                                </td>
+
+                                                <td class="charge-basis">@row.DeductedFrom</td>
+
+                                                <td>
+                                                    @if (!row.Locked)
+                                                    {
+                                                        <div class="waive-cell">
+                                                            <label class="waive-label">
+                                                                <input type="checkbox" @bind="row.Waived" />
+                                                                Waive
+                                                            </label>
+                                                            @if (row.Waived)
+                                                            {
+                                                                <input class="cell-input w-reason" placeholder="Reason (required)"
+                                                                       aria-label="@("Waiver reason for " + row.Head)"
+                                                                       @bind="row.WaiveReason" @bind:event="oninput" />
+                                                            }
+                                                        </div>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+
+                                        <tr class="total-row">
+                                            <td>Total</td>
+                                            <td></td>
+                                            <td>@FormatInr(ChargeTotal)</td>
+                                            <td>@FormatInr(GstTotal)</td>
+                                            <td colspan="2"></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Panel>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (_showSanctionConfirm)
+        {
+            <ConfirmDialog Title="Confirm sanction"
+                           Message="Confirm sanction? This action is irreversible."
+                           ConfirmLabel="Confirm sanction"
+                           Destructive="true"
+                           OnConfirm="ConfirmSanctionAsync"
+                           OnCancel="() => _showSanctionConfirm = false" />
+        }
+
+        @if (_toast is not null)
+        {
+            <div class="toast" role="status">@_toast</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    private const string BusinessTab = "Business Details";
+    private const string TvrTab = "TVR";
+    private const string NoteTab = "Approval Note";
+    private const string SignOffTab = "Approver & Recommender";
+    private const string SanctionTab = "Sanction Confirmation";
+    private const string ChargesTab = "Charges";
+
+    private const string BlankOption = "— Select —";
+
+    // PLACEHOLDER tax rate — 18% is the common Indian GST slab for financial services, but nobody
+    // has confirmed it applies to every head here, or that it will not change. It seeds the
+    // Processing fee row only; every other row's GST is typed by the officer.
+    private const decimal GstRate = 0.18m;
+
+    private static readonly string[] ConstitutionOptions =
+        { "Proprietorship", "Partnership firm", "Private limited company", "HUF" };
+
+    private static readonly string[] VintageOptions =
+        { "< 1 year", "1-3 years", "3-5 years", "5-10 years", "10+ years" };
+
+    private static readonly string[] RelationshipOptions =
+        { "Self", "Spouse", "Business partner", "Employee", "Other" };
+
+    private static readonly string[] TvrStatusOptions =
+        { "Positive - Confirmed", "Negative - Discrepancy", "Unable to Contact" };
+
+    private static readonly string[] RoleOptions =
+        { "Credit Analyst", "Senior Credit Analyst", "Branch Credit Manager", "Regional Credit Head" };
+
+    /// <summary>The six earlier stages, each with the route it actually lives at.</summary>
+    private static readonly (int Number, string Label, string Route)[] SendBackTargets =
+    {
+        (1, "Customer Details", "customer-details"),
+        (2, "Loan & Security", "loan-security"),
+        (3, "Bank & Financial", "bank-financial"),
+        (4, "Document Checklist", "document-checklist"),
+        (5, "Reports (RCU)", "reports-rcu"),
+        (6, "Eligibility", "eligibility"),
+    };
+
+    private static readonly CultureInfo IndianCulture = new("en-IN");
+
+    private Application? _application;
+    private bool _loading = true;
+    private string _activeTab = BusinessTab;
+
+    private Business _business = new();
+    private Tvr _tvr = new();
+    private ApprovalDecision _decision = new();
+    private List<Partner> _partners = new();
+    private List<Charge> _charges = new();
+    private List<Officer> _officers = new();
+
+    private EligibilityResult _eligibility = new(false, 0m, 0m, 0m, 0m, 0m, 0m, null);
+    private string _rcuStatus = RcuOutcomes.Pending;
+
+    private bool _sendBackOpen;
+    private int _sendBackStage;
+    private string _sendBackReason = string.Empty;
+    private bool _showSanctionConfirm;
+
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _application = await db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            await LoadAsync(db);
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadAsync(LosDbContext db)
+    {
+        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+
+        // Live, not snapshotted — both come from the same shared services the owning screens use.
+        _eligibility = await EligibilityCalculation.ComputeAsync(db, ApplicationId);
+        _rcuStatus = await RcuOutcomes.GetOverallStatusAsync(db, ApplicationId);
+
+        var created = false;
+
+        _business = await db.Businesses.FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId)
+            ?? Track(db.Businesses, new Business { ApplicationId = ApplicationId }, ref created);
+
+        _tvr = await db.Tvrs.FirstOrDefaultAsync(t => t.ApplicationId == ApplicationId)
+            ?? Track(db.Tvrs, new Tvr { ApplicationId = ApplicationId }, ref created);
+
+        _decision = await db.ApprovalDecisions.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
+            ?? Track(db.ApprovalDecisions, new ApprovalDecision { ApplicationId = ApplicationId }, ref created);
+
+        if (!await db.Charges.AnyAsync(c => c.ApplicationId == ApplicationId))
+        {
+            db.Charges.AddRange(SeedCharges());
+            created = true;
+        }
+
+        if (created)
+        {
+            await db.SaveChangesAsync();
+        }
+
+        _partners = await db.Partners.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId).OrderBy(p => p.Id).ToListAsync();
+
+        _charges = await db.Charges.AsNoTracking()
+            .Where(c => c.ApplicationId == ApplicationId).OrderBy(c => c.Id).ToListAsync();
+
+        PrefillSanctionTerms();
+    }
+
+    private static T Track<T>(DbSet<T> set, T entity, ref bool created) where T : class
+    {
+        set.Add(entity);
+        created = true;
+        return entity;
+    }
+
+    /// <summary>
+    /// The four starter rows. Only the Processing fee is pulled — its amount is whatever Stage 2
+    /// recorded, so an application that never had one seeded shows zero rather than an invented
+    /// figure. The other three are editable starting points.
+    /// </summary>
+    private IEnumerable<Charge> SeedCharges()
+    {
+        var processingFee = _application?.ProcessingFee ?? 0m;
+
+        yield return new Charge
+        {
+            ApplicationId = ApplicationId,
+            Head = "Processing fee",
+            Basis = "Pulled from Loan & Security",
+            Amount = processingFee,
+            Gst = Math.Round(processingFee * GstRate, MidpointRounding.AwayFromZero),
+            DeductedFrom = "Disbursement",
+            Locked = true,
+        };
+
+        yield return NewCharge("Documentation charge", "Flat", 2500m, 450m);
+        yield return NewCharge("Stamp duty", "As per state rate", 5000m, 0m);
+        yield return NewCharge("Valuation fee", "Flat", 3000m, 540m);
+    }
+
+    private Charge NewCharge(string head, string basis, decimal amount, decimal gst) => new()
+    {
+        ApplicationId = ApplicationId,
+        Head = head,
+        Basis = basis,
+        Amount = amount,
+        Gst = gst,
+        DeductedFrom = "Disbursement",
+    };
+
+    /// <summary>
+    /// Seeds the sanction terms from what the system already knows, but only where the officer has
+    /// not saved a value. The amount is left blank when eligibility could not be calculated — an
+    /// officer must never be handed a sanction figure the system did not actually compute.
+    /// </summary>
+    private void PrefillSanctionTerms()
+    {
+        if (_decision.SanctionedAmount is null && _eligibility.Ready)
+        {
+            _decision.SanctionedAmount = Math.Round(_eligibility.Eligible, MidpointRounding.AwayFromZero);
+        }
+
+        _decision.SanctionedRoi ??= _application?.Roi;
+        _decision.SanctionedTenure ??= _application?.Tenure;
+    }
+
+    // ---------------------------------------------------------------------
+    // Completion conditions — the four that gate the sanction
+    // ---------------------------------------------------------------------
+
+    private bool BusinessComplete =>
+        !string.IsNullOrWhiteSpace(_business.FirmName)
+        && !string.IsNullOrWhiteSpace(_business.Constitution)
+        && _business.IncorpDate.HasValue
+        && !string.IsNullOrWhiteSpace(_business.Gstin)
+        && !string.IsNullOrWhiteSpace(_business.Vintage)
+        && _business.Turnover > 0
+        && _partners.Any(p => !string.IsNullOrWhiteSpace(p.Name) && !string.IsNullOrWhiteSpace(p.Pan))
+        && !string.IsNullOrWhiteSpace(_business.Narrative);
+
+    private bool TvrComplete =>
+        !string.IsNullOrWhiteSpace(_tvr.Agent)
+        && _tvr.CallDateTime.HasValue
+        && !string.IsNullOrWhiteSpace(_tvr.PersonContacted)
+        && !string.IsNullOrWhiteSpace(_tvr.RecordingRef)
+        && !string.IsNullOrWhiteSpace(_tvr.Summary);
+
+    private bool NoteComplete => !string.IsNullOrWhiteSpace(_decision.ApprovalNote);
+
+    /// <summary>Segregation of duties: one person cannot both recommend and approve.</summary>
+    private bool SameSignatory =>
+        !string.IsNullOrWhiteSpace(_decision.RecommenderName)
+        && !string.IsNullOrWhiteSpace(_decision.ApproverName)
+        && string.Equals(_decision.RecommenderName, _decision.ApproverName, StringComparison.Ordinal);
+
+    private bool SignOffComplete =>
+        !string.IsNullOrWhiteSpace(_decision.RecommenderName)
+        && !string.IsNullOrWhiteSpace(_decision.ApproverName)
+        && !SameSignatory;
+
+    private IEnumerable<(string Tab, bool Complete)> TabState =>
+        new[]
+        {
+            (BusinessTab, BusinessComplete),
+            (TvrTab, TvrComplete),
+            (NoteTab, NoteComplete),
+            (SignOffTab, SignOffComplete),
+            (SanctionTab, _decision.SanctionConfirmed),
+            // Charges is not part of the sanction gate, so it never reads as outstanding.
+            (ChargesTab, true),
+        };
+
+    private List<string> MissingTabs
+    {
+        get
+        {
+            var missing = new List<string>();
+            if (!BusinessComplete) { missing.Add(BusinessTab); }
+            if (!TvrComplete) { missing.Add(TvrTab); }
+            if (!NoteComplete) { missing.Add(NoteTab); }
+            if (!SignOffComplete) { missing.Add(SignOffTab); }
+            return missing;
+        }
+    }
+
+    private bool ConfirmSanctionBlocked => MissingTabs.Count > 0;
+
+    // ---------------------------------------------------------------------
+    // Display helpers
+    // ---------------------------------------------------------------------
+
+    private string TvrBand => _tvr.Status switch
+    {
+        "Positive - Confirmed" => "healthy",
+        "Negative - Discrepancy" => "risk",
+        "Unable to Contact" => "caution",
+        _ => "neutral",
+    };
+
+    private string RcuStatusLabel => _rcuStatus switch
+    {
+        RcuOutcomes.NotRecommended => "Not recommended",
+        RcuOutcomes.Recommended => "Recommended",
+        _ => "Pending",
+    };
+
+    private bool SanctionedBelowRequested =>
+        _application is not null
+        && _decision.SanctionedAmount is { } amount
+        && _application.LoanAmount > 0
+        && amount < _application.LoanAmount;
+
+    private decimal BelowRequestedPct =>
+        (_decision.SanctionedAmount!.Value - _application!.LoanAmount) / _application.LoanAmount * 100m;
+
+    private decimal ChargeTotal => _charges.Where(c => !c.Waived).Sum(c => c.Amount);
+
+    private decimal GstTotal => _charges.Where(c => !c.Waived).Sum(c => c.Gst);
+
+    // ---------------------------------------------------------------------
+    // Editing
+    // ---------------------------------------------------------------------
+
+    private void AddPartner() => _partners.Add(new Partner { ApplicationId = ApplicationId });
+
+    /// <summary>
+    /// Selecting a signatory stamps today's server date against them; clearing the name clears it
+    /// again, so a date never outlives the signature it belongs to.
+    /// </summary>
+    private void SetSignatory(bool recommender, string? name)
+    {
+        var chosen = string.IsNullOrWhiteSpace(name) ? null : name;
+        var signedOn = chosen is null ? (DateOnly?)null : DateOnly.FromDateTime(DateTime.Now);
+
+        if (recommender)
+        {
+            _decision.RecommenderName = chosen;
+            _decision.RecommenderDate = signedOn;
+        }
+        else
+        {
+            _decision.ApproverName = chosen;
+            _decision.ApproverDate = signedOn;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Send back — the only backward transition in the system
+    // ---------------------------------------------------------------------
+
+    private void ToggleSendBack() => _sendBackOpen = !_sendBackOpen;
+
+    private void CancelSendBack()
+    {
+        _sendBackOpen = false;
+        _sendBackStage = 0;
+        _sendBackReason = string.Empty;
+    }
+
+    private bool SendBackBlocked =>
+        _sendBackStage == 0 || string.IsNullOrWhiteSpace(_sendBackReason);
+
+    private async Task ConfirmSendBackAsync()
+    {
+        // Re-checked here as well as on the button, so a crafted request cannot send an application
+        // back with no stated reason.
+        if (SendBackBlocked || _application is null)
+        {
+            return;
+        }
+
+        var target = SendBackTargets.First(t => t.Number == _sendBackStage);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        await PersistAsync(db);
+
+        db.SendBackLogs.Add(new SendBackLog
+        {
+            ApplicationId = ApplicationId,
+            FromStage = 7,
+            ToStage = target.Number,
+            Reason = _sendBackReason.Trim(),
+        });
+
+        var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
+        application.CurrentStage = target.Number;
+
+        // A file going back for rework must be re-confirmed against whatever the evidence looks
+        // like when it returns — otherwise it comes back with a live Sanction button.
+        var decision = await db.ApprovalDecisions.FirstAsync(d => d.ApplicationId == ApplicationId);
+        decision.SanctionConfirmed = false;
+        decision.SanctionConfirmedAt = null;
+
+        await db.SaveChangesAsync();
+
+        Navigation.NavigateTo($"/applications/{ApplicationId}/{target.Route}");
+    }
+
+    // ---------------------------------------------------------------------
+    // Sanction — two steps, both re-checked server-side
+    // ---------------------------------------------------------------------
+
+    private async Task ConfirmSanctionAsync()
+    {
+        _showSanctionConfirm = false;
+
+        if (ConfirmSanctionBlocked || _application is null)
+        {
+            return;
+        }
+
+        _decision.SanctionConfirmed = true;
+        _decision.SanctionConfirmedAt = DateTime.UtcNow;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await PersistAsync(db);
+        await db.SaveChangesAsync();
+
+        await ShowToastAsync("Sanction confirmed");
+    }
+
+    private async Task SanctionAsync()
+    {
+        // The sub-header button carries a real disabled attribute; this repeats the check so the
+        // stage cannot be closed without the confirmation step having happened.
+        if (!_decision.SanctionConfirmed || _application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        await PersistAsync(db);
+
+        var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
+
+        // Never move an application backwards — see CustomerDetails for the same guard.
+        application.CurrentStage = Math.Max(application.CurrentStage, 8);
+
+        // The credit decision is made — the file is now Sanctioned. Post Sanction leaves this as-is
+        // and only sets Disbursed when the money moves.
+        application.Status = "Sanctioned";
+
+        await db.SaveChangesAsync();
+
+        Navigation.NavigateTo($"/applications/{ApplicationId}/post-sanction");
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Writes every tab's state onto tracked entities. The caller owns SaveChangesAsync so that a
+    /// send-back or a sanction commits its own stage change in the same transaction.
+    /// </summary>
+    private async Task PersistAsync(LosDbContext db)
+    {
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId);
+        if (business is null)
+        {
+            business = new Business { ApplicationId = ApplicationId };
+            db.Businesses.Add(business);
+        }
+
+        business.FirmName = _business.FirmName;
+        business.Constitution = _business.Constitution;
+        business.Gstin = _business.Gstin;
+        business.Vintage = _business.Vintage;
+        business.IncorpDate = _business.IncorpDate;
+        business.Turnover = _business.Turnover;
+        business.Narrative = _business.Narrative;
+
+        var tvr = await db.Tvrs.FirstOrDefaultAsync(t => t.ApplicationId == ApplicationId);
+        if (tvr is null)
+        {
+            tvr = new Tvr { ApplicationId = ApplicationId };
+            db.Tvrs.Add(tvr);
+        }
+
+        tvr.Agent = _tvr.Agent;
+        tvr.PersonContacted = _tvr.PersonContacted;
+        tvr.Relationship = _tvr.Relationship;
+        tvr.Status = _tvr.Status;
+        tvr.RecordingRef = _tvr.RecordingRef;
+        tvr.CallDateTime = _tvr.CallDateTime;
+        tvr.Summary = _tvr.Summary;
+
+        var decision = await db.ApprovalDecisions.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
+        if (decision is null)
+        {
+            decision = new ApprovalDecision { ApplicationId = ApplicationId };
+            db.ApprovalDecisions.Add(decision);
+        }
+
+        decision.ApprovalNote = _decision.ApprovalNote;
+        decision.RecommenderName = _decision.RecommenderName;
+        decision.RecommenderRole = _decision.RecommenderRole;
+        decision.RecommenderDate = _decision.RecommenderDate;
+        decision.ApproverName = _decision.ApproverName;
+        decision.ApproverRole = _decision.ApproverRole;
+        decision.ApproverDate = _decision.ApproverDate;
+        decision.Authority = _decision.Authority;
+        decision.ValidityDate = _decision.ValidityDate;
+        decision.SanctionedAmount = _decision.SanctionedAmount;
+        decision.SanctionedRoi = _decision.SanctionedRoi;
+        decision.SanctionedTenure = _decision.SanctionedTenure;
+        decision.Conditions = _decision.Conditions;
+        decision.SanctionConfirmed = _decision.SanctionConfirmed;
+        decision.SanctionConfirmedAt = _decision.SanctionConfirmedAt;
+
+        var storedPartners = await db.Partners
+            .Where(p => p.ApplicationId == ApplicationId).ToListAsync();
+
+        var storedCharges = await db.Charges
+            .Where(c => c.ApplicationId == ApplicationId).ToListAsync();
+
+        SyncRows(db.Partners, _partners, storedPartners, p => p.Id, CopyPartner);
+        SyncRows(db.Charges, _charges, storedCharges, c => c.Id, CopyCharge);
+    }
+
+    /// <summary>
+    /// Inserts rows with no Id, updates the rest, and deletes stored rows the officer removed.
+    /// Deliberately not delete-and-reinsert: the rows carry real Ids once saved.
+    /// </summary>
+    private static void SyncRows<T>(
+        DbSet<T> set, List<T> current, List<T> stored, Func<T, int> idOf, Action<T, T> copy)
+        where T : class
+    {
+        var keptIds = current.Select(idOf).Where(id => id != 0).ToHashSet();
+
+        set.RemoveRange(stored.Where(s => !keptIds.Contains(idOf(s))));
+
+        foreach (var row in current)
+        {
+            var target = idOf(row) == 0 ? null : stored.FirstOrDefault(s => idOf(s) == idOf(row));
+
+            if (target is null)
+            {
+                // Either genuinely new, or its stored row vanished underneath us — insert either way.
+                set.Add(row);
+                continue;
+            }
+
+            copy(row, target);
+        }
+    }
+
+    private static void CopyPartner(Partner from, Partner to)
+    {
+        to.Name = from.Name;
+        to.Role = from.Role;
+        to.Pan = from.Pan;
+        to.Contact = from.Contact;
+        to.Shareholding = from.Shareholding;
+        to.Dob = from.Dob;
+    }
+
+    private static void CopyCharge(Charge from, Charge to)
+    {
+        // Head, Basis, DeductedFrom and Locked are set once at seeding and are not editable.
+        to.Amount = from.Amount;
+        to.Gst = from.Gst;
+        to.Waived = from.Waived;
+        to.WaiveReason = from.WaiveReason;
+    }
+
+    // ---------------------------------------------------------------------
+    // Presentation helpers
+    // ---------------------------------------------------------------------
+
+    private static string FormatInr(decimal amount) =>
+        "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", IndianCulture);
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Explicit render — see the note in CustomerDetails.razor; without it the toast is set and
+        // cleared between the only two renders an async handler triggers.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+}

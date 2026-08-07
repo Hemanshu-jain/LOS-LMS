@@ -1,0 +1,34 @@
+.filter-field,
+.filter-field * {
+    box-sizing: border-box;
+}
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-field-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--los-text-secondary, #5b6472);
+}
+
+.filter-field select {
+    height: 30px;
+    border: 1px solid var(--los-border, #d8dbe1);
+    border-radius: 0;
+    font-size: 12px;
+    background: #fff;
+    padding: 0 8px;
+    color: var(--los-text-primary, #1a1f29);
+    font-family: inherit;
+}
+
+.filter-field select:focus-visible {
+    outline: 2px solid var(--los-accent, #1f3a5f);
+    outline-offset: -2px;
+}

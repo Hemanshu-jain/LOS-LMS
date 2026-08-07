@@ -1,0 +1,105 @@
+@* Month-by-month amortization. Stage-3 specific, so it lives beside its page rather than in
+   Components/Shared. Computed purely from loan terms — independent of CAM recalculation. *@
+@using System.Globalization
+@using LosLms.Services
+
+<div class="schedule-backdrop" @onclick="OnClose">
+    @* Escape is scoped to the panel, matching the Dashboard drawer — no global JS listener. *@
+    <div class="schedule-panel" role="dialog" aria-modal="true" aria-label="Repayment schedule"
+         tabindex="-1" @ref="_panel"
+         @onclick:stopPropagation="true"
+         @onkeydown="HandleKeyDown">
+
+        <div class="schedule-header">
+            <div>
+                <div class="schedule-title">Repayment schedule</div>
+                <div class="schedule-subtitle">
+                    @FormatInr(Principal) · @FormatPercent(AnnualRatePct) · @Months mo · EMI @FormatInr(Emi)
+                </div>
+            </div>
+            <button type="button" class="schedule-close" aria-label="Close" @onclick="OnClose">✕</button>
+        </div>
+
+        <div class="schedule-scroll">
+            @if (_rows.Count == 0)
+            {
+                <p class="schedule-empty">
+                    Loan amount, ROI and tenure must all be set on Loan &amp; Security before a
+                    schedule can be computed.
+                </p>
+            }
+            else
+            {
+                <table class="schedule-table">
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th class="align-right">Opening balance</th>
+                            <th class="align-right">EMI</th>
+                            <th class="align-right">Principal</th>
+                            <th class="align-right">Interest</th>
+                            <th class="align-right">Closing balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _rows)
+                        {
+                            <tr>
+                                <td>@row.Month</td>
+                                <td class="align-right">@FormatInr(row.OpeningBalance)</td>
+                                <td class="align-right">@FormatInr(row.Emi)</td>
+                                <td class="align-right">@FormatInr(row.Principal)</td>
+                                <td class="align-right">@FormatInr(row.Interest)</td>
+                                <td class="align-right">@FormatInr(row.ClosingBalance)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public decimal Principal { get; set; }
+
+    [Parameter] public decimal AnnualRatePct { get; set; }
+
+    [Parameter] public int Months { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
+
+    private List<AmortizationRow> _rows = new();
+    private ElementReference _panel;
+    private bool _shouldFocus = true;
+
+    private decimal Emi => LoanMath.Emi(Principal, AnnualRatePct, Months);
+
+    protected override void OnParametersSet() =>
+        _rows = LoanMath.Schedule(Principal, AnnualRatePct, Months);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocus)
+        {
+            _shouldFocus = false;
+            await _panel.FocusAsync();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    private static string FormatInr(decimal amount) =>
+        "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", IndianCulture);
+
+    private static string FormatPercent(decimal value) =>
+        value.ToString("0.##", CultureInfo.InvariantCulture) + "%";
+}

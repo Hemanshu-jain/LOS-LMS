@@ -1,0 +1,129 @@
+.preview-backdrop,
+.preview-backdrop * {
+    box-sizing: border-box;
+}
+
+.preview-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 31, 41, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 60;
+    padding: 24px;
+}
+
+.preview-panel {
+    width: 720px;
+    max-width: 100%;
+    max-height: 100%;
+    background: #fff;
+    border: 1px solid #d8dbe1;
+    display: flex;
+    flex-direction: column;
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+}
+
+.preview-panel:focus {
+    outline: none;
+}
+
+.preview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 14px;
+    border-bottom: 1px solid #d4d4d4;
+    background: #f2f2f2;
+}
+
+.preview-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #1a1f29;
+}
+
+.preview-subtitle {
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: #5b6472;
+    word-break: break-all;
+}
+
+.preview-close {
+    border: none;
+    background: none;
+    color: #5b6472;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    font-family: inherit;
+}
+
+.preview-close:hover {
+    color: #1a1f29;
+}
+
+.preview-body {
+    flex: 1;
+    min-height: 320px;
+    background: #f4f5f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    padding: 12px;
+}
+
+.preview-image {
+    max-width: 100%;
+    max-height: 60vh;
+    object-fit: contain;
+    background: #fff;
+}
+
+.preview-frame {
+    width: 100%;
+    height: 60vh;
+    border: 1px solid #e0e0e0;
+    background: #fff;
+}
+
+.preview-unsupported {
+    margin: 0;
+    font-size: 11.5px;
+    color: #5b6472;
+    text-align: center;
+}
+
+.preview-footer {
+    padding: 10px 14px;
+    border-top: 1px solid #d4d4d4;
+    background: #fafafa;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.preview-download {
+    height: 27px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border: 1px solid #16304f;
+    background: #1f3a5f;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.preview-download:hover {
+    background: #16304f;
+}

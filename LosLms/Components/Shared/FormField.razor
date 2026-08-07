@@ -1,0 +1,37 @@
+@* Label + input chrome + inline error slot. The input itself is supplied as child content so
+   each field keeps its own strongly-typed binding. *@
+
+<div class="form-field">
+    <label class="form-field-label" for="@For">
+        @Label
+        @if (Verified)
+        {
+            <span class="verified-badge">Verified</span>
+        }
+    </label>
+
+    @ChildContent
+
+    @if (!string.IsNullOrWhiteSpace(Error))
+    {
+        <span class="form-field-error" role="alert">@Error</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+
+    /// <summary>Id of the input inside <see cref="ChildContent"/>, for the label's <c>for</c>.</summary>
+    [Parameter] public string? For { get; set; }
+
+    /// <summary>Inline validation message. Null or blank renders nothing.</summary>
+    [Parameter] public string? Error { get; set; }
+
+    /// <summary>
+    /// Renders the green "Verified" badge. Only ever true when a real verification succeeded —
+    /// no verification provider is configured in this build, so it stays false.
+    /// </summary>
+    [Parameter] public bool Verified { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

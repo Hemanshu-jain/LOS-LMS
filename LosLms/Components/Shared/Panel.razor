@@ -1,0 +1,23 @@
+@* Titled panel with an optional right-hand slot in the header. Shared by the stage screens. *@
+
+<div class="panel">
+    <div class="panel-header">
+        <span class="panel-title">@Title</span>
+        @if (Right is not null)
+        {
+            <div class="panel-right">@Right</div>
+        }
+    </div>
+    <div class="panel-body">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Optional controls rendered on the right of the header, e.g. a toggle or add button.</summary>
+    [Parameter] public RenderFragment? Right { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

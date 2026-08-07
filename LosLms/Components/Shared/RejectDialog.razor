@@ -1,0 +1,70 @@
+@* Rejection confirmation with a required reason.
+
+   Same backdrop / panel / Escape pattern as ConfirmDialog, but ConfirmDialog has no text input and
+   a reason is mandatory here, so this is its own component rather than a parameter on that one. *@
+
+<div class="reject-backdrop" @onclick="OnCancel">
+    <div class="reject-panel" role="alertdialog" aria-modal="true" aria-labelledby="reject-title"
+         tabindex="-1" @ref="_panel"
+         @onclick:stopPropagation="true"
+         @onkeydown="HandleKeyDown">
+
+        <div class="reject-title" id="reject-title">Reject this application?</div>
+
+        <label class="reject-label" for="reject-reason">Reason (required)</label>
+        <textarea id="reject-reason" class="reject-input" rows="3"
+                  placeholder="Why is this application being rejected?"
+                  @bind="_reason" @bind:event="oninput"></textarea>
+
+        <div class="reject-actions">
+            <button type="button" class="reject-cancel" @onclick="OnCancel">Cancel</button>
+            <button type="button" class="reject-ok"
+                    disabled="@ConfirmDisabled"
+                    @onclick="ConfirmAsync">Reject application</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Invoked with the entered reason once the officer confirms.</summary>
+    [Parameter] public EventCallback<string> OnConfirm { get; set; }
+
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private ElementReference _panel;
+    private bool _shouldFocus = true;
+    private string _reason = string.Empty;
+
+    private bool ConfirmDisabled => string.IsNullOrWhiteSpace(_reason);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocus)
+        {
+            _shouldFocus = false;
+            await _panel.FocusAsync();
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        // Guard as well as disable — a reason typed then cleared, or a crafted event, must not get
+        // through with nothing written.
+        if (ConfirmDisabled)
+        {
+            return;
+        }
+
+        await OnConfirm.InvokeAsync(_reason.Trim());
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        // Escape cancels — never confirms. Enter is deliberately not bound: rejecting is
+        // irreversible and should take a real click.
+        if (e.Key == "Escape")
+        {
+            await OnCancel.InvokeAsync();
+        }
+    }
+}

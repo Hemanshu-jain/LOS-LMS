@@ -1,0 +1,927 @@
+@page "/applications/{ApplicationId}/eligibility"
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+
+<PageTitle>Eligibility · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">
+                No application exists with the reference <strong>@ApplicationId</strong>.
+            </p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="stage-page">
+        <div class="stage-card">
+
+            <StageSubHeader ApplicationId="@_application.Id"
+                            CompleteBlocked="CompleteBlocked"
+                            BlockedReason="@BlockedReason"
+                            OnSaveDraft="SaveDraftAsync"
+                            OnCompleteStage="CompleteStageAsync" />
+
+            <div class="stepper-band">
+                <StageStepper CurrentStep="6" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">07</span>
+                        <span class="stage-title-text">STAGE 6 — ELIGIBILITY</span>
+                        <span class="stage-title-of">Stage 6 of 8</span>
+                    </div>
+
+                    <div class="el-tabs" role="tablist" aria-label="Eligibility sections">
+                        @foreach (var tab in Tabs)
+                        {
+                            <button type="button" role="tab"
+                                    class="el-tab @(_activeTab == tab ? "is-active" : null)"
+                                    aria-selected="@(_activeTab == tab)"
+                                    @onclick="() => _activeTab = tab">@tab</button>
+                        }
+                    </div>
+
+                    <div class="el-columns">
+                        <div class="el-main-column">
+
+                            @* ---------- Tab 1: Borrower classification ---------- *@
+                            @if (_activeTab == ClassificationTab)
+                            {
+                                <Panel Title="Borrower classification">
+                                    <div class="field-grid">
+                                        <FormField Label="PSL classification" For="el-psl">
+                                            <select id="el-psl" class="field-input" @bind="_classification.Psl">
+                                                @foreach (var o in PslOptions) { <option value="@o">@o</option> }
+                                            </select>
+                                        </FormField>
+
+                                        @if (PslIsYes)
+                                        {
+                                            <FormField Label="PSL sub-category" For="el-pslsub">
+                                                <select id="el-pslsub" class="field-input" @bind="_classification.PslSub">
+                                                    <option value="">@BlankOption</option>
+                                                    @foreach (var o in PslSubOptions) { <option value="@o">@o</option> }
+                                                </select>
+                                            </FormField>
+                                        }
+
+                                        <FormField Label="Risk sharing %" For="el-risk">
+                                            <input id="el-risk" type="number" min="0" step="0.01" class="field-input"
+                                                   @bind="_classification.RiskSharing" />
+                                        </FormField>
+
+                                        <FormField Label="Co-lending partner" For="el-partner">
+                                            <select id="el-partner" class="field-input" @bind="_classification.CoLendingPartner">
+                                                <option value="">@BlankOption</option>
+                                                @foreach (var o in CoLendingOptions) { <option value="@o">@o</option> }
+                                            </select>
+                                        </FormField>
+
+                                        <FormField Label="End use of funds" For="el-enduse">
+                                            <select id="el-enduse" class="field-input" @bind="_classification.EndUse">
+                                                <option value="">@BlankOption</option>
+                                                @foreach (var o in EndUseOptions) { <option value="@o">@o</option> }
+                                            </select>
+                                        </FormField>
+
+                                        @if (PslIsYes)
+                                        {
+                                            <FormField Label="Priority sector amount" For="el-pslamount">
+                                                <div class="currency-input">
+                                                    <span class="currency-symbol">₹</span>
+                                                    <input id="el-pslamount" type="number" min="0" step="1" class="field-input"
+                                                           @bind="_classification.PrioritySectorAmount" />
+                                                </div>
+                                            </FormField>
+                                        }
+                                    </div>
+                                </Panel>
+                            }
+
+                            @* ---------- Tab 2: Existing loan ---------- *@
+                            @if (_activeTab == ExistingLoanTab)
+                            {
+                                <Panel Title="Existing loan">
+                                    <Right>
+                                        <button type="button" class="add-row-button" @onclick="AddLoan">
+                                            + Add existing loan
+                                        </button>
+                                    </Right>
+                                    <ChildContent>
+                                        <div class="table-scroll">
+                                            <table class="row-table loan-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Applicant</th>
+                                                        <th>Lender</th>
+                                                        <th>Loan type</th>
+                                                        <th>Sanctioned</th>
+                                                        <th>ROI %</th>
+                                                        <th>POS</th>
+                                                        <th>EMI</th>
+                                                        <th>Max DPD</th>
+                                                        <th>Bounces (12m)</th>
+                                                        <th>RTR</th>
+                                                        <th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (_loans.Count == 0)
+                                                    {
+                                                        <tr>
+                                                            <td colspan="11" class="empty-row">
+                                                                No existing obligations recorded.
+                                                            </td>
+                                                        </tr>
+                                                    }
+
+                                                    @foreach (var party in GroupedParties(_loans.Select(l => l.PartyType)))
+                                                    {
+                                                        var rows = _loans.Where(l => l.PartyType == party).ToList();
+                                                        if (rows.Count == 0) { continue; }
+
+                                                        <tr class="group-header">
+                                                            <td colspan="11">@LabelFor(party)</td>
+                                                        </tr>
+
+                                                        @foreach (var row in rows)
+                                                        {
+                                                            <tr @key="row">
+                                                                <td>
+                                                                    <select class="cell-select" aria-label="Party for this loan"
+                                                                            @bind="row.PartyType">
+                                                                        @foreach (var p in PartyOptionsFor(row.PartyType))
+                                                                        {
+                                                                            <option value="@p">@LabelFor(p)</option>
+                                                                        }
+                                                                    </select>
+                                                                </td>
+                                                                <td><input class="cell-input w-lender" aria-label="Lender" @bind="row.Lender" /></td>
+                                                                <td><input class="cell-input w-type" aria-label="Loan type" @bind="row.LoanType" /></td>
+                                                                <td><input class="cell-input w-money" type="number" min="0" step="1" aria-label="Sanctioned amount" @bind="row.Sanctioned" /></td>
+                                                                <td><input class="cell-input w-pct" type="number" min="0" step="0.01" aria-label="Rate of interest" @bind="row.Roi" /></td>
+                                                                <td><input class="cell-input w-money" type="number" min="0" step="1" aria-label="Principal outstanding" @bind="row.Pos" /></td>
+
+                                                                @* oninput, not the default onchange: the eligible amount must move as
+                                                                   the officer types, without needing a save or even a blur. *@
+                                                                <td>
+                                                                    <input class="cell-input w-money is-emi" type="number" min="0" step="1"
+                                                                           aria-label="Existing EMI"
+                                                                           @bind="row.Emi" @bind:event="oninput" />
+                                                                </td>
+
+                                                                <td><input class="cell-input w-small" type="number" min="0" step="1" aria-label="Maximum days past due" @bind="row.MaxDpd" /></td>
+                                                                <td><input class="cell-input w-small" type="number" min="0" step="1" aria-label="Bounces in last 12 months" @bind="row.Bounces" /></td>
+                                                                <td>
+                                                                    <select class="cell-select" aria-label="Repayment track record" @bind="row.Rtr">
+                                                                        @foreach (var o in RtrOptions) { <option value="@o">@o</option> }
+                                                                    </select>
+                                                                </td>
+                                                                <td>
+                                                                    <button type="button" class="remove-button"
+                                                                            aria-label="Remove this loan"
+                                                                            @onclick="() => _loans.Remove(row)">×</button>
+                                                                </td>
+                                                            </tr>
+                                                        }
+
+                                                        <tr class="subtotal-row">
+                                                            <td colspan="6" class="align-right">Subtotal EMI</td>
+                                                            <td class="subtotal-value">@FormatInr(rows.Sum(r => r.Emi))</td>
+                                                            <td colspan="4"></td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </ChildContent>
+                                </Panel>
+                            }
+
+                            @* ---------- Tab 3: Banking ---------- *@
+                            @if (_activeTab == BankingTab)
+                            {
+                                <Panel Title="Banking">
+                                    <Right>
+                                        <button type="button" class="add-row-button" @onclick="AddBanking">
+                                            + Add bank
+                                        </button>
+                                    </Right>
+                                    <ChildContent>
+                                        <p class="informational-note">
+                                            Informational only — does not affect the eligible amount calculation.
+                                        </p>
+
+                                        <div class="table-scroll">
+                                            <table class="row-table banking-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Applicant</th>
+                                                        <th>Bank</th>
+                                                        <th>Months reviewed</th>
+                                                        <th>Avg. balance</th>
+                                                        <th>Cheque bounces</th>
+                                                        <th>Inward txn %</th>
+                                                        <th>Outward txn %</th>
+                                                        <th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @if (_banking.Count == 0)
+                                                    {
+                                                        <tr>
+                                                            <td colspan="8" class="empty-row">No accounts reviewed.</td>
+                                                        </tr>
+                                                    }
+
+                                                    @foreach (var party in GroupedParties(_banking.Select(b => b.PartyType)))
+                                                    {
+                                                        var rows = _banking.Where(b => b.PartyType == party).ToList();
+                                                        if (rows.Count == 0) { continue; }
+
+                                                        <tr class="group-header">
+                                                            <td colspan="8">@LabelFor(party)</td>
+                                                        </tr>
+
+                                                        @foreach (var row in rows)
+                                                        {
+                                                            <tr @key="row">
+                                                                <td>
+                                                                    <select class="cell-select" aria-label="Party for this account"
+                                                                            @bind="row.PartyType">
+                                                                        @foreach (var p in PartyOptionsFor(row.PartyType))
+                                                                        {
+                                                                            <option value="@p">@LabelFor(p)</option>
+                                                                        }
+                                                                    </select>
+                                                                </td>
+                                                                <td><input class="cell-input w-lender" aria-label="Bank" @bind="row.Bank" /></td>
+                                                                <td><input class="cell-input w-small" type="number" min="0" step="1" aria-label="Months reviewed" @bind="row.Months" /></td>
+                                                                <td><input class="cell-input w-money" type="number" min="0" step="1" aria-label="Average balance" @bind="row.AvgBalance" /></td>
+                                                                <td><input class="cell-input w-small" type="number" min="0" step="1" aria-label="Cheque bounces" @bind="row.Bounces" /></td>
+                                                                <td><input class="cell-input w-pct" type="number" min="0" step="0.01" aria-label="Inward transaction percentage" @bind="row.InwardPct" /></td>
+                                                                <td><input class="cell-input w-pct" type="number" min="0" step="0.01" aria-label="Outward transaction percentage" @bind="row.OutwardPct" /></td>
+                                                                <td>
+                                                                    <button type="button" class="remove-button"
+                                                                            aria-label="Remove this account"
+                                                                            @onclick="() => _banking.Remove(row)">×</button>
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </ChildContent>
+                                </Panel>
+                            }
+
+                            @* ---------- Tab 4: CAM recap ---------- *@
+                            @if (_activeTab == CamTab)
+                            {
+                                <Panel Title="CAM recap (read-only)">
+                                    <Right>
+                                        <button type="button" class="link-button"
+                                                @onclick="@(() => Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial"))">
+                                            Open CAM
+                                        </button>
+                                    </Right>
+                                    <ChildContent>
+                                        <div class="cam-layout">
+                                            <table class="cam-table">
+                                                <tbody>
+                                                    <tr>
+                                                        <td>On-road cost</td>
+                                                        <td class="align-right cam-value">
+                                                            @(_onRoadCost.HasValue ? FormatInr(_onRoadCost.Value) : "—")
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>Loan amount</td>
+                                                        <td class="align-right cam-value">@FormatInr(_application.LoanAmount)</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>LTV on on-road cost</td>
+                                                        <td class="align-right cam-value">@LtvDisplay</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+
+                                            <div class="cam-tiles">
+                                                <div class="tile">
+                                                    <span class="tile-label">EMI</span>
+                                                    <span class="tile-value">@FormatInr(RequestedEmi)</span>
+                                                </div>
+                                                <div class="tile">
+                                                    <span class="tile-label">ROI</span>
+                                                    <span class="tile-value">@(_application.Roi.HasValue ? _application.Roi.Value + "%" : "—")</span>
+                                                </div>
+                                                <div class="tile">
+                                                    <span class="tile-label">Term</span>
+                                                    <span class="tile-value">@(_application.Tenure.HasValue ? _application.Tenure.Value + " mo" : "—")</span>
+                                                </div>
+                                                <div class="tile">
+                                                    <span class="tile-label">LTV</span>
+                                                    <span class="tile-value">@LtvDisplay</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </ChildContent>
+                                </Panel>
+                            }
+                        </div>
+
+                        @* ---------- Eligible amount, pinned beside every tab ---------- *@
+                        @if (!Ready)
+                        {
+                            <div class="eligible-panel not-ready">
+                                <div class="eligible-header">Eligibility unavailable</div>
+                                <div class="eligible-body">
+                                    <p class="not-ready-lead">Eligibility can't be calculated yet —</p>
+                                    <ul class="not-ready-list">
+                                        @if (!IncomeOk)
+                                        {
+                                            <li>
+                                                Viability data from Stage 2 is missing.
+                                                <button type="button" class="link-button"
+                                                        @onclick="@(() => Navigation.NavigateTo($"/applications/{ApplicationId}/loan-security"))">
+                                                    Go to Loan &amp; Security
+                                                </button>
+                                            </li>
+                                        }
+                                        @if (!LoanTermsOk)
+                                        {
+                                            <li>
+                                                Loan terms from Stage 2 are missing.
+                                                <button type="button" class="link-button"
+                                                        @onclick="@(() => Navigation.NavigateTo($"/applications/{ApplicationId}/loan-security"))">
+                                                    Go to Loan &amp; Security
+                                                </button>
+                                            </li>
+                                        }
+                                        @if (!CamOk)
+                                        {
+                                            <li>
+                                                CAM hasn't been calculated in Stage 3 yet.
+                                                <button type="button" class="link-button"
+                                                        @onclick="@(() => Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial"))">
+                                                    Go to Bank &amp; Financial
+                                                </button>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="eligible-panel">
+                                <div class="eligible-header">Eligible amount</div>
+                                <div class="eligible-body">
+                                    <div class="eligible-amount">@FormatInr(Eligible)</div>
+                                    @if (BindingLabel is not null)
+                                    {
+                                        <div class="eligible-capped">Capped by @BindingLabel</div>
+                                    }
+
+                                    <div class="eligible-divider"></div>
+
+                                    <div class="detail-rows">
+                                        <div class="detail-row">
+                                            <span class="detail-label">Requested amount</span>
+                                            <span class="detail-value">@FormatInr(_application.LoanAmount)</span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span class="detail-label">Deviation %</span>
+                                            <span class="detail-value @(DeviationPct < 0 ? "is-risk" : null)">
+                                                @DeviationPct.ToString("0.0", CultureInfo.InvariantCulture)%
+                                            </span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span class="detail-label">FOIR %</span>
+                                            <span class="detail-value">@FoirAtEligible.ToString("0", CultureInfo.InvariantCulture)%</span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span class="detail-label">LTV %</span>
+                                            <span class="detail-value">@LtvPct.ToString("0", CultureInfo.InvariantCulture)%</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="eligible-section">
+                                        <span class="eligible-section-label">How this was capped</span>
+                                        <div class="detail-row">
+                                            <span class="detail-label">FOIR allows up to</span>
+                                            <span class="detail-value">@FormatInr(FoirCapAmount)</span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <span class="detail-label">LTV allows up to</span>
+                                            <span class="detail-value">@FormatInr(LtvCapAmount)</span>
+                                        </div>
+                                    </div>
+
+                                    @if (DeviationPct < 0)
+                                    {
+                                        <div class="eligible-section">
+                                            <span class="note-label">Approver note (required — negative deviation)</span>
+                                            <textarea class="note-input" rows="2"
+                                                      aria-label="Approver note"
+                                                      @bind="_decision.ApproverNote" @bind:event="oninput"></textarea>
+                                            @if (NoteStale)
+                                            {
+                                                <span class="note-stale">
+                                                    ⚠ Written at a different deviation than now — review before relying on it
+                                                </span>
+                                            }
+                                        </div>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(_decision.ApproverNote))
+                                    {
+                                        <div class="eligible-section">
+                                            <span class="note-trace">
+                                                Approver note on file (not required while eligible ≥ requested)
+                                            </span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (_toast is not null)
+        {
+            <div class="toast" role="status">@_toast</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    private const string ClassificationTab = "Borrower Classification";
+    private const string ExistingLoanTab = "Existing Loan";
+    private const string BankingTab = "Banking";
+    private const string CamTab = "CAM";
+
+    private const string BlankOption = "— Select —";
+
+    /// <summary>Tolerance before a saved note counts as written against a different deviation.</summary>
+    private const decimal NoteStaleTolerancePct = 0.5m;
+
+    private static readonly string[] Tabs = { ClassificationTab, ExistingLoanTab, BankingTab, CamTab };
+
+    private static readonly (string Key, string Label)[] AllParties =
+    {
+        ("Applicant", "Applicant"),
+        ("CoApplicant", "Co-Applicant"),
+        ("Guarantor", "Guarantor"),
+    };
+
+    private static readonly string[] PslOptions = { Classification.PslYes, Classification.PslNo };
+
+    private static readonly string[] PslSubOptions =
+        { "Transport Sector - CV", "Agriculture", "MSME", "Other" };
+
+    private static readonly string[] CoLendingOptions =
+        { "None", "HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank" };
+
+    private static readonly string[] EndUseOptions =
+        { "Fleet expansion", "Vehicle replacement", "New business setup", "Working capital", "Other" };
+
+    private static readonly string[] RtrOptions = { "Regular", "Irregular", "Overdue" };
+
+    private static readonly CultureInfo IndianCulture = new("en-IN");
+
+    private Application? _application;
+    private bool _loading = true;
+    private bool _hasGuarantor;
+    private string _activeTab = ClassificationTab;
+
+    private Classification _classification = new();
+    private EligibilityDecision _decision = new();
+    private List<ExistingLoan> _loans = new();
+    private List<BankingRecord> _banking = new();
+
+    /// <summary>Sum of the Viability income columns. Zero when Stage 2 was never filled in.</summary>
+    private decimal _totalIncome;
+
+    /// <summary>Null means the CAM has never been recalculated — unavailable, not zero.</summary>
+    private decimal? _onRoadCost;
+
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _application = await db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            await LoadAsync(db);
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadAsync(LosDbContext db)
+    {
+        var parties = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId)
+            .ToListAsync();
+
+        _hasGuarantor = PartyRules.HasGuarantor(parties);
+
+        var viability = await db.Viabilities.AsNoTracking()
+            .FirstOrDefaultAsync(v => v.ApplicationId == ApplicationId);
+
+        _totalIncome = viability is null
+            ? 0m
+            : viability.IncomeFreight + viability.IncomeSalary + viability.IncomeOther;
+
+        var cam = await db.CamCostBreakdowns.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ApplicationId == ApplicationId);
+
+        _onRoadCost = EligibilityCalculation.OnRoadCostOf(cam);
+
+        var created = false;
+
+        _classification = await db.Classifications
+            .FirstOrDefaultAsync(c => c.ApplicationId == ApplicationId)
+            ?? Track(db.Classifications, new Classification { ApplicationId = ApplicationId }, ref created);
+
+        _decision = await db.EligibilityDecisions
+            .FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
+            ?? Track(db.EligibilityDecisions, new EligibilityDecision { ApplicationId = ApplicationId }, ref created);
+
+        if (created)
+        {
+            await db.SaveChangesAsync();
+        }
+
+        _loans = await db.ExistingLoans.AsNoTracking()
+            .Where(l => l.ApplicationId == ApplicationId)
+            .OrderBy(l => l.Id)
+            .ToListAsync();
+
+        _banking = await db.BankingRecords.AsNoTracking()
+            .Where(b => b.ApplicationId == ApplicationId)
+            .OrderBy(b => b.Id)
+            .ToListAsync();
+    }
+
+    private static T Track<T>(DbSet<T> set, T entity, ref bool created) where T : class
+    {
+        set.Add(entity);
+        created = true;
+        return entity;
+    }
+
+    // ---------------------------------------------------------------------
+    // Parties
+    // ---------------------------------------------------------------------
+
+    private IEnumerable<string> VisiblePartyKeys =>
+        AllParties.Where(p => p.Key != "Guarantor" || _hasGuarantor).Select(p => p.Key);
+
+    /// <summary>
+    /// Party groups to render: the visible ones, plus any party a saved row actually belongs to.
+    /// </summary>
+    /// <remarks>
+    /// Without the union, a row saved against a guarantor who was later un-named would vanish from
+    /// the table while still counting toward the existing-EMI total — a phantom obligation quietly
+    /// reducing the eligible amount with nothing on screen to explain it.
+    /// </remarks>
+    private IEnumerable<string> GroupedParties(IEnumerable<string> rowParties) =>
+        VisiblePartyKeys.Concat(rowParties).Distinct(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Options for a row's party dropdown — visible parties, plus this row's own value so that an
+    /// orphaned row still renders its current party rather than silently rebinding to another.
+    /// </summary>
+    private IEnumerable<string> PartyOptionsFor(string current) =>
+        VisiblePartyKeys.Contains(current, StringComparer.Ordinal)
+            ? VisiblePartyKeys
+            : VisiblePartyKeys.Append(current);
+
+    private static string LabelFor(string key) =>
+        AllParties.FirstOrDefault(p => p.Key == key).Label ?? key;
+
+    // ---------------------------------------------------------------------
+    // Data readiness — every division below depends on these being true
+    // ---------------------------------------------------------------------
+
+    private bool IncomeOk => _totalIncome > 0;
+
+    private bool CamOk => _onRoadCost is > 0;
+
+    private bool LoanTermsOk =>
+        _application is not null
+        && _application.LoanAmount > 0
+        && _application.Roi > 0
+        && _application.Tenure > 0;
+
+    // ---------------------------------------------------------------------
+    // Eligibility — the formula lives in EligibilityCalculation, shared with Approvals (Stage 7)
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Recomputed on every render from the rows currently on screen, not from the database — which
+    /// is what lets the panel move as an EMI is typed, before anything is saved.
+    /// </summary>
+    private EligibilityResult Result => EligibilityCalculation.Compute(new EligibilityInputs(
+        TotalIncome: _totalIncome,
+        OnRoadCost: _onRoadCost,
+        LoanAmount: _application?.LoanAmount ?? 0m,
+        Roi: _application?.Roi,
+        Tenure: _application?.Tenure,
+        ExistingEmiSum: ExistingEmiSum));
+
+    private decimal ExistingEmiSum => _loans.Sum(l => l.Emi);
+
+    private bool Ready => Result.Ready;
+
+    private decimal Eligible => Result.Eligible;
+
+    private decimal DeviationPct => Result.DeviationPct;
+
+    private decimal FoirAtEligible => Result.FoirAtEligible;
+
+    private decimal LtvPct => Result.LtvPct;
+
+    private decimal FoirCapAmount => Result.FoirCapAmount;
+
+    private decimal LtvCapAmount => Result.LtvCapAmount;
+
+    private string? BindingLabel => Result.BindingLabel;
+
+    private bool NoteStale =>
+        _decision.NoteWrittenAtDeviationPct.HasValue
+        && Math.Abs(_decision.NoteWrittenAtDeviationPct.Value - DeviationPct) > NoteStaleTolerancePct;
+
+    /// <summary>EMI on the requested amount, for the CAM recap tiles.</summary>
+    private decimal RequestedEmi =>
+        LoanMath.Emi(_application!.LoanAmount, _application.Roi ?? 0m, _application.Tenure ?? 0);
+
+    private string LtvDisplay =>
+        _onRoadCost is > 0 ? LtvPct.ToString("0", CultureInfo.InvariantCulture) + "%" : "—";
+
+    private bool PslIsYes => _classification.Psl == Classification.PslYes;
+
+    // ---------------------------------------------------------------------
+    // The gate
+    // ---------------------------------------------------------------------
+
+    // `!Ready` short-circuits, so DeviationPct is never evaluated on an application whose loan
+    // amount is still zero — which is what keeps that division safe.
+    private bool CompleteBlocked =>
+        !Ready || (DeviationPct < 0 && string.IsNullOrWhiteSpace(_decision.ApproverNote));
+
+    private string? BlockedReason
+    {
+        get
+        {
+            if (!Ready)
+            {
+                return "Eligibility can't be calculated yet — see the panel for what is missing.";
+            }
+
+            return DeviationPct < 0 && string.IsNullOrWhiteSpace(_decision.ApproverNote)
+                ? "An approver note is required while the eligible amount is below the requested amount."
+                : null;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Row editing
+    // ---------------------------------------------------------------------
+
+    private void AddLoan() =>
+        _loans.Add(new ExistingLoan { ApplicationId = ApplicationId });
+
+    private void AddBanking() =>
+        _banking.Add(new BankingRecord { ApplicationId = ApplicationId });
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private async Task SaveDraftAsync()
+    {
+        await PersistAsync(completeStage: false);
+        await ShowToastAsync("Draft saved");
+    }
+
+    private async Task CompleteStageAsync()
+    {
+        // Defence in depth: the button carries a real disabled attribute, and the same gate is
+        // re-checked here so a crafted request cannot advance the stage either.
+        if (CompleteBlocked || _application is null)
+        {
+            return;
+        }
+
+        await PersistAsync(completeStage: true);
+        Navigation.NavigateTo($"/applications/{ApplicationId}/approvals");
+    }
+
+    private async Task PersistAsync(bool completeStage)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // ---- Classification ----
+        var classification = await db.Classifications
+            .FirstOrDefaultAsync(c => c.ApplicationId == ApplicationId);
+
+        if (classification is null)
+        {
+            classification = new Classification { ApplicationId = ApplicationId };
+            db.Classifications.Add(classification);
+        }
+
+        classification.Psl = _classification.Psl;
+        classification.PslSub = _classification.PslSub;
+        classification.RiskSharing = _classification.RiskSharing;
+        classification.CoLendingPartner = _classification.CoLendingPartner;
+        classification.EndUse = _classification.EndUse;
+        classification.PrioritySectorAmount = _classification.PrioritySectorAmount;
+
+        // ---- Decision ----
+        var decision = await db.EligibilityDecisions
+            .FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
+
+        if (decision is null)
+        {
+            decision = new EligibilityDecision { ApplicationId = ApplicationId };
+            db.EligibilityDecisions.Add(decision);
+        }
+
+        decision.ApproverNote = _decision.ApproverNote;
+
+        // Stamp the deviation the note was written against, so the staleness warning still works
+        // after a reload. Only meaningful when there is a note and a figure to stamp.
+        if (!string.IsNullOrWhiteSpace(_decision.ApproverNote) && Ready)
+        {
+            decision.NoteWrittenAtDeviationPct = DeviationPct;
+            _decision.NoteWrittenAtDeviationPct = decision.NoteWrittenAtDeviationPct;
+        }
+
+        // ---- Row tables: a real diff, so database Ids survive ----
+        var storedLoans = await db.ExistingLoans
+            .Where(l => l.ApplicationId == ApplicationId).ToListAsync();
+
+        var storedBanking = await db.BankingRecords
+            .Where(b => b.ApplicationId == ApplicationId).ToListAsync();
+
+        SyncRows(db.ExistingLoans, _loans, storedLoans, l => l.Id, CopyLoan);
+        SyncRows(db.BankingRecords, _banking, storedBanking, b => b.Id, CopyBanking);
+
+        if (completeStage)
+        {
+            var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
+
+            // Never move an application backwards — see CustomerDetails for the same guard.
+            application.CurrentStage = Math.Max(application.CurrentStage, 7);
+        }
+
+        await db.SaveChangesAsync();
+
+        // Newly inserted rows now carry real Ids; refresh the in-memory list so the next save
+        // updates them rather than inserting duplicates.
+        _loans = await db.ExistingLoans.AsNoTracking()
+            .Where(l => l.ApplicationId == ApplicationId).OrderBy(l => l.Id).ToListAsync();
+
+        _banking = await db.BankingRecords.AsNoTracking()
+            .Where(b => b.ApplicationId == ApplicationId).OrderBy(b => b.Id).ToListAsync();
+    }
+
+    /// <summary>
+    /// Inserts rows with no Id, updates the rest, and deletes stored rows the officer removed.
+    /// Deliberately not delete-and-reinsert: the rows carry real Ids once saved.
+    /// </summary>
+    private static void SyncRows<T>(
+        DbSet<T> set, List<T> current, List<T> stored, Func<T, int> idOf, Action<T, T> copy)
+        where T : class
+    {
+        var keptIds = current.Select(idOf).Where(id => id != 0).ToHashSet();
+
+        set.RemoveRange(stored.Where(s => !keptIds.Contains(idOf(s))));
+
+        foreach (var row in current)
+        {
+            var target = idOf(row) == 0 ? null : stored.FirstOrDefault(s => idOf(s) == idOf(row));
+
+            if (target is null)
+            {
+                // Either genuinely new, or its stored row vanished underneath us — insert either way.
+                set.Add(row);
+                continue;
+            }
+
+            copy(row, target);
+        }
+    }
+
+    private static void CopyLoan(ExistingLoan from, ExistingLoan to)
+    {
+        to.PartyType = from.PartyType;
+        to.Lender = from.Lender;
+        to.LoanType = from.LoanType;
+        to.Sanctioned = from.Sanctioned;
+        to.Pos = from.Pos;
+        to.Emi = from.Emi;
+        to.Roi = from.Roi;
+        to.MaxDpd = from.MaxDpd;
+        to.Bounces = from.Bounces;
+        to.Rtr = from.Rtr;
+    }
+
+    private static void CopyBanking(BankingRecord from, BankingRecord to)
+    {
+        to.PartyType = from.PartyType;
+        to.Bank = from.Bank;
+        to.Months = from.Months;
+        to.AvgBalance = from.AvgBalance;
+        to.Bounces = from.Bounces;
+        to.InwardPct = from.InwardPct;
+        to.OutwardPct = from.OutwardPct;
+    }
+
+    // ---------------------------------------------------------------------
+    // Presentation helpers
+    // ---------------------------------------------------------------------
+
+    private static string FormatInr(decimal amount) =>
+        "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", IndianCulture);
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Explicit render — see the note in CustomerDetails.razor; without it the toast is set and
+        // cleared between the only two renders an async handler triggers.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+}

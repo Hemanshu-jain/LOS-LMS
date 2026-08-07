@@ -1,0 +1,32 @@
+@* Clickable table header that toggles sort direction. Reused by every list screen. *@
+
+<th class="sortable-header @(Align == "right" ? "align-right" : null)"
+    scope="col"
+    aria-sort="@AriaSort"
+    @onclick="() => OnSort.InvokeAsync(SortKeyName)">
+    <span class="sortable-header-inner">
+        @Label
+        <span class="sort-indicator @(IsActive ? "is-active" : null)">@Indicator</span>
+    </span>
+</th>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public string SortKeyName { get; set; } = string.Empty;
+
+    /// <summary>"left" (default) or "right" — numeric columns align right.</summary>
+    [Parameter] public string Align { get; set; } = "left";
+
+    [Parameter] public string CurrentKey { get; set; } = string.Empty;
+
+    [Parameter] public string SortDir { get; set; } = "asc";
+
+    [Parameter] public EventCallback<string> OnSort { get; set; }
+
+    private bool IsActive => CurrentKey == SortKeyName;
+
+    private string Indicator => IsActive ? (SortDir == "asc" ? "▲" : "▼") : "⇅";
+
+    private string AriaSort => IsActive ? (SortDir == "asc" ? "ascending" : "descending") : "none";
+}

@@ -1,0 +1,154 @@
+.viability-layout,
+.viability-layout * {
+    box-sizing: border-box;
+}
+
+.viability-layout {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.viability-table-wrap {
+    flex: 1;
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.viability-caption {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #7d7d7d;
+}
+
+.viability-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.viability-table th {
+    text-align: left;
+    padding: 6px 8px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    border-bottom: 1px solid #d4d4d4;
+}
+
+.viability-table td {
+    padding: 6px 8px;
+    font-size: 11.5px;
+    color: #3b4453;
+}
+
+.viability-table tbody tr {
+    border-bottom: 1px solid #eceef1;
+}
+
+.align-right {
+    text-align: right;
+}
+
+.amount-input {
+    height: 26px;
+    width: 100px;
+    text-align: right;
+    border: 1px solid #d8dbe1;
+    border-radius: 0;
+    font-size: 11.5px;
+    padding: 0 6px;
+    font-family: inherit;
+    color: #1a1f29;
+}
+
+.amount-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+.total-row {
+    border-bottom: none;
+}
+
+.total-row td {
+    padding: 7px 8px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #1a1f29;
+}
+
+/* ---------- Free cash flow card ---------- */
+.fcf-card {
+    flex: 0 0 210px;
+    padding: 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fcf-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.fcf-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1f29;
+}
+
+.fcf-divider {
+    height: 1px;
+    background: #d6d6d6;
+}
+
+.fcf-detail {
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #5b6472;
+}
+
+.fcf-foir {
+    font-weight: 600;
+}
+
+/* FOIR risk bands. Thresholds live in the component as named constants and are placeholder
+   industry norms, not confirmed client policy. */
+.fcf-healthy {
+    border: 1px solid #1f5c2a;
+    background: #d9ecd7;
+}
+
+.fcf-healthy .fcf-label,
+.fcf-healthy .fcf-foir {
+    color: #1f5c2a;
+}
+
+.fcf-caution {
+    border: 1px solid #7a4b06;
+    background: #fbe8c9;
+}
+
+.fcf-caution .fcf-label,
+.fcf-caution .fcf-foir {
+    color: #7a4b06;
+}
+
+.fcf-risk {
+    border: 1px solid #8a1f1f;
+    background: #f8d7d7;
+}
+
+.fcf-risk .fcf-label,
+.fcf-risk .fcf-foir {
+    color: #8a1f1f;
+}

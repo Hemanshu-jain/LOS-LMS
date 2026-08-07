@@ -1,0 +1,44 @@
+@* Collapsible form section used throughout the stage screens. *@
+
+<div class="collapsible">
+    <button type="button"
+            class="collapsible-header @(Collapsed ? "is-collapsed" : null)"
+            aria-expanded="@(!Collapsed)"
+            @onclick="OnToggle">
+        <span class="collapsible-title">@Title</span>
+        <span class="collapsible-toggle">
+            @if (Collapsed)
+            {
+                @("▸ expand")
+                @if (!string.IsNullOrWhiteSpace(SummaryText))
+                {
+                    @(" · " + SummaryText)
+                }
+            }
+            else
+            {
+                @("▾ collapse")
+            }
+        </span>
+    </button>
+
+    @if (!Collapsed)
+    {
+        <div class="collapsible-body">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    [Parameter] public bool Collapsed { get; set; }
+
+    /// <summary>Optional text shown beside "expand" while collapsed, e.g. "6 fields · complete".</summary>
+    [Parameter] public string? SummaryText { get; set; }
+
+    [Parameter] public EventCallback OnToggle { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

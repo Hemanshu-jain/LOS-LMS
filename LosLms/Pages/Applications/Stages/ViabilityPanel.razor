@@ -1,0 +1,130 @@
+@* Income vs expense tables plus the free-cash-flow card. Stage 2 only, so it lives beside its page
+   rather than in Components/Shared. *@
+@using System.Globalization
+@using LosLms.Models
+
+<div class="viability-layout">
+    <div class="viability-table-wrap">
+        <span class="viability-caption">Monthly income</span>
+        <table class="viability-table">
+            <thead>
+                <tr>
+                    <th>Head</th>
+                    <th class="align-right">Amount/month</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Freight / business income</td>
+                    <td class="align-right">
+                        <input type="number" min="0" step="0.01" class="amount-input"
+                               aria-label="Freight or business income"
+                               @bind="Model.IncomeFreight" @bind:event="oninput" />
+                    </td>
+                </tr>
+                <tr>
+                    <td>Salary or rental</td>
+                    <td class="align-right">
+                        <input type="number" min="0" step="0.01" class="amount-input"
+                               aria-label="Salary or rental"
+                               @bind="Model.IncomeSalary" @bind:event="oninput" />
+                    </td>
+                </tr>
+                <tr>
+                    <td>Other income</td>
+                    <td class="align-right">
+                        <input type="number" min="0" step="0.01" class="amount-input"
+                               aria-label="Other income"
+                               @bind="Model.IncomeOther" @bind:event="oninput" />
+                    </td>
+                </tr>
+                <tr class="total-row">
+                    <td>Total income</td>
+                    <td class="align-right">@FormatInr(TotalIncome)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="viability-table-wrap">
+        <span class="viability-caption">Monthly expense</span>
+        <table class="viability-table">
+            <thead>
+                <tr>
+                    <th>Head</th>
+                    <th class="align-right">Amount/month</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Household</td>
+                    <td class="align-right">
+                        <input type="number" min="0" step="0.01" class="amount-input"
+                               aria-label="Household expense"
+                               @bind="Model.ExpenseHousehold" @bind:event="oninput" />
+                    </td>
+                </tr>
+                <tr>
+                    <td>Fuel, driver, maintenance</td>
+                    <td class="align-right">
+                        <input type="number" min="0" step="0.01" class="amount-input"
+                               aria-label="Fuel, driver and maintenance expense"
+                               @bind="Model.ExpenseFuelDriver" @bind:event="oninput" />
+                    </td>
+                </tr>
+                <tr>
+                    <td>Existing EMIs</td>
+                    <td class="align-right">
+                        <input type="number" min="0" step="0.01" class="amount-input"
+                               aria-label="Existing EMIs"
+                               @bind="Model.ExpenseExistingEmi" @bind:event="oninput" />
+                    </td>
+                </tr>
+                <tr class="total-row">
+                    <td>Total expense</td>
+                    <td class="align-right">@FormatInr(TotalExpense)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="fcf-card fcf-@Band">
+        <span class="fcf-label">Free cash flow</span>
+        <span class="fcf-value">@FormatInr(FreeCashFlow)</span>
+        <div class="fcf-divider"></div>
+        <span class="fcf-detail">
+            Proposed EMI @FormatInr(ProposedEmi)<br />
+            <span class="fcf-foir">FOIR @Foir.ToString("0", CultureInfo.InvariantCulture)%</span> · computed, read-only
+        </span>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Viability Model { get; set; } = default!;
+
+    /// <summary>Computed by the page from the current Loan Details terms.</summary>
+    [Parameter] public decimal ProposedEmi { get; set; }
+
+    // PLACEHOLDER industry norms, not confirmed client policy — verify the real risk cutoffs with
+    // Arun/the client before this drives any decision.
+    private const decimal FoirHealthyMax = 40m;
+    private const decimal FoirCautionMax = 60m;
+
+    private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
+
+    private decimal TotalIncome => Model.IncomeFreight + Model.IncomeSalary + Model.IncomeOther;
+
+    private decimal TotalExpense =>
+        Model.ExpenseHousehold + Model.ExpenseFuelDriver + Model.ExpenseExistingEmi;
+
+    private decimal FreeCashFlow => TotalIncome - TotalExpense;
+
+    private decimal Foir =>
+        TotalIncome <= 0 ? 0m : ((Model.ExpenseExistingEmi + ProposedEmi) / TotalIncome) * 100m;
+
+    private string Band =>
+        Foir <= FoirHealthyMax ? "healthy" : Foir <= FoirCautionMax ? "caution" : "risk";
+
+    private static string FormatInr(decimal amount) =>
+        "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", IndianCulture);
+}

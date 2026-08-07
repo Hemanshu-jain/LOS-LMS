@@ -1,0 +1,12 @@
+@* One label/value line inside the quick-view drawer. *@
+
+<div class="drawer-row">
+    <span class="drawer-row-label">@Label</span>
+    <span class="drawer-row-value">@Value</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public string Value { get; set; } = string.Empty;
+}

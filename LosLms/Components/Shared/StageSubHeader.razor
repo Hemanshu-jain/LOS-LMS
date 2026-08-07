@@ -1,0 +1,145 @@
+@* Sub-header shared by all eight stage screens: breadcrumb, the two stage actions, and the
+   cross-cutting Reject feature. *@
+
+@using System.Globalization
+@using LosLms.Data
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+
+<div class="stage-sub-header">
+    <button type="button" class="breadcrumb" @onclick="GoToApplications">
+        &#8592; Applications &middot; APP #@ApplicationId@(string.IsNullOrWhiteSpace(BreadcrumbSuffix) ? null : " · " + BreadcrumbSuffix)
+    </button>
+
+    <div class="stage-actions">
+        @* Rejecting is out of scope once an application is Sanctioned (that becomes a loan-closure
+           concern), and pointless once it is already Rejected — hidden entirely, not disabled. *@
+        @if (_status is not "Sanctioned" and not "Rejected")
+        {
+            <button type="button" class="stage-button is-reject" @onclick="() => _showReject = true">
+                Reject application
+            </button>
+        }
+
+        <button type="button" class="stage-button" @onclick="OnSaveDraft">@SecondaryLabel</button>
+
+        @* A real disabled attribute, not just the blocked styling — styling alone would still
+           let a keyboard or screen-reader user activate it. *@
+        <button type="button"
+                class="stage-button is-primary @(CompleteBlocked ? "is-blocked" : null)"
+                disabled="@CompleteBlocked"
+                aria-disabled="@CompleteBlocked"
+                title="@(CompleteBlocked ? BlockedReason : null)"
+                @onclick="OnCompleteStage">
+            @PrimaryLabel
+        </button>
+    </div>
+</div>
+
+@if (_status == "Rejected")
+{
+    <div class="rejected-banner" role="alert">
+        ⛔ This application was rejected@(_rejectedOn is { } on ? " on " + on.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) : null)@(string.IsNullOrWhiteSpace(_rejectedReason) ? null : " — " + _rejectedReason).
+    </div>
+}
+
+@if (_showReject)
+{
+    <RejectDialog OnConfirm="ConfirmRejectAsync" OnCancel="() => _showReject = false" />
+}
+
+@code {
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Appended to the breadcrumb after the application id. Post Sanction uses it to show the
+    /// application's status; every other screen leaves it blank and renders exactly as before.
+    /// </summary>
+    [Parameter] public string? BreadcrumbSuffix { get; set; }
+
+    [Parameter] public bool CompleteBlocked { get; set; }
+
+    /// <summary>Shown as a tooltip while the complete button is blocked.</summary>
+    [Parameter] public string? BlockedReason { get; set; }
+
+    /// <summary>
+    /// Label for the secondary action. Defaults to "Save draft"; Reports (RCU) overrides it with
+    /// "Re-submit to vendor", where the button starts a new vendor cycle rather than saving.
+    /// </summary>
+    [Parameter] public string SecondaryLabel { get; set; } = "Save draft";
+
+    /// <summary>
+    /// Label for the primary action. Defaults to "Complete stage →"; Approvals overrides it with
+    /// "Sanction", which ends the credit decision rather than merely advancing a stage.
+    /// </summary>
+    /// <remarks>
+    /// The two callbacks are still named <see cref="OnSaveDraft"/> and
+    /// <see cref="OnCompleteStage"/> after what they do on the six screens that use the defaults.
+    /// On Approvals they open the send-back panel and sanction the loan. Renaming them would touch
+    /// every screen for no change in behaviour, so the labels carry the meaning instead.
+    /// </remarks>
+    [Parameter] public string PrimaryLabel { get; set; } = "Complete stage →";
+
+    [Parameter] public EventCallback OnSaveDraft { get; set; }
+
+    [Parameter] public EventCallback OnCompleteStage { get; set; }
+
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    // Loaded here rather than threaded through eight screens: the reject visibility rule and the
+    // rejected banner both need the current Status, and this is the one place all eight share.
+    private string? _status;
+    private int _currentStage;
+    private string? _rejectedReason;
+    private DateOnly? _rejectedOn;
+
+    private bool _showReject;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ApplicationId))
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var snapshot = await db.Applications.AsNoTracking()
+            .Where(a => a.Id == ApplicationId)
+            .Select(a => new { a.Status, a.CurrentStage })
+            .FirstOrDefaultAsync();
+
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        _status = snapshot.Status;
+        _currentStage = snapshot.CurrentStage;
+
+        if (_status == "Rejected")
+        {
+            var latest = await db.RejectionLogs.AsNoTracking()
+                .Where(r => r.ApplicationId == ApplicationId)
+                .OrderByDescending(r => r.Id)
+                .Select(r => new { r.Reason, r.RejectedAt })
+                .FirstOrDefaultAsync();
+
+            _rejectedReason = latest?.Reason;
+            _rejectedOn = latest is null ? null : DateOnly.FromDateTime(latest.RejectedAt);
+        }
+    }
+
+    private async Task ConfirmRejectAsync(string reason)
+    {
+        _showReject = false;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await RejectionService.RejectAsync(db, ApplicationId, _currentStage, reason);
+
+        Navigation.NavigateTo("/applications");
+    }
+
+    private void GoToApplications() => Navigation.NavigateTo("/applications");
+}

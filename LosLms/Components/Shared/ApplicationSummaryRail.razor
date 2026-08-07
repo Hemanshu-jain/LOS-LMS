@@ -1,0 +1,151 @@
+@* Read-only application summary, shared by screens 02-09. *@
+@using System.Globalization
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject IJSRuntime JS
+
+<div class="summary-rail">
+    <div class="summary-header">
+        <span class="summary-header-label">Application summary</span>
+    </div>
+
+    <div class="summary-body">
+        <div class="summary-row">
+            <span class="summary-label">Customer type</span>
+            <span class="summary-value">@Display(Application.CustomerType)</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Branch</span>
+            <span class="summary-value">@Display(Application.Branch)</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Loan product</span>
+            <span class="summary-value">@Display(Application.LoanProduct)</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Scheme</span>
+            <span class="summary-value">@Display(Application.Scheme)</span>
+        </div>
+
+        <div class="summary-divider"></div>
+
+        <div class="summary-row">
+            <span class="summary-label">Loan amount</span>
+            <span class="summary-value is-big">@FormatInr(Application.LoanAmount)</span>
+        </div>
+
+        <div class="summary-split">
+            <div class="summary-row">
+                <span class="summary-label">Tenure</span>
+                <span class="summary-value">@FormatTenure(Application.Tenure)</span>
+            </div>
+            <div class="summary-row">
+                <span class="summary-label">ROI</span>
+                <span class="summary-value">@FormatRoi(Application.Roi)</span>
+            </div>
+        </div>
+
+        <div class="summary-divider"></div>
+
+        <div class="summary-row">
+            <span class="summary-label">Assigned officer</span>
+            <span class="summary-value">@_officerName</span>
+        </div>
+
+        <div class="summary-divider"></div>
+
+        <div class="quick-actions">
+            <span class="summary-label">Quick actions</span>
+
+            <button type="button" class="quick-action" @onclick="ViewCamAsync">View CAM.pdf</button>
+            @if (_camMessage is not null)
+            {
+                <p class="inline-notice" role="status">@_camMessage</p>
+            }
+
+            <button type="button" class="quick-action" @onclick="ShowActivityMessage">Activity log</button>
+            @if (_activityMessage is not null)
+            {
+                <p class="inline-notice" role="status">@_activityMessage</p>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Application Application { get; set; } = default!;
+
+    private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
+
+    private string? _camMessage;
+    private string? _activityMessage;
+
+    // Read-only here — assignment happens only in the dashboard drawer, so this looks the officer up
+    // rather than making the field editable and touching eight screens' save logic.
+    private string _officerName = "Unassigned";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Application.AssignedOfficerId is not { } officerId)
+        {
+            _officerName = "Unassigned";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _officerName = await db.Officers.AsNoTracking()
+            .Where(o => o.Id == officerId)
+            .Select(o => o.Name)
+            .FirstOrDefaultAsync() ?? "Unassigned";
+    }
+
+    /// <summary>
+    /// Downloads the real CAM when one has actually been generated, otherwise says so.
+    /// </summary>
+    /// <remarks>
+    /// The gate is <see cref="CamCostBreakdown.LastRecalculatedAt"/>, not merely the row existing —
+    /// a breakdown can be saved as a draft without ever being recalculated, and its Applied columns
+    /// would still be zero. Same generator the Bank &amp; Financial screen uses.
+    /// </remarks>
+    private async Task ViewCamAsync()
+    {
+        _camMessage = null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var cam = await db.CamCostBreakdowns.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.ApplicationId == Application.Id && c.LastRecalculatedAt != null);
+
+        if (cam is null)
+        {
+            _camMessage = "CAM not yet available — generated during Bank & Financial stage.";
+            return;
+        }
+
+        var pdf = CamPdf.Build(Application, cam);
+
+        using var stream = new MemoryStream(pdf);
+        using var streamReference = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("downloadFileFromStream",
+            CamPdf.FileNameFor(Application), "application/pdf", streamReference);
+    }
+
+    private void ShowActivityMessage() =>
+        _activityMessage = "Activity log — coming in a future update.";
+
+    private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    private static string FormatInr(decimal amount) => "₹" + amount.ToString("N0", IndianCulture);
+
+    // Tenure and ROI are numeric columns; the unit and the percent sign are presentation, applied
+    // here at render time rather than baked into the stored value.
+    private static string FormatTenure(int? months) =>
+        months.HasValue ? $"{months.Value} mo" : "—";
+
+    private static string FormatRoi(decimal? percent) =>
+        percent.HasValue ? percent.Value.ToString("0.##", CultureInfo.InvariantCulture) + "%" : "—";
+}

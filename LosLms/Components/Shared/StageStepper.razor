@@ -1,0 +1,50 @@
+@* Eight-stage progress strip, shared by screens 02-09. Display only — the segments are
+   deliberately not clickable; stage navigation is governed by the Complete stage button. *@
+
+<div class="stage-stepper">
+    @for (var i = 0; i < StageLabels.Length; i++)
+    {
+        var number = i + 1;
+        var numberText = number.ToString("00");
+        var label = StageLabels[i];
+
+        if (number < CurrentStep)
+        {
+            <div class="stage-segment is-done">
+                <span class="stage-status">&#10003; @numberText DONE</span>
+                <span class="stage-label">@label</span>
+            </div>
+        }
+        else if (number == CurrentStep)
+        {
+            <div class="stage-segment is-current" aria-current="step">
+                <span class="stage-status">&#9679; @numberText CURRENT</span>
+                <span class="stage-label">@label</span>
+            </div>
+        }
+        else
+        {
+            <div class="stage-segment is-locked" aria-disabled="true">
+                <span class="stage-status">&#9675; @numberText LOCKED</span>
+                <span class="stage-label">@label</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>1-8. Screens 03-09 pass their own stage number.</summary>
+    [Parameter] public int CurrentStep { get; set; } = 1;
+
+    private static readonly string[] StageLabels =
+    {
+        "Customer Details",
+        "Loan & Security",
+        "Bank & Financial",
+        "Document Checklist",
+        "Reports",
+        "Eligibility",
+        "Approvals",
+        "Post Sanction",
+    };
+}

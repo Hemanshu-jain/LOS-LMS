@@ -1,0 +1,512 @@
+/* Tokens ported from the Document Checklist reference spec's COLORS object. */
+.stage-page,
+.stage-page * {
+    box-sizing: border-box;
+}
+
+.stage-page {
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    font-size: 12px;
+    color: #1a1f29;
+    background: #f4f5f7;
+    min-height: 100vh;
+}
+
+.stage-card {
+    border: 1px solid #d8dbe1;
+    background: #fff;
+}
+
+.stage-page button,
+.stage-page input,
+.stage-page select {
+    font-family: inherit;
+    border-radius: 0;
+}
+
+/* ---------- Loading / not found ---------- */
+.loading-note {
+    margin: 0;
+    padding: 40px 16px;
+    text-align: center;
+    color: #5b6472;
+}
+
+.not-found {
+    margin: 0 auto;
+    max-width: 520px;
+    padding: 48px 20px;
+    text-align: center;
+}
+
+.not-found-title {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.not-found-body {
+    margin: 0 0 18px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #5b6472;
+}
+
+.not-found-action {
+    height: 30px;
+    border: 1px solid #16304f;
+    background: #1f3a5f;
+    color: #fff;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+/* ---------- Shell ---------- */
+.stepper-band {
+    padding: 12px 14px;
+    border-bottom: 1px solid #dcdcdc;
+    background: #fbfbfb;
+}
+
+.stage-body {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.stage-rail {
+    width: 230px;
+    flex: none;
+    padding: 14px;
+    border-right: 1px solid #dcdcdc;
+    background: #f7f7f7;
+}
+
+.stage-main {
+    flex: 1;
+    min-width: 280px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.stage-title {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    border-bottom: 2px solid #1a1f29;
+    padding-bottom: 7px;
+    flex-wrap: wrap;
+}
+
+.stage-title-number {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.stage-title-text {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.stage-title-of {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #93999a;
+}
+
+/* ---------- Aggregate line ---------- */
+.aggregate-line {
+    font-size: 11px;
+    color: #5b6472;
+    padding: 6px 0;
+}
+
+.aggregate-line .is-overdue {
+    color: #8a1f1f;
+}
+
+/* ---------- Party tabs ---------- */
+.party-tabs {
+    display: flex;
+    align-items: flex-end;
+    border-bottom: 1px solid #c2c2c2;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.party-tab {
+    padding: 8px 13px;
+    border: 1px solid #dcdcdc;
+    border-bottom: none;
+    background: #f4f4f4;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #8b8b8b;
+    white-space: nowrap;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.party-tab:hover {
+    color: #4d4d4d;
+}
+
+.party-tab.is-active {
+    border: 1px solid #9e9e9e;
+    border-bottom: 1px solid #fff;
+    background: #fff;
+    margin-bottom: -1px;
+    font-weight: 700;
+    color: #1c1c1c;
+}
+
+.complete-tick {
+    color: #1f5c2a;
+    font-size: 11px;
+}
+
+/* ---------- Counter strip ---------- */
+.counter-strip {
+    display: flex;
+    gap: 11px;
+    flex-wrap: wrap;
+}
+
+.counter-tile {
+    border: 1px solid #b6b6b6;
+    background: #efefef;
+    padding: 9px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 120px;
+}
+
+.counter-label {
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #7d7d7d;
+}
+
+.counter-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1f1f1f;
+}
+
+.counter-tile.is-warn {
+    border-color: #8a1f1f;
+    background: #f8d7d7;
+}
+
+.counter-tile.is-warn .counter-label,
+.counter-tile.is-warn .counter-value {
+    color: #8a1f1f;
+}
+
+/* ---------- Panel header actions ---------- */
+.panel-links {
+    display: flex;
+    gap: 11px;
+    align-items: center;
+}
+
+.link-action {
+    font-size: 10px;
+    color: #6f6f6f;
+    background: none;
+    border: none;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+
+.link-action:hover {
+    color: #1a1f29;
+}
+
+.bulk-progress {
+    margin: 0 0 10px;
+    font-size: 10.5px;
+    color: #7a4b06;
+    background: #fbe8c9;
+    border: 1px solid #e0c48d;
+    padding: 6px 8px;
+}
+
+/* ---------- KYC table ---------- */
+.kyc-scroll {
+    overflow-x: auto;
+}
+
+.kyc-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 860px;
+}
+
+.kyc-table th {
+    text-align: left;
+    padding: 7px 8px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    border-bottom: 1px solid #d4d4d4;
+    white-space: nowrap;
+    background: #f7f7f7;
+}
+
+.kyc-table td {
+    padding: 7px 8px;
+    font-size: 11.5px;
+    border-bottom: 1px solid #eceef1;
+    vertical-align: top;
+}
+
+.kyc-table tbody tr:hover {
+    background: #fafbfc;
+}
+
+.cell-name {
+    color: #3b4453;
+    white-space: nowrap;
+}
+
+.cell-file {
+    color: #1f3a5f;
+    word-break: break-all;
+    max-width: 180px;
+}
+
+.cell-muted {
+    color: #5b6472;
+    white-space: nowrap;
+}
+
+.is-empty {
+    color: #c2c2c2;
+}
+
+.cell-file.is-empty {
+    color: #c2c2c2;
+}
+
+.chip {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    white-space: nowrap;
+}
+
+.chip-collected {
+    background: #d9ecd7;
+    color: #1f5c2a;
+}
+
+.chip-pending {
+    background: #fbe8c9;
+    color: #7a4b06;
+}
+
+.chip-stale {
+    background: #f8d7d7;
+    color: #8a1f1f;
+}
+
+.overdue-icon {
+    margin-left: 5px;
+    color: #8a1f1f;
+}
+
+.target-input {
+    height: 26px;
+    border: 1px solid #d8dbe1;
+    font-size: 11px;
+    padding: 0 5px;
+    color: #1a1f29;
+}
+
+.target-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+/* ---------- Remarks ---------- */
+.cell-remarks {
+    min-width: 200px;
+}
+
+.remark-entry {
+    font-size: 10px;
+    color: #93999a;
+    line-height: 1.4;
+    margin-bottom: 2px;
+}
+
+.remark-date {
+    color: #b0b0b0;
+}
+
+.remark-add {
+    display: flex;
+    gap: 4px;
+    margin-top: 3px;
+}
+
+.remark-input {
+    height: 24px;
+    flex: 1;
+    min-width: 90px;
+    border: 1px solid #d8dbe1;
+    font-size: 10.5px;
+    padding: 0 6px;
+    color: #1a1f29;
+}
+
+.remark-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+.remark-button {
+    height: 24px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    font-size: 9.5px;
+    padding: 0 7px;
+    cursor: pointer;
+}
+
+.remark-button:hover {
+    background: #e0e0e0;
+}
+
+/* ---------- Row actions ---------- */
+.view-link {
+    font-size: 10.5px;
+    color: #1f3a5f;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.upload-button {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10.5px;
+    color: #3d3d3d;
+    background: #ebebeb;
+    border: 1px solid #9e9e9e;
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.upload-button:hover {
+    background: #e0e0e0;
+}
+
+/* ---------- Other documents ---------- */
+.other-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 11px;
+}
+
+.other-card {
+    border: 1px solid #e0e0e0;
+    background: #fafafa;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.other-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #6f6f6f;
+}
+
+.other-target {
+    min-height: 27px;
+    border: 1px dashed #bdbdbd;
+    background: #f7f7f7;
+    display: flex;
+    align-items: center;
+    padding: 0 9px;
+    font-size: 10px;
+    color: #9a9a9a;
+    cursor: pointer;
+    width: 100%;
+    word-break: break-all;
+}
+
+.other-target:hover {
+    background: #efefef;
+}
+
+.other-target.is-filled {
+    border: 1px solid #8fae8c;
+    background: #eef6ed;
+    color: #1f5c2a;
+}
+
+/* InputFile renders its own <input type="file"> inside a child component, so only ::deep reaches
+   it — otherwise the browser's raw "Choose File" button shows through. */
+.visually-hidden,
+.link-action ::deep input[type="file"],
+.upload-button ::deep input[type="file"],
+.other-target ::deep input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ---------- Notices ---------- */
+.inline-error {
+    margin: 10px 0 0;
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 6px 8px;
+}
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: #1a1f29;
+    color: #fff;
+    font-size: 12px;
+    padding: 9px 16px;
+    z-index: 80;
+}

@@ -1,0 +1,75 @@
+.stage-stepper,
+.stage-stepper * {
+    box-sizing: border-box;
+}
+
+.stage-stepper {
+    display: flex;
+    gap: 5px;
+    align-items: stretch;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.stage-segment {
+    flex: 1;
+    min-width: 110px;
+    height: 40px;
+    padding: 0 9px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+}
+
+.stage-status {
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+}
+
+.stage-label {
+    font-size: 10.5px;
+}
+
+.stage-segment.is-done {
+    border: 1px solid #b9bfc9;
+    background: #eceef1;
+}
+
+.is-done .stage-status {
+    color: #5b6472;
+}
+
+.is-done .stage-label {
+    font-weight: 600;
+    color: #3b4453;
+}
+
+.stage-segment.is-current {
+    border: 1px solid #16304f;
+    background: #1f3a5f;
+}
+
+.is-current .stage-status {
+    color: #cdd6e0;
+}
+
+.is-current .stage-label {
+    font-weight: 700;
+    color: #fff;
+}
+
+.stage-segment.is-locked {
+    border: 1px dashed #cbcbcb;
+    background: #fbfbfb;
+}
+
+.is-locked .stage-status {
+    color: #a8a8a8;
+}
+
+.is-locked .stage-label {
+    font-weight: 500;
+    color: #9a9a9a;
+}

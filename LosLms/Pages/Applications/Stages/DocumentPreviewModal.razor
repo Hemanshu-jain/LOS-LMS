@@ -1,0 +1,90 @@
+@* Real document preview: image inline, PDF in a frame, download for anything.
+   Stage-4 specific, so it lives beside its page. *@
+@using System.Globalization
+
+<div class="preview-backdrop" @onclick="OnClose">
+    <div class="preview-panel" role="dialog" aria-modal="true" aria-label="Document preview"
+         tabindex="-1" @ref="_panel"
+         @onclick:stopPropagation="true"
+         @onkeydown="HandleKeyDown">
+
+        <div class="preview-header">
+            <div>
+                <div class="preview-title">@DocumentName</div>
+                <div class="preview-subtitle">
+                    @FileName
+                    @if (UploadedOn is { } uploaded)
+                    {
+                        <span> · uploaded @uploaded.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span>
+                    }
+                </div>
+            </div>
+            <button type="button" class="preview-close" aria-label="Close preview" @onclick="OnClose">✕</button>
+        </div>
+
+        <div class="preview-body">
+            @if (IsImage)
+            {
+                <img class="preview-image" src="@FileUrl" alt="@DocumentName" />
+            }
+            else if (IsPdf)
+            {
+                <iframe class="preview-frame" src="@FileUrl" title="@DocumentName"></iframe>
+            }
+            else
+            {
+                @* Neither an image nor a PDF — nothing sensible to render inline, but the file is
+                   still downloadable below. *@
+                <p class="preview-unsupported">
+                    No inline preview for this file type. Use Download below.
+                </p>
+            }
+        </div>
+
+        <div class="preview-footer">
+            @* download attribute forces a save rather than reusing the inline-render response. *@
+            <a class="preview-download" href="@FileUrl" download="@FileName">Download</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string DocumentName { get; set; } = string.Empty;
+
+    /// <summary>Served by the /files endpoint, not a wwwroot path.</summary>
+    [Parameter, EditorRequired] public string FileUrl { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public string FileName { get; set; } = string.Empty;
+
+    [Parameter] public DateTime? UploadedOn { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static readonly string[] ImageExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
+
+    private ElementReference _panel;
+    private bool _shouldFocus = true;
+
+    private string Extension => Path.GetExtension(FileName).ToLowerInvariant();
+
+    private bool IsImage => ImageExtensions.Contains(Extension);
+
+    private bool IsPdf => Extension == ".pdf";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocus)
+        {
+            _shouldFocus = false;
+            await _panel.FocusAsync();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+}

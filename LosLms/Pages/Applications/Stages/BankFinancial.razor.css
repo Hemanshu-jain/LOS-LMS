@@ -1,0 +1,658 @@
+/* Tokens ported from the Bank & Financial reference spec's COLORS object. */
+.stage-page,
+.stage-page * {
+    box-sizing: border-box;
+}
+
+.stage-page {
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    font-size: 12px;
+    color: #1a1f29;
+    background: #f4f5f7;
+    min-height: 100vh;
+}
+
+.stage-card {
+    border: 1px solid #d8dbe1;
+    background: #fff;
+}
+
+.stage-page button,
+.stage-page input,
+.stage-page select {
+    font-family: inherit;
+    border-radius: 0;
+}
+
+/* ---------- Loading / not found ---------- */
+.loading-note {
+    margin: 0;
+    padding: 40px 16px;
+    text-align: center;
+    color: #5b6472;
+}
+
+.not-found {
+    margin: 0 auto;
+    max-width: 520px;
+    padding: 48px 20px;
+    text-align: center;
+}
+
+.not-found-title {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.not-found-body {
+    margin: 0 0 18px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #5b6472;
+}
+
+.not-found-action {
+    height: 30px;
+    border: 1px solid #16304f;
+    background: #1f3a5f;
+    color: #fff;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+/* ---------- Shell ---------- */
+.stepper-band {
+    padding: 12px 14px;
+    border-bottom: 1px solid #dcdcdc;
+    background: #fbfbfb;
+}
+
+.stage-body {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.stage-rail {
+    width: 230px;
+    flex: none;
+    padding: 14px;
+    border-right: 1px solid #dcdcdc;
+    background: #f7f7f7;
+}
+
+.stage-main {
+    flex: 1;
+    min-width: 280px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.stage-title {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    border-bottom: 2px solid #1a1f29;
+    padding-bottom: 7px;
+    flex-wrap: wrap;
+}
+
+.stage-title-number {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.stage-title-text {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.stage-title-of {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #93999a;
+}
+
+/* ---------- Tabs ---------- */
+.bf-tabs {
+    display: flex;
+    align-items: flex-end;
+    border-bottom: 1px solid #c2c2c2;
+    width: 100%;
+}
+
+.bf-tab {
+    padding: 8px 13px;
+    border: 1px solid #dcdcdc;
+    border-bottom: none;
+    background: #f4f4f4;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #8b8b8b;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.bf-tab:hover {
+    color: #4d4d4d;
+}
+
+.bf-tab.is-active {
+    border: 1px solid #9e9e9e;
+    border-bottom: 1px solid #fff;
+    background: #fff;
+    margin-bottom: -1px;
+    font-weight: 700;
+    color: #1c1c1c;
+}
+
+/* ---------- Fields ---------- */
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px 14px;
+    width: 100%;
+}
+
+.field-input {
+    height: 29px;
+    border: 1px solid #d8dbe1;
+    font-size: 12px;
+    background: #fafbfc;
+    padding: 0 8px;
+    width: 100%;
+    color: #1a1f29;
+}
+
+select.field-input {
+    padding: 0 6px;
+}
+
+.field-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+.field-caption {
+    font-size: 9.5px;
+    color: #93999a;
+    font-style: italic;
+}
+
+/* Auto-detected bank name — read-only, visually distinct from an editable field. */
+.resolved-bank {
+    height: 29px;
+    border: 1px solid #1f5c2a;
+    background: #d9ecd7;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 12px;
+    color: #1f5c2a;
+}
+
+/* ---------- Bank layout / penny drop ---------- */
+.bank-layout {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.bank-fields {
+    flex: 1;
+    min-width: 260px;
+}
+
+.pennydrop-card {
+    flex: 0 0 250px;
+    border: 1px solid #b6b6b6;
+    background: #efefef;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.pennydrop-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #6f6f6f;
+}
+
+.pennydrop-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: #5b6472;
+    line-height: 1.35;
+}
+
+.pennydrop-value.is-unavailable {
+    color: #7a4b06;
+}
+
+.pennydrop-note {
+    font-size: 10px;
+    color: #8a8a8a;
+}
+
+.pennydrop-note.is-muted {
+    color: #a8a8a8;
+}
+
+.pennydrop-button {
+    height: 26px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #3d3d3d;
+    cursor: pointer;
+    margin-top: 2px;
+}
+
+.pennydrop-button:hover {
+    background: #e0e0e0;
+}
+
+/* ---------- Statements ---------- */
+.small-button {
+    font-size: 10px;
+    font-weight: 600;
+    color: #3d3d3d;
+    background: #ebebeb;
+    border: 1px solid #9e9e9e;
+    padding: 4px 9px;
+    cursor: pointer;
+}
+
+.small-button:hover:not(:disabled) {
+    background: #e0e0e0;
+}
+
+.small-button:disabled {
+    opacity: .45;
+    cursor: default;
+}
+
+.small-button.is-primary {
+    border-color: #16304f;
+    background: #1f3a5f;
+    color: #fff;
+}
+
+.small-button.is-primary:hover:not(:disabled) {
+    background: #16304f;
+}
+
+.add-statement {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding-bottom: 11px;
+    margin-bottom: 11px;
+    border-bottom: 1px solid #eceef1;
+}
+
+.add-period {
+    width: 160px;
+    flex: none;
+}
+
+.upload-target {
+    min-height: 29px;
+    flex: 1 1 200px;
+    border: 1px dashed #bdbdbd;
+    background: #f7f7f7;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 10.5px;
+    color: #8d8d8d;
+    cursor: pointer;
+    word-break: break-all;
+}
+
+.upload-target:hover {
+    background: #efefef;
+}
+
+.upload-target.is-filled {
+    border: 1px solid #8fae8c;
+    background: #eef6ed;
+    color: #1f5c2a;
+}
+
+/* InputFile renders its own <input type="file"> inside a child component, so only ::deep reaches
+   it — otherwise the browser's raw "Choose File" button shows through. */
+.visually-hidden,
+.upload-target ::deep input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.statements-scroll {
+    overflow-x: auto;
+}
+
+.statements-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 480px;
+}
+
+.statements-table th {
+    text-align: left;
+    padding: 7px 8px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    border-bottom: 1px solid #d4d4d4;
+}
+
+.statements-table td {
+    padding: 7px 8px;
+    font-size: 11.5px;
+    border-bottom: 1px solid #eceef1;
+}
+
+.cell-file {
+    color: #1f3a5f;
+    word-break: break-all;
+}
+
+.cell-muted {
+    color: #5b6472;
+    white-space: nowrap;
+}
+
+.chip {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 2px 7px;
+    background: #eceef1;
+    color: #5b6472;
+}
+
+.remove-link {
+    font-size: 10.5px;
+    color: #8a1f1f;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+}
+
+.remove-link:hover {
+    text-decoration: underline;
+}
+
+.empty-row {
+    padding: 24px 8px;
+    text-align: center;
+    color: #5b6472;
+}
+
+/* ---------- CAM ---------- */
+.cam-actions {
+    display: flex;
+    gap: 11px;
+    align-items: center;
+}
+
+.link-action {
+    font-size: 10px;
+    color: #6f6f6f;
+    background: none;
+    border: none;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+}
+
+.link-action:hover:not(:disabled) {
+    color: #1a1f29;
+}
+
+.link-action:disabled {
+    color: #c2c2c2;
+    text-decoration: none;
+    cursor: not-allowed;
+}
+
+.cam-layout {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.cam-breakdown {
+    flex: 1;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: #4d4d4d;
+}
+
+.cam-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.cam-table tr {
+    border-bottom: 1px solid #eceef1;
+    background: #f7f7f7;
+    border-left: 3px solid transparent;
+}
+
+/* Editable rows get a white background and a left accent bar so it is obvious at a glance which
+   cells an officer can actually type into. */
+.cam-table tr.is-editable {
+    background: #fff;
+    border-left: 3px solid #1f3a5f;
+}
+
+.cam-table td {
+    padding: 6px 8px 6px 6px;
+    font-size: 11.5px;
+    color: #3b4453;
+}
+
+.align-right {
+    text-align: right;
+}
+
+.cam-value {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #1a1f29;
+}
+
+.cam-extra {
+    font-size: 10px;
+    color: #8d8d8d;
+    margin-left: 4px;
+}
+
+.currency-input {
+    position: relative;
+    display: inline-block;
+}
+
+.currency-symbol {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: #93999a;
+    pointer-events: none;
+}
+
+.cam-input {
+    height: 26px;
+    width: 110px;
+    text-align: right;
+    border: 1px solid #d8dbe1;
+    font-size: 11.5px;
+    padding: 0 6px 0 16px;
+    color: #1a1f29;
+}
+
+.cam-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+.cam-dirty {
+    font-size: 10.5px;
+    color: #7a4b06;
+}
+
+/* ---------- Sanction summary ---------- */
+.cam-summary {
+    flex: 0 0 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.tile-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+}
+
+.tile {
+    border: 1px solid #b6b6b6;
+    background: #efefef;
+    padding: 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.tile-label {
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #7d7d7d;
+}
+
+.tile-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1f1f1f;
+}
+
+.recalc-button {
+    height: 26px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    color: #3d3d3d;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.recalc-button.is-dirty {
+    border-color: #16304f;
+    background: #1f3a5f;
+    color: #fff;
+}
+
+/* LTV risk bands. Thresholds are named constants in the component and are placeholder industry
+   norms, not confirmed client policy. "none" means not yet computed — deliberately neutral, so an
+   uncomputed CAM never reads as healthy. */
+.ltv-healthy { color: #1f5c2a; }
+.ltv-caution { color: #7a4b06; }
+.ltv-risk { color: #8a1f1f; }
+.ltv-none { color: #93999a; }
+
+.tile-healthy {
+    border-color: #1f5c2a;
+    background: #d9ecd7;
+}
+
+.tile-healthy .tile-label,
+.tile-healthy .tile-value {
+    color: #1f5c2a;
+}
+
+.tile-caution {
+    border-color: #7a4b06;
+    background: #fbe8c9;
+}
+
+.tile-caution .tile-label,
+.tile-caution .tile-value {
+    color: #7a4b06;
+}
+
+.tile-risk {
+    border-color: #8a1f1f;
+    background: #f8d7d7;
+}
+
+.tile-risk .tile-label,
+.tile-risk .tile-value {
+    color: #8a1f1f;
+}
+
+/* ---------- Notices ---------- */
+.inline-error {
+    margin: 8px 0 0;
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 6px 8px;
+}
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: #1a1f29;
+    color: #fff;
+    font-size: 12px;
+    padding: 9px 16px;
+    z-index: 80;
+}

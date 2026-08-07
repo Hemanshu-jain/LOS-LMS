@@ -1,0 +1,1084 @@
+@page "/applications"
+@using System.Globalization
+@using System.Text
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Applications · LOS/LMS</PageTitle>
+
+@{
+    // Computed once per render rather than through repeated property access, so filtering and
+    // sorting run a single time no matter how many places below need the result.
+    var filtered = FilteredRows;
+    var totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)_pageSize));
+    var currentPage = Math.Clamp(_page, 1, totalPages);
+    var paged = filtered.Skip((currentPage - 1) * _pageSize).Take(_pageSize).ToList();
+    var firstShown = filtered.Count == 0 ? 0 : (currentPage - 1) * _pageSize + 1;
+    var lastShown = Math.Min(currentPage * _pageSize, filtered.Count);
+}
+
+<div class="dashboard">
+    <div class="dashboard-card">
+
+        @* ---------- Top bar ---------- *@
+        <div class="top-bar">
+            <span class="system-label">LOS/LMS · Applications</span>
+            <div class="user-context">
+                <span class="user-name">Credit Officer · Nashik West</span>
+                <div class="avatar" role="img" aria-label="Logged-in user avatar">
+                    <Icon Name="user" Size="14" />
+                </div>
+            </div>
+        </div>
+
+        @* ---------- Toolbar ---------- *@
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <div class="search-wrap">
+                    <span class="search-icon"><Icon Name="search" /></span>
+                    <input id="app-search" type="text" class="search-input"
+                           placeholder="Application number, PAN or customer name (press / to focus)"
+                           aria-label="Search applications"
+                           @bind="_searchInput" @bind:event="oninput" @bind:after="DebounceSearchAsync" />
+                </div>
+
+                <button type="button" class="ghost-button" aria-expanded="@_showFilterPanel"
+                        @onclick="() => _showFilterPanel = !_showFilterPanel">
+                    Filters
+                    <Icon Name="@(_showFilterPanel ? "chevron-up" : "chevron-down")" Size="13" />
+                </button>
+
+                <button type="button" class="ghost-button" aria-expanded="@_showColumnPanel"
+                        @onclick="() => _showColumnPanel = !_showColumnPanel">
+                    <Icon Name="columns" Size="14" /> Columns
+                </button>
+
+                <div class="density-toggle" role="group" aria-label="Row density">
+                    <button type="button" class="@(_density == "compact" ? "is-active" : null)"
+                            aria-pressed="@(_density == "compact")"
+                            @onclick='() => _density = "compact"'>Compact</button>
+                    <button type="button" class="@(_density == "comfortable" ? "is-active" : null)"
+                            aria-pressed="@(_density == "comfortable")"
+                            @onclick='() => _density = "comfortable"'>Comfortable</button>
+                </div>
+
+                <button type="button" class="ghost-button" @onclick="() => ExportCsvAsync(filtered)">
+                    <Icon Name="download" Size="14" /> Export
+                </button>
+            </div>
+
+            <button type="button" class="primary-button" @onclick="CreateApplicationAsync">
+                <Icon Name="plus" Size="14" /> New application
+            </button>
+        </div>
+
+        @* ---------- Column visibility panel ---------- *@
+        @if (_showColumnPanel)
+        {
+            <div class="panel column-panel">
+                @foreach (var column in ColumnDefs)
+                {
+                    <label class="checkbox-label">
+                        <input type="checkbox"
+                               checked="@_visibleColumns.Contains(column.Key)"
+                               @onchange="() => ToggleColumn(column.Key)" />
+                        @column.Label
+                    </label>
+                }
+            </div>
+        }
+
+        @* ---------- Filter panel ---------- *@
+        @if (_showFilterPanel)
+        {
+            <div class="panel filter-panel">
+                <div class="filter-grid">
+                    <FilterField Label="Product" Options="ProductOptions"
+                                 Value="@_draft.Product"
+                                 ValueChanged="@(v => _draft = _draft with { Product = v })" />
+
+                    <FilterField Label="Branch" Options="BranchOptions"
+                                 Value="@_draft.Branch"
+                                 ValueChanged="@(v => _draft = _draft with { Branch = v })" />
+
+                    <FilterField Label="Stage / status" Options="StageOptions"
+                                 Value="@_draft.Stage"
+                                 ValueChanged="@(v => _draft = _draft with { Stage = v })" />
+
+                    <div class="date-range-field">
+                        <span class="field-label">Queued between</span>
+                        <div class="date-range-inputs">
+                            <input type="date" class="date-input" aria-label="Queued from"
+                                   value="@_draft.From"
+                                   @onchange="e => _draft = _draft with { From = e.Value?.ToString() ?? string.Empty }" />
+                            <span class="date-range-dash">–</span>
+                            <input type="date" class="date-input" aria-label="Queued to"
+                                   value="@_draft.To"
+                                   @onchange="e => _draft = _draft with { To = e.Value?.ToString() ?? string.Empty }" />
+                        </div>
+                    </div>
+
+                    <FilterField Label="Sourcing channel" Options="ChannelOptions"
+                                 Value="@_draft.Channel"
+                                 ValueChanged="@(v => _draft = _draft with { Channel = v })" />
+
+                    <FilterField Label="Assigned officer" Options="_officerOptions"
+                                 Value="@_draft.Officer"
+                                 ValueChanged="@(v => _draft = _draft with { Officer = v })" />
+                </div>
+
+                <div class="filter-actions">
+                    <button type="button" class="link-button" @onclick="ClearFilters">Clear all</button>
+                    <button type="button" class="apply-button" @onclick="ApplyFilters">Apply filters</button>
+                </div>
+            </div>
+        }
+
+        @* ---------- Saved views ---------- *@
+        <div class="chip-row">
+            <span class="chip-row-label">Saved views:</span>
+            @foreach (var view in SavedViews)
+            {
+                <button type="button" class="chip-button" @onclick="() => ApplySavedView(view)">@view</button>
+            }
+        </div>
+
+        @* ---------- Recently viewed ---------- *@
+        @if (_recentIds.Count > 0)
+        {
+            <div class="chip-row">
+                <Icon Name="history" Size="13" />
+                <span class="chip-row-label">Recently viewed:</span>
+                @foreach (var id in _recentIds)
+                {
+                    <button type="button" class="chip-button" @onclick="() => OpenDrawer(id)">@id</button>
+                }
+            </div>
+        }
+
+        @* ---------- Triage strip ---------- *@
+        <div class="triage-strip">
+            @foreach (var status in StatusOrder)
+            {
+                var colors = StatusColors[status];
+                var isActive = _statusFilter == status;
+                var cardStyle = isActive ? "background:" + colors.Bg + ";" : null;
+                var countStyle = "color:" + colors.Text + ";";
+
+                <button type="button"
+                        class="triage-card @(isActive ? "is-active" : null)"
+                        aria-pressed="@isActive"
+                        style="@cardStyle"
+                        @onclick="() => ToggleStatusFilter(status)">
+                    <span class="triage-count" style="@countStyle">@_statusCounts[status]</span>
+                    <span class="triage-label">@status</span>
+                </button>
+            }
+            @if (_statusFilter is not null)
+            {
+                <button type="button" class="link-button triage-clear" @onclick="() => ToggleStatusFilter(_statusFilter)">
+                    Clear filter
+                </button>
+            }
+        </div>
+
+        @* ---------- Tabs ---------- *@
+        <div class="tabs" role="tablist">
+            @foreach (var tab in Tabs)
+            {
+                <button type="button" role="tab"
+                        class="tab @(_activeTab == tab ? "is-active" : null)"
+                        aria-selected="@(_activeTab == tab)"
+                        @onclick="() => SelectTab(tab)">@tab</button>
+            }
+        </div>
+
+        @if (!IsDataTab)
+        {
+            <div class="tab-placeholder">
+                <p class="tab-placeholder-title">“@_activeTab” is not yet wired up.</p>
+                <p class="tab-placeholder-body">
+                    This tab needs its own server-side query against the applications table.
+                    Only “Assigned to me” has data in this build.
+                </p>
+            </div>
+        }
+        else
+        {
+            @* ---------- Bulk action bar ---------- *@
+            @if (_selected.Count > 0)
+            {
+                <div class="bulk-bar">
+                    <span class="bulk-count">@_selected.Count selected</span>
+                    <div class="bulk-actions">
+                        @* Reassign and Export are visual stubs for this pass. *@
+                        <button type="button" class="chip-button">Reassign</button>
+                        <button type="button" class="chip-button">Export</button>
+                        <button type="button" class="chip-button" @onclick="() => _selected.Clear()">Clear selection</button>
+                    </div>
+                </div>
+            }
+
+            @* ---------- Table ---------- *@
+            <div class="table-scroll">
+                <table class="applications-table @(_density == "comfortable" ? "density-comfortable" : "density-compact")">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-header" scope="col">
+                                <input type="checkbox" aria-label="Select all rows on this page"
+                                       checked="@AllPagedSelected(paged)"
+                                       @onchange="() => ToggleAllOnPage(paged)" />
+                            </th>
+                            <SortableHeader Label="App ID" SortKeyName="id"
+                                            CurrentKey="@_sortKey" SortDir="@_sortDir" OnSort="HandleSort" />
+                            @foreach (var column in ColumnDefs.Where(c => _visibleColumns.Contains(c.Key)))
+                            {
+                                <SortableHeader Label="@column.Label" SortKeyName="@column.Key"
+                                                Align="@(column.Key == "amount" ? "right" : "left")"
+                                                CurrentKey="@_sortKey" SortDir="@_sortDir" OnSort="HandleSort" />
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in paged)
+                        {
+                            var statusColors = StatusColors[row.Status];
+                            var age = DaysQueued(QueueDateOf(row));
+                            var overdue = age > SlaOverdueDays;
+                            var badgeStyle = "background:" + statusColors.Bg + ";color:" + statusColors.Text + ";";
+                            var selectLabel = "Select application " + row.Id;
+                            var overdueTitle = age + " days since queued — past " + SlaOverdueDays + "-day SLA";
+
+                            <tr @key="row.Id" class="data-row" @onclick="() => OpenDrawer(row.Id)">
+                                <td class="checkbox-cell" @onclick:stopPropagation="true">
+                                    <input type="checkbox" aria-label="@selectLabel"
+                                           checked="@_selected.Contains(row.Id)"
+                                           @onchange="() => ToggleRow(row.Id)" />
+                                </td>
+                                <td class="cell-id">@row.Id</td>
+
+                                @if (_visibleColumns.Contains("product"))
+                                {
+                                    <td class="cell-truncate" title="@row.LoanProduct">@row.LoanProduct</td>
+                                }
+                                @if (_visibleColumns.Contains("branch"))
+                                {
+                                    <td class="cell-truncate" title="@row.Branch">@row.Branch</td>
+                                }
+                                @if (_visibleColumns.Contains("customer"))
+                                {
+                                    <td class="cell-truncate" title="@row.CustomerName">@row.CustomerName</td>
+                                }
+                                @if (_visibleColumns.Contains("amount"))
+                                {
+                                    <td class="cell-amount">@FormatInr(row.LoanAmount)</td>
+                                }
+                                @if (_visibleColumns.Contains("status"))
+                                {
+                                    <td>
+                                        <span class="status-badge" style="@badgeStyle">@row.Status</span>
+                                        <div class="cell-stage">@StageLabel(row.CurrentStage)</div>
+                                    </td>
+                                }
+                                @if (_visibleColumns.Contains("queueDate"))
+                                {
+                                    <td class="cell-queue-date">
+                                        <div class="queue-date-inner">
+                                            @QueueDateOf(row).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                                            @if (overdue)
+                                            {
+                                                <span class="sla-warning" title="@overdueTitle">
+                                                    <Icon Name="alert" Size="12" />
+                                                </span>
+                                            }
+                                        </div>
+                                    </td>
+                                }
+                            </tr>
+                        }
+
+                        @if (paged.Count == 0)
+                        {
+                            <tr>
+                                <td class="empty-row" colspan="@(2 + _visibleColumns.Count)">
+                                    No applications match the current filters.
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @* ---------- Footer ---------- *@
+            <div class="table-footer">
+                <div class="footer-left">
+                    <span class="footer-count">
+                        Showing @firstShown–@lastShown of @filtered.Count applications
+                    </span>
+                    <label class="rows-per-page">
+                        Rows per page
+                        <select value="@_pageSize" @onchange="HandlePageSizeChanged">
+                            @foreach (var size in PageSizes)
+                            {
+                                <option value="@size">@size</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+
+                <div class="pagination">
+                    <button type="button" class="page-btn" aria-label="Previous page"
+                            disabled="@(currentPage == 1)"
+                            @onclick="() => _page = Math.Max(1, currentPage - 1)">
+                        <Icon Name="chevron-left" Size="13" />
+                    </button>
+
+                    @{
+                        var pageNumbers = GetPageNumbers(currentPage, totalPages);
+                        var previous = 0;
+                    }
+                    @foreach (var number in pageNumbers)
+                    {
+                        if (previous > 0 && number - previous > 1)
+                        {
+                            <span class="page-gap">…</span>
+                        }
+                        var target = number;
+                        <button type="button"
+                                class="page-btn @(target == currentPage ? "is-active" : null)"
+                                aria-current="@(target == currentPage ? "page" : null)"
+                                @onclick="() => _page = target">@target</button>
+                        previous = number;
+                    }
+
+                    <button type="button" class="page-btn" aria-label="Next page"
+                            disabled="@(currentPage == totalPages)"
+                            @onclick="() => _page = Math.Min(totalPages, currentPage + 1)">
+                        <Icon Name="chevron-right" Size="13" />
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* ---------- Quick-view drawer ---------- *@
+        @if (DrawerApp is { } drawerApp)
+        {
+            var drawerColors = StatusColors[drawerApp.Status];
+            var drawerBadgeStyle = "background:" + drawerColors.Bg + ";color:" + drawerColors.Text + ";";
+
+            <div class="drawer-backdrop" @onclick="CloseDrawer">
+                @* Escape is handled here rather than through a global JS listener — the drawer is
+                   focused when it opens, so a locally scoped keydown is all it needs. *@
+                <div class="drawer-panel" role="dialog" aria-modal="true" aria-label="Application quick view"
+                     tabindex="-1" @ref="_drawerPanel"
+                     @onclick:stopPropagation="true"
+                     @onkeydown="HandleDrawerKeyDown">
+
+                    <div class="drawer-header">
+                        <div>
+                            <div class="drawer-id">@drawerApp.Id</div>
+                            <span class="status-badge drawer-status" style="@drawerBadgeStyle">@drawerApp.Status</span>
+                        </div>
+                        <button type="button" class="drawer-close" aria-label="Close" @onclick="CloseDrawer">
+                            <Icon Name="x" Size="16" />
+                        </button>
+                    </div>
+
+                    <div class="drawer-stage">@StageLabel(drawerApp.CurrentStage)</div>
+
+                    @if (drawerApp.Status == "Rejected")
+                    {
+                        var rejection = _latestRejections.TryGetValue(drawerApp.Id, out var info) ? info : default;
+                        <div class="drawer-rejected-banner" role="alert">
+                            ⛔ This application was rejected@(rejection.At == default ? null : " on " + DateOnly.FromDateTime(rejection.At).ToString("dd MMM yyyy", CultureInfo.InvariantCulture))@(string.IsNullOrWhiteSpace(rejection.Reason) ? null : " — " + rejection.Reason).
+                        </div>
+                    }
+
+                    <DrawerRow Label="Product" Value="@(drawerApp.LoanProduct ?? "—")" />
+                    <DrawerRow Label="Branch" Value="@(drawerApp.Branch ?? "—")" />
+                    <DrawerRow Label="Customer" Value="@(drawerApp.CustomerName ?? "—")" />
+                    <DrawerRow Label="Loan amount" Value="@FormatInr(drawerApp.LoanAmount)" />
+                    <DrawerRow Label="Queue date" Value="@QueueDateOf(drawerApp).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" />
+
+                    @* The one editable drawer field — saves on change, no separate save button. *@
+                    <div class="drawer-assign">
+                        <span class="drawer-assign-label">Assigned officer</span>
+                        <div class="drawer-assign-control">
+                            <select class="drawer-assign-select" aria-label="Assigned officer"
+                                    value="@(drawerApp.AssignedOfficerId?.ToString() ?? string.Empty)"
+                                    @onchange="AssignOfficerAsync">
+                                <option value="">— Unassigned —</option>
+                                @foreach (var officer in _officers)
+                                {
+                                    <option value="@officer.Id">@officer.Name</option>
+                                }
+                            </select>
+                            @if (_officerSavedMessage is not null)
+                            {
+                                <span class="drawer-saved" role="status">@_officerSavedMessage</span>
+                            }
+                        </div>
+                    </div>
+
+                    <button type="button" class="drawer-open-button"
+                            @onclick="() => OpenFullApplication(drawerApp.Id)">
+                        Open full application →
+                    </button>
+
+                    @* Rejecting is out of scope once Sanctioned, and pointless once Rejected. *@
+                    @if (drawerApp.Status is not "Sanctioned" and not "Rejected")
+                    {
+                        <button type="button" class="drawer-reject-button"
+                                @onclick="() => _showDrawerReject = true">
+                            Reject application
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (_showDrawerReject)
+            {
+                <RejectDialog OnConfirm="ConfirmDrawerRejectAsync"
+                              OnCancel="() => _showDrawerReject = false" />
+            }
+        }
+    </div>
+</div>
+
+@code {
+    // ---------------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------------
+
+    /// <remarks>
+    /// UNCONFIRMED. The five-day window comes from the reference spec, not from the client.
+    /// It must be verified with the business before this reaches production.
+    /// </remarks>
+    private const int SlaOverdueDays = 5;
+
+    /// <summary>Blazor Server round-trips every keystroke over SignalR, so the search waits.</summary>
+    private const int SearchDebounceMs = 300;
+
+    private const int MaxRecentlyViewed = 5;
+
+    private const string AllProductsOption = "All products";
+    private const string AllBranchesOption = "All branches";
+    private const string AllStagesOption = "All stages";
+    private const string AllChannelsOption = "All channels";
+    private const string AllOfficersOption = "All officers";
+
+    private const string AssignedToMeTab = "Assigned to me";
+
+    private static readonly string[] Tabs = { AssignedToMeTab, "All applications", "Migrated data" };
+    private static readonly string[] StatusOrder = { "New", "In progress", "Sanctioned", "Rejected" };
+    private static readonly string[] SavedViews = { "My open cases", "Rejected only" };
+    private static readonly int[] PageSizes = { 25, 50, 100 };
+
+    private static readonly string[] ProductOptions =
+        { AllProductsOption, "Commercial vehicle", "Loan against property" };
+
+    private static readonly string[] BranchOptions =
+        { AllBranchesOption, "Nashik West", "Nashik East", "Pune Camp", "Aurangabad", "Jalgaon" };
+
+    private static readonly string[] StageOptions =
+        { AllStagesOption, "New", "In progress", "Sanctioned", "Rejected" };
+
+    // Widened when Stage 2 introduced named sourcing partners; seeded "DSA" rows were migrated to
+    // "DSA — Patil Motors" so this filter and the stored values share one vocabulary.
+    private static readonly string[] ChannelOptions =
+        { AllChannelsOption, "DSA — Patil Motors", "DSA — Shree Associates", "Branch walk-in", "Digital" };
+
+    private static readonly (string Key, string Label)[] ColumnDefs =
+    {
+        ("product", "Product"),
+        ("branch", "Branch"),
+        ("customer", "Customer name"),
+        ("amount", "Loan amount"),
+        ("status", "Status · stage"),
+        ("queueDate", "Queue date"),
+    };
+
+    /// <summary>
+    /// Stage text for the dashboard's "Status · stage" column, indexed by CurrentStage.
+    /// </summary>
+    /// <remarks>
+    /// Kept in the dashboard's own wording rather than the stepper's, so the column renders exactly
+    /// as it did before the schema landed and the stage number became the stored value.
+    /// </remarks>
+    private static readonly string[] StageLabels =
+    {
+        "Stage 1 · Customer details",
+        "Stage 2 · Loan & security",
+        "Stage 3 · Bank & financial",
+        "Stage 4 · Documents",
+        "Stage 5 · Reports (RCU)",
+        "Stage 6 · Eligibility",
+        "Stage 7 · Approvals",
+        "Stage 8 · Post sanction",
+    };
+
+    private static readonly Dictionary<string, (string Bg, string Text)> StatusColors = new()
+    {
+        ["New"] = ("#e8e9ec", "#3b4453"),
+        ["In progress"] = ("#fbe8c9", "#7a4b06"),
+        ["Sanctioned"] = ("#d9ecd7", "#1f5c2a"),
+        ["Rejected"] = ("#f8d7d7", "#8a1f1f"),
+    };
+
+    private static readonly Dictionary<string, int> StatusPriority = new()
+    {
+        ["New"] = 0,
+        ["In progress"] = 1,
+        ["Sanctioned"] = 2,
+        ["Rejected"] = 3,
+    };
+
+    private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
+
+    // ---------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------
+
+    private sealed record FilterSet(
+        string Product,
+        string Branch,
+        string Stage,
+        string Channel,
+        string Officer,
+        string From,
+        string To)
+    {
+        public static readonly FilterSet Empty = new(
+            AllProductsOption, AllBranchesOption, AllStagesOption,
+            AllChannelsOption, AllOfficersOption, string.Empty, string.Empty);
+    }
+
+    private FilterSet _draft = FilterSet.Empty;    // what the panel shows
+    private FilterSet _applied = FilterSet.Empty;  // what the table obeys
+
+    private bool _showFilterPanel;
+    private bool _showColumnPanel;
+    private string _activeTab = AssignedToMeTab;
+    private string? _statusFilter;
+    private string _sortKey = "queueDate";
+    private string _sortDir = "desc";
+    private string _density = "compact";
+    private int _page = 1;
+    private int _pageSize = 25;
+    private string? _drawerId;
+
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _visibleColumns =
+        new(ColumnDefs.Select(c => c.Key), StringComparer.Ordinal);
+    private readonly List<string> _recentIds = new();
+
+    private string _searchInput = string.Empty;
+    private string _searchApplied = string.Empty;
+    private CancellationTokenSource? _searchDebounce;
+
+    // Seeded with zeros rather than left empty. OnInitializedAsync returns an incomplete task, so
+    // Blazor renders the component once before the counts have loaded; without every key present
+    // that first pass throws KeyNotFoundException on the triage strip.
+    private Dictionary<string, int> _statusCounts =
+        StatusOrder.ToDictionary(status => status, _ => 0, StringComparer.Ordinal);
+
+    private List<Application> _allRows = new();
+    private Dictionary<string, List<string>> _pansByApplication = new(StringComparer.Ordinal);
+
+    private List<Officer> _officers = new();
+    private IReadOnlyList<string> _officerOptions = new[] { AllOfficersOption };
+
+    // Latest rejection reason + date per application, for the drawer banner. Few rows, loaded whole.
+    private Dictionary<string, (string Reason, DateTime At)> _latestRejections =
+        new(StringComparer.Ordinal);
+
+    private bool _showDrawerReject;
+    private string? _officerSavedMessage;
+
+    private ElementReference _drawerPanel;
+    private bool _shouldFocusDrawer;
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    /// <summary>
+    /// Reads the whole applications table once per page load and filters in memory afterwards.
+    /// </summary>
+    /// <remarks>
+    /// ponytail: a few hundred rows is nothing, and keeping the filter/sort pipeline in C# means
+    /// the behaviour verified against the mock data is unchanged. Push filtering and paging into
+    /// SQL when this table is large enough to actually hurt, not before.
+    /// </remarks>
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _allRows = await db.Applications.AsNoTracking().ToListAsync();
+
+        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+        _officerOptions = new[] { AllOfficersOption }
+            .Concat(_officers.Select(o => o.Name))
+            .ToList();
+
+        _latestRejections = (await db.RejectionLogs.AsNoTracking().ToListAsync())
+            .GroupBy(r => r.ApplicationId, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var latest = g.OrderByDescending(r => r.Id).First();
+                    return (latest.Reason, latest.RejectedAt);
+                },
+                StringComparer.Ordinal);
+
+        // PAN moved to the Parties table with the schema, but the dashboard still searches on it,
+        // so the identifiers are pulled once and matched in memory alongside id and customer name.
+        var pans = await db.Parties.AsNoTracking()
+            .Where(p => p.Pan != null && p.Pan != "")
+            .Select(p => new { p.ApplicationId, p.Pan })
+            .ToListAsync();
+
+        _pansByApplication = pans
+            .GroupBy(x => x.ApplicationId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Pan!).ToList(), StringComparer.Ordinal);
+
+        // Triage counts come from the whole dataset, unfiltered, matching the reference spec.
+        // In production this belongs in a server-side aggregate query, not a client-side scan.
+        _statusCounts = StatusOrder.ToDictionary(
+            status => status,
+            status => _allRows.Count(row => row.Status == status));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_shouldFocusDrawer && _drawerId is not null)
+        {
+            _shouldFocusDrawer = false;
+            await _drawerPanel.FocusAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
+    }
+
+    // ---------------------------------------------------------------------
+    // Derived data
+    // ---------------------------------------------------------------------
+
+    private bool IsDataTab => _activeTab == AssignedToMeTab;
+
+    private Application? DrawerApp =>
+        _drawerId is null ? null : _allRows.FirstOrDefault(row => row.Id == _drawerId);
+
+    private List<Application> FilteredRows
+    {
+        get
+        {
+            IEnumerable<Application> rows = _allRows;
+
+            if (_applied.Product != AllProductsOption)
+            {
+                rows = rows.Where(row => row.LoanProduct == _applied.Product);
+            }
+
+            if (_applied.Branch != AllBranchesOption)
+            {
+                rows = rows.Where(row => row.Branch == _applied.Branch);
+            }
+
+            if (_applied.Stage != AllStagesOption)
+            {
+                rows = rows.Where(row => row.Status == _applied.Stage);
+            }
+
+            if (_applied.Channel != AllChannelsOption)
+            {
+                rows = rows.Where(row => row.SourcingChannel == _applied.Channel);
+            }
+
+            if (_applied.Officer != AllOfficersOption)
+            {
+                // Filter on the real FK, resolving the chosen name to its officer id (names are
+                // unique in the Officers table). This is the column the drawer now writes.
+                var officerId = _officers.FirstOrDefault(o => o.Name == _applied.Officer)?.Id;
+                rows = rows.Where(row => row.AssignedOfficerId == officerId);
+            }
+
+            if (TryParseDate(_applied.From, out var from))
+            {
+                rows = rows.Where(row => QueueDateOf(row) >= from);
+            }
+
+            if (TryParseDate(_applied.To, out var to))
+            {
+                rows = rows.Where(row => QueueDateOf(row) <= to);
+            }
+
+            if (_statusFilter is not null)
+            {
+                rows = rows.Where(row => row.Status == _statusFilter);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_searchApplied))
+            {
+                var term = _searchApplied.Trim();
+                rows = rows.Where(row =>
+                    row.Id.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    (row.CustomerName ?? string.Empty).Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    MatchesPan(row.Id, term));
+            }
+
+            var result = rows.ToList();
+
+            // The reference spec negates its comparator, which makes "asc" sort descending and
+            // leaves the arrow indicator contradicting the visible order. Corrected here.
+            var sign = _sortDir == "asc" ? 1 : -1;
+            result.Sort((a, b) => sign * CompareRows(a, b, _sortKey));
+            return result;
+        }
+    }
+
+    private static bool TryParseDate(string value, out DateOnly date) =>
+        DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out date);
+
+    private static int CompareRows(Application a, Application b, string key) => key switch
+    {
+        "amount" => a.LoanAmount.CompareTo(b.LoanAmount),
+        "queueDate" => a.CreatedAt.CompareTo(b.CreatedAt),
+        "status" => StatusPriority[a.Status].CompareTo(StatusPriority[b.Status]),
+        "id" => string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase),
+        "product" => string.Compare(a.LoanProduct, b.LoanProduct, StringComparison.OrdinalIgnoreCase),
+        "branch" => string.Compare(a.Branch, b.Branch, StringComparison.OrdinalIgnoreCase),
+        "customer" => string.Compare(a.CustomerName, b.CustomerName, StringComparison.OrdinalIgnoreCase),
+        _ => 0,
+    };
+
+    private static List<int> GetPageNumbers(int current, int total)
+    {
+        var pages = new SortedSet<int> { 1, total, current - 1, current, current + 1 };
+        return pages.Where(page => page >= 1 && page <= total).ToList();
+    }
+
+    /// <summary>The application's queue date. CreatedAt doubles as it.</summary>
+    private static DateOnly QueueDateOf(Application row) => DateOnly.FromDateTime(row.CreatedAt);
+
+    /// <summary>Stage text for the dashboard, derived rather than stored.</summary>
+    private static string StageLabel(int stage) =>
+        stage >= 1 && stage <= StageLabels.Length ? StageLabels[stage - 1] : $"Stage {stage}";
+
+    private bool MatchesPan(string applicationId, string term) =>
+        _pansByApplication.TryGetValue(applicationId, out var pans)
+        && pans.Any(pan => pan.Contains(term, StringComparison.OrdinalIgnoreCase));
+
+    private static int DaysQueued(DateOnly queueDate) =>
+        ApplicationSeedData.ReferenceToday.DayNumber - queueDate.DayNumber;
+
+    private static string FormatInr(decimal amount) => "₹" + amount.ToString("N0", IndianCulture);
+
+    private bool AllPagedSelected(IReadOnlyList<Application> paged) =>
+        paged.Count > 0 && paged.All(row => _selected.Contains(row.Id));
+
+    // ---------------------------------------------------------------------
+    // Creating and opening applications
+    // ---------------------------------------------------------------------
+
+    /// <summary>Branch placeholder until authentication exists and a real officer is known.</summary>
+    private const string OfficerBranch = "Nashik West";
+
+    private async Task CreateApplicationAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var id = await NextApplicationIdAsync(db);
+
+        db.Applications.Add(new Application
+        {
+            Id = id,
+            Status = "New",
+            CurrentStage = 1,
+            Branch = OfficerBranch,
+        });
+
+        await db.SaveChangesAsync();
+
+        Navigation.NavigateTo($"/applications/{id}/customer-details");
+    }
+
+    private void OpenFullApplication(string applicationId) =>
+        Navigation.NavigateTo($"/applications/{applicationId}/customer-details");
+
+    /// <remarks>
+    /// ponytail: highest-sequence-plus-one. Two officers creating an application in the same
+    /// instant can collide; the fix is a database sequence or retry-on-duplicate-key, which is
+    /// worth adding once this is genuinely multi-user rather than now.
+    /// </remarks>
+    private static async Task<string> NextApplicationIdAsync(LosDbContext db)
+    {
+        var prefix = $"LN-{DateTime.UtcNow.Year}-";
+
+        var highest = await db.Applications
+            .Where(a => a.Id.StartsWith(prefix))
+            .OrderByDescending(a => a.Id)
+            .Select(a => a.Id)
+            .FirstOrDefaultAsync();
+
+        var next = 1;
+        if (highest is not null && int.TryParse(highest.AsSpan(prefix.Length), out var parsed))
+        {
+            next = parsed + 1;
+        }
+
+        return prefix + next.ToString("D6", CultureInfo.InvariantCulture);
+    }
+
+    // ---------------------------------------------------------------------
+    // Event handlers
+    // ---------------------------------------------------------------------
+
+    private async Task DebounceSearchAsync()
+    {
+        _searchDebounce?.Cancel();
+        _searchDebounce?.Dispose();
+        _searchDebounce = new CancellationTokenSource();
+        var token = _searchDebounce.Token;
+
+        try
+        {
+            await Task.Delay(SearchDebounceMs, token);
+            _searchApplied = _searchInput;
+            _page = 1;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer keystroke superseded this one before the window elapsed.
+        }
+    }
+
+    private void HandleSort(string key)
+    {
+        if (_sortKey == key)
+        {
+            _sortDir = _sortDir == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            _sortKey = key;
+            _sortDir = "asc";
+        }
+
+        _page = 1;
+    }
+
+    private void ToggleColumn(string key)
+    {
+        if (!_visibleColumns.Remove(key))
+        {
+            _visibleColumns.Add(key);
+        }
+    }
+
+    private void ToggleRow(string id)
+    {
+        if (!_selected.Remove(id))
+        {
+            _selected.Add(id);
+        }
+    }
+
+    private void ToggleAllOnPage(IReadOnlyList<Application> paged)
+    {
+        if (AllPagedSelected(paged))
+        {
+            foreach (var row in paged)
+            {
+                _selected.Remove(row.Id);
+            }
+
+            return;
+        }
+
+        foreach (var row in paged)
+        {
+            _selected.Add(row.Id);
+        }
+    }
+
+    private void ToggleStatusFilter(string? status)
+    {
+        _statusFilter = _statusFilter == status ? null : status;
+        _page = 1;
+    }
+
+    private void ApplyFilters()
+    {
+        _applied = _draft;
+        _page = 1;
+    }
+
+    private void ClearFilters()
+    {
+        _draft = FilterSet.Empty;
+        _applied = FilterSet.Empty;
+        _statusFilter = null;
+        _page = 1;
+    }
+
+    private void ApplySavedView(string view)
+    {
+        switch (view)
+        {
+            case "My open cases":
+                _statusFilter = null;
+                _activeTab = AssignedToMeTab;
+                break;
+
+            case "Rejected only":
+                _statusFilter = "Rejected";
+                _activeTab = AssignedToMeTab;
+                break;
+        }
+
+        _page = 1;
+    }
+
+    private void SelectTab(string tab)
+    {
+        _activeTab = tab;
+        _selected.Clear();
+        _page = 1;
+    }
+
+    private void HandlePageSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var size))
+        {
+            _pageSize = size;
+            _page = 1;
+        }
+    }
+
+    private void OpenDrawer(string id)
+    {
+        _drawerId = id;
+        _showDrawerReject = false;
+        _officerSavedMessage = null;
+
+        _recentIds.Remove(id);
+        _recentIds.Insert(0, id);
+        if (_recentIds.Count > MaxRecentlyViewed)
+        {
+            _recentIds.RemoveRange(MaxRecentlyViewed, _recentIds.Count - MaxRecentlyViewed);
+        }
+
+        _shouldFocusDrawer = true;
+    }
+
+    private void CloseDrawer()
+    {
+        _drawerId = null;
+        _showDrawerReject = false;
+        _officerSavedMessage = null;
+    }
+
+    /// <summary>
+    /// The only drawer field that writes. Saves the officer FK immediately — the drawer has no save
+    /// button — and keeps the legacy name string in sync so the two never disagree.
+    /// </summary>
+    private async Task AssignOfficerAsync(ChangeEventArgs e)
+    {
+        if (DrawerApp is not { } app)
+        {
+            return;
+        }
+
+        int? officerId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var application = await db.Applications.FirstAsync(a => a.Id == app.Id);
+        application.AssignedOfficerId = officerId;
+        application.AssignedOfficer = officerId is { } oid
+            ? _officers.FirstOrDefault(o => o.Id == oid)?.Name
+            : null;
+        await db.SaveChangesAsync();
+
+        await LoadAsync();
+
+        _officerSavedMessage = "Saved ✓";
+        StateHasChanged();
+
+        await Task.Delay(2500);
+        if (_officerSavedMessage == "Saved ✓")
+        {
+            _officerSavedMessage = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ConfirmDrawerRejectAsync(string reason)
+    {
+        _showDrawerReject = false;
+
+        if (DrawerApp is not { } app)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await RejectionService.RejectAsync(db, app.Id, app.CurrentStage, reason);
+
+        // Reload so the table badge, triage counts, and future drawer banner all reflect Rejected,
+        // then close — the same end state as the stage screens navigating back to the dashboard.
+        await LoadAsync();
+        CloseDrawer();
+    }
+
+    private void HandleDrawerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            CloseDrawer();
+        }
+    }
+
+    private async Task ExportCsvAsync(IReadOnlyList<Application> rows)
+    {
+        var csv = new StringBuilder();
+        csv.Append("App ID,Product,Branch,Customer name,Loan amount,Status,Stage,Queue date\n");
+
+        foreach (var row in rows)
+        {
+            var fields = new[]
+            {
+                row.Id,
+                row.LoanProduct ?? string.Empty,
+                row.Branch ?? string.Empty,
+                row.CustomerName ?? string.Empty,
+                row.LoanAmount.ToString("0", CultureInfo.InvariantCulture),
+                row.Status,
+                StageLabel(row.CurrentStage),
+                QueueDateOf(row).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            };
+
+            csv.Append(string.Join(',', fields.Select(CsvQuote))).Append('\n');
+        }
+
+        await JS.InvokeVoidAsync("downloadFile", "applications.csv", csv.ToString());
+    }
+
+    private static string CsvQuote(string value) => '"' + value.Replace("\"", "\"\"") + '"';
+}

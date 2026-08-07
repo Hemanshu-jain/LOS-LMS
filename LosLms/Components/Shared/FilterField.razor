@@ -1,0 +1,24 @@
+@* Labelled dropdown used by the filter panel. Two-way bound so the parent can reset it. *@
+
+<label class="filter-field">
+    <span class="filter-field-label">@Label</span>
+    <select value="@Value" @onchange="HandleChanged">
+        @foreach (var option in Options)
+        {
+            <option value="@option">@option</option>
+        }
+    </select>
+</label>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired] public IReadOnlyList<string> Options { get; set; } = Array.Empty<string>();
+
+    [Parameter] public string Value { get; set; } = string.Empty;
+
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private Task HandleChanged(ChangeEventArgs e) =>
+        ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+}

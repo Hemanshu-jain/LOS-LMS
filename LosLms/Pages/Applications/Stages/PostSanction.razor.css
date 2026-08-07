@@ -1,0 +1,564 @@
+/* Tokens ported from the Post Sanction reference spec's COLORS object. */
+.stage-page,
+.stage-page * {
+    box-sizing: border-box;
+}
+
+.stage-page {
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    font-size: 12px;
+    color: #1a1f29;
+    background: #f4f5f7;
+    min-height: 100vh;
+}
+
+.stage-card {
+    border: 1px solid #d8dbe1;
+    background: #fff;
+}
+
+.stage-page button,
+.stage-page input,
+.stage-page select,
+.stage-page textarea {
+    font-family: inherit;
+    border-radius: 0;
+}
+
+/* ---------- Loading / not found ---------- */
+.loading-note {
+    margin: 0;
+    padding: 40px 16px;
+    text-align: center;
+    color: #5b6472;
+}
+
+.not-found {
+    margin: 0 auto;
+    max-width: 520px;
+    padding: 48px 20px;
+    text-align: center;
+}
+
+.not-found-title {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.not-found-body {
+    margin: 0 0 18px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #5b6472;
+}
+
+.not-found-action {
+    height: 30px;
+    border: 1px solid #16304f;
+    background: #1f3a5f;
+    color: #fff;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+/* ---------- Shell ---------- */
+.stepper-band {
+    padding: 12px 14px;
+    border-bottom: 1px solid #dcdcdc;
+    background: #fbfbfb;
+}
+
+.stage-body {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.stage-rail {
+    width: 230px;
+    flex: none;
+    padding: 14px;
+    border-right: 1px solid #dcdcdc;
+    background: #f7f7f7;
+}
+
+.stage-main {
+    flex: 1;
+    min-width: 280px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.stage-title {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    border-bottom: 2px solid #1a1f29;
+    padding-bottom: 7px;
+    flex-wrap: wrap;
+}
+
+.stage-title-number {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.stage-title-text {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.stage-title-of {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #93999a;
+}
+
+.disbursed-banner {
+    border: 1px solid #1f5c2a;
+    background: #d9ecd7;
+    color: #1f5c2a;
+    padding: 9px 12px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+}
+
+/* ---------- Checklist ---------- */
+.cleared-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: #3d3d3d;
+}
+
+.pending-definition {
+    font-style: italic;
+    font-weight: 500;
+    color: #7a4b06;
+    margin-left: 4px;
+}
+
+/* ---------- Tabs ---------- */
+.tabs-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ps-tabs {
+    display: flex;
+    align-items: flex-end;
+    border-bottom: 1px solid #c2c2c2;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.ps-tab {
+    padding: 8px 12px;
+    border: 1px solid #dcdcdc;
+    border-bottom: none;
+    background: #f4f4f4;
+    font-size: 11px;
+    font-weight: 500;
+    color: #8b8b8b;
+    cursor: pointer;
+}
+
+.ps-tab.is-active {
+    border: 1px solid #9e9e9e;
+    border-bottom: 1px solid #fff;
+    background: #fff;
+    margin-bottom: -1px;
+    font-weight: 700;
+    color: #1c1c1c;
+}
+
+.ps-columns {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.ps-main-column {
+    flex: 1;
+    min-width: 300px;
+}
+
+/* ---------- Fields ---------- */
+.stacked {
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+}
+
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px 14px;
+    width: 100%;
+}
+
+.field-input {
+    height: 29px;
+    border: 1px solid #d8dbe1;
+    font-size: 12px;
+    background: #fafbfc;
+    padding: 0 8px;
+    width: 100%;
+    color: #1a1f29;
+}
+
+select.field-input {
+    padding: 0 6px;
+}
+
+.field-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+.currency-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.currency-symbol {
+    font-size: 11px;
+    color: #5b6472;
+}
+
+.computed-value {
+    height: 29px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.computed-amount {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a1f29;
+}
+
+.computed-caption {
+    font-size: 9.5px;
+    color: #93999a;
+}
+
+.sub-block-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #7d7d7d;
+}
+
+/* ---------- Status colouring ---------- */
+.status-select,
+.flag-select {
+    border-width: 1.5px;
+    border-style: solid;
+    font-weight: 500;
+}
+
+.flag-select {
+    height: 26px;
+    font-size: 10.5px;
+    padding: 0 4px;
+    cursor: pointer;
+}
+
+.status-healthy,
+.flag-healthy,
+.mandate-healthy {
+    border-color: #1f5c2a;
+    background: #d9ecd7;
+    color: #1f5c2a;
+}
+
+.status-caution,
+.flag-caution,
+.mandate-caution {
+    border-color: #7a4b06;
+    background: #fbe8c9;
+    color: #7a4b06;
+}
+
+.status-risk,
+.flag-risk,
+.mandate-risk {
+    border-color: #8a1f1f;
+    background: #f8d7d7;
+    color: #8a1f1f;
+}
+
+/* ---------- Tables ---------- */
+.table-scroll {
+    overflow-x: auto;
+}
+
+.schedule-scroll {
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.row-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.checklist-table { min-width: 720px; }
+.schedule-table { min-width: 620px; }
+.pdd-table { min-width: 680px; }
+
+.row-table th {
+    text-align: left;
+    padding: 6px 8px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    border-bottom: 1px solid #d4d4d4;
+    white-space: nowrap;
+    background: #f7f7f7;
+    position: sticky;
+    top: 0;
+}
+
+.row-table td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #eceef1;
+    font-size: 11.5px;
+}
+
+.row-table tbody tr:hover {
+    background: #fafbfc;
+}
+
+.cell-name {
+    color: #1a1f29;
+    font-weight: 500;
+}
+
+.cell-muted {
+    color: #5b6472;
+    white-space: nowrap;
+}
+
+.is-empty {
+    color: #c2c2c2;
+}
+
+.align-right {
+    text-align: right;
+}
+
+.cell-input,
+.cell-select {
+    height: 26px;
+    border: 1px solid #d8dbe1;
+    font-size: 10.5px;
+    padding: 0 5px;
+    background: #fafbfc;
+    color: #1a1f29;
+}
+
+.cell-select {
+    cursor: pointer;
+}
+
+.cell-input:focus-visible,
+.cell-select:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+.w-remarks {
+    width: 100%;
+    min-width: 140px;
+}
+
+.schedule-basis {
+    margin: 0 0 10px;
+    font-size: 11px;
+    color: #5b6472;
+}
+
+.empty-note {
+    margin: 0;
+    padding: 18px 8px;
+    text-align: center;
+    font-size: 11.5px;
+    color: #93999a;
+}
+
+/* ---------- Uploads ---------- */
+.upload-block {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.dropzone {
+    min-height: 58px;
+    border: 1px dashed #bdbdbd;
+    background: #f7f7f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #9a9a9a;
+    cursor: pointer;
+    text-align: center;
+    padding: 10px;
+}
+
+.dropzone:hover {
+    background: #efefef;
+}
+
+.uploaded-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.file-link {
+    font-size: 11px;
+    font-weight: 500;
+    color: #1f5c2a;
+    word-break: break-all;
+}
+
+.upload-button {
+    height: 26px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #3d3d3d;
+    cursor: pointer;
+}
+
+.upload-button:hover {
+    background: #e0e0e0;
+}
+
+/* InputFile renders its own <input type="file"> inside a child component, so only ::deep reaches
+   it — otherwise the browser's raw "Choose File" button shows through. */
+.dropzone ::deep input[type="file"],
+.upload-button ::deep input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.placeholder-note {
+    margin: 0;
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: #7a4b06;
+    background: #fbe8c9;
+    border: 1px solid #e3c894;
+    padding: 7px 9px;
+}
+
+.inline-error {
+    margin: 10px 0 0;
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 6px 8px;
+}
+
+/* ---------- Mandates panel ---------- */
+.mandates-panel {
+    flex: 0 0 300px;
+    border: 1px solid #d4d4d4;
+    background: #fff;
+    align-self: flex-start;
+}
+
+.mandates-header {
+    padding: 8px 11px;
+    border-bottom: 1px solid #d4d4d4;
+    background: #f2f2f2;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: #4d4d4d;
+}
+
+.mandates-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.mandate-card {
+    border-width: 1px;
+    border-style: solid;
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.mandate-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    opacity: .85;
+}
+
+.mandate-value {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.mandate-caption {
+    font-size: 10px;
+    opacity: .8;
+}
+
+/* ---------- Toast ---------- */
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: #1a1f29;
+    color: #fff;
+    font-size: 12px;
+    padding: 9px 16px;
+    z-index: 80;
+}

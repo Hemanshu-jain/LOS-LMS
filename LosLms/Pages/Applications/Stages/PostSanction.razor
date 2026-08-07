@@ -1,0 +1,1028 @@
+@page "/applications/{ApplicationId}/post-sanction"
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment HostEnvironment
+
+<PageTitle>Post Sanction · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">
+                No application exists with the reference <strong>@ApplicationId</strong>.
+            </p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="stage-page">
+        <div class="stage-card">
+
+            <StageSubHeader ApplicationId="@_application.Id"
+                            BreadcrumbSuffix="@_application.Status"
+                            SecondaryLabel="Disbursement memo"
+                            PrimaryLabel="Release funds"
+                            CompleteBlocked="ReleaseBlocked"
+                            BlockedReason="@ReleaseBlockedReason"
+                            OnSaveDraft="GoToDisbursementTab"
+                            OnCompleteStage="ReleaseFundsAsync" />
+
+            <div class="stepper-band">
+                <StageStepper CurrentStep="8" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">09</span>
+                        <span class="stage-title-text">STAGE 8 — POST SANCTION / DISBURSEMENT</span>
+                        <span class="stage-title-of">Stage 8 of 8</span>
+                    </div>
+
+                    @if (_disbursed)
+                    {
+                        <div class="disbursed-banner">✓ Funds released — this application is fully disbursed</div>
+                    }
+
+                    @* ---------- Branch disbursement checklist ---------- *@
+                    <Panel Title="Branch disbursement checklist">
+                        <Right>
+                            <span class="cleared-count">
+                                @ClearedCount of @IntendedChecklistItems flags cleared
+                                <span class="pending-definition">(2 items pending definition)</span>
+                            </span>
+                        </Right>
+                        <ChildContent>
+                            <div class="table-scroll">
+                                <table class="row-table checklist-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Checklist item</th>
+                                            <th>Owner</th>
+                                            <th>Flag</th>
+                                            <th>Cleared on</th>
+                                            <th>Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in _checklist)
+                                        {
+                                            <tr @key="row">
+                                                <td class="cell-name">@row.Item</td>
+                                                <td class="cell-muted">@row.Owner</td>
+                                                <td>
+                                                    <select class="flag-select flag-@(row.Flag == "Cleared" ? "healthy" : "caution")"
+                                                            aria-label="@("Flag for " + row.Item)"
+                                                            value="@row.Flag"
+                                                            @onchange="e => SetFlag(row, (string?)e.Value)">
+                                                        @foreach (var o in FlagOptions) { <option value="@o">@o</option> }
+                                                    </select>
+                                                </td>
+                                                <td class="cell-muted">
+                                                    @(row.ClearedOn?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")
+                                                </td>
+                                                <td>
+                                                    <input class="cell-input w-remarks" aria-label="@("Remarks for " + row.Item)"
+                                                           @bind="row.Remarks" @bind:event="oninput" />
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </ChildContent>
+                    </Panel>
+
+                    @* ---------- Tabs + mandates panel ---------- *@
+                    <div class="tabs-wrap">
+                        <div class="ps-tabs" role="tablist" aria-label="Post sanction sections">
+                            @foreach (var tab in Tabs)
+                            {
+                                <button type="button" role="tab"
+                                        class="ps-tab @(_activeTab == tab ? "is-active" : null)"
+                                        aria-selected="@(_activeTab == tab)"
+                                        @onclick="() => _activeTab = tab">@tab</button>
+                            }
+                        </div>
+
+                        <div class="ps-columns">
+                            <div class="ps-main-column">
+
+                                @* ---------- Tab 1: Disbursement ---------- *@
+                                @if (_activeTab == DisbursementTab)
+                                {
+                                    <Panel Title="Disbursement">
+                                        <div class="stacked">
+                                            <div class="field-grid">
+                                                <FormField Label="Disbursement type" For="ps-type">
+                                                    <select id="ps-type" class="field-input" @bind="_disbursement.Type">
+                                                        <option value="">@BlankOption</option>
+                                                        @foreach (var o in DisbursementTypes) { <option value="@o">@o</option> }
+                                                    </select>
+                                                </FormField>
+
+                                                <FormField Label="Disbursement amount">
+                                                    <div class="computed-value">
+                                                        <span class="computed-amount">@FormatInr(NetDisbursement)</span>
+                                                        <span class="computed-caption">(after Stage 7 charges deducted)</span>
+                                                    </div>
+                                                </FormField>
+
+                                                <FormField Label="Beneficiary name" For="ps-benname">
+                                                    <input id="ps-benname" class="field-input"
+                                                           @bind="_disbursement.BeneficiaryName" @bind:event="oninput" />
+                                                </FormField>
+
+                                                <FormField Label="Beneficiary account" For="ps-benacct">
+                                                    <input id="ps-benacct" class="field-input"
+                                                           @bind="_disbursement.BeneficiaryAccount" @bind:event="oninput" />
+                                                </FormField>
+
+                                                <FormField Label="Payment mode" For="ps-mode">
+                                                    <select id="ps-mode" class="field-input" @bind="_disbursement.PaymentMode">
+                                                        <option value="">@BlankOption</option>
+                                                        @foreach (var o in PaymentModes) { <option value="@o">@o</option> }
+                                                    </select>
+                                                </FormField>
+
+                                                <FormField Label="Value date" For="ps-valuedate">
+                                                    <input id="ps-valuedate" type="date" class="field-input" @bind="_disbursement.ValueDate" />
+                                                </FormField>
+
+                                                <FormField Label="UTR / cheque no." For="ps-utr">
+                                                    <input id="ps-utr" class="field-input" @bind="_disbursement.Utr" @bind:event="oninput" />
+                                                </FormField>
+
+                                                <FormField Label="First EMI date" For="ps-firstemi">
+                                                    <input id="ps-firstemi" type="date" class="field-input" @bind="_disbursement.FirstEmiDate" />
+                                                </FormField>
+                                            </div>
+
+                                            <div class="upload-block">
+                                                <span class="sub-block-label">Signed memo</span>
+                                                @{
+                                                    var memo = FileNameOf(_disbursement.MemoFilePath);
+                                                }
+                                                @if (memo is not null)
+                                                {
+                                                    <div class="uploaded-row">
+                                                        <a class="file-link" href="@UrlFor(_disbursement.MemoFilePath!)" target="_blank">✓ @memo</a>
+                                                        <label class="upload-button">
+                                                            Replace
+                                                            <InputFile OnChange="e => UploadAsync(e, MemoSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                        </label>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <label class="dropzone">
+                                                        Upload signed memo · PDF / JPG
+                                                        <InputFile OnChange="e => UploadAsync(e, MemoSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                    </label>
+                                                }
+                                            </div>
+                                        </div>
+                                    </Panel>
+                                }
+
+                                @* ---------- Tab 2: Repayment (read-only) ---------- *@
+                                @if (_activeTab == RepaymentTab)
+                                {
+                                    <Panel Title="Repayment schedule (read-only)">
+                                        @if (Schedule.Count == 0)
+                                        {
+                                            <p class="empty-note">
+                                                A schedule needs the sanctioned amount, rate and tenure from Stage 7,
+                                                plus a First EMI date on the Disbursement tab.
+                                            </p>
+                                        }
+                                        else
+                                        {
+                                            <p class="schedule-basis">
+                                                On the <strong>sanctioned</strong> terms — @FormatInr(SanctionedAmount)
+                                                at @SanctionedRoi.ToString("0.##", CultureInfo.InvariantCulture)%
+                                                over @SanctionedTenure months.
+                                            </p>
+
+                                            <div class="table-scroll schedule-scroll">
+                                                <table class="row-table schedule-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>#</th>
+                                                            <th>Due date</th>
+                                                            <th class="align-right">EMI</th>
+                                                            <th class="align-right">Principal</th>
+                                                            <th class="align-right">Interest</th>
+                                                            <th class="align-right">Balance</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var row in Schedule)
+                                                        {
+                                                            <tr>
+                                                                <td>@row.Month</td>
+                                                                <td>@(row.DueDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")</td>
+                                                                <td class="align-right">@FormatInr(row.Emi)</td>
+                                                                <td class="align-right">@FormatInr(row.Principal)</td>
+                                                                <td class="align-right">@FormatInr(row.Interest)</td>
+                                                                <td class="align-right">@FormatInr(row.ClosingBalance)</td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                    </Panel>
+                                }
+
+                                @* ---------- Tab 3: E-Nach ---------- *@
+                                @if (_activeTab == EnachTab)
+                                {
+                                    <Panel Title="E-Nach mandate">
+                                        <div class="field-grid">
+                                            <FormField Label="UMRN" For="ps-enach-umrn">
+                                                <input id="ps-enach-umrn" class="field-input" @bind="_enach.Umrn" @bind:event="oninput" />
+                                            </FormField>
+
+                                            <FormField Label="Registration status" For="ps-enach-status">
+                                                <select id="ps-enach-status" class="field-input status-select status-@BandFor(_enach.Status)"
+                                                        @bind="_enach.Status">
+                                                    @foreach (var o in MandateStatuses) { <option value="@o">@o</option> }
+                                                </select>
+                                            </FormField>
+
+                                            <FormField Label="Debit date" For="ps-enach-debit">
+                                                <input id="ps-enach-debit" type="date" class="field-input" @bind="_enach.DebitDate" />
+                                            </FormField>
+
+                                            <FormField Label="Linked bank account" For="ps-enach-acct">
+                                                <input id="ps-enach-acct" class="field-input" @bind="_enach.LinkedAccount" @bind:event="oninput" />
+                                            </FormField>
+                                        </div>
+                                    </Panel>
+                                }
+
+                                @* ---------- Tab 4: Security-Nach ---------- *@
+                                @if (_activeTab == SecurityNachTab)
+                                {
+                                    <Panel Title="Security-Nach mandate">
+                                        <div class="field-grid">
+                                            <FormField Label="UMRN" For="ps-snach-umrn">
+                                                <input id="ps-snach-umrn" class="field-input" @bind="_snach.Umrn" @bind:event="oninput" />
+                                            </FormField>
+
+                                            <FormField Label="Registration status" For="ps-snach-status">
+                                                <select id="ps-snach-status" class="field-input status-select status-@BandFor(_snach.Status)"
+                                                        @bind="_snach.Status">
+                                                    @foreach (var o in MandateStatuses) { <option value="@o">@o</option> }
+                                                </select>
+                                            </FormField>
+
+                                            <FormField Label="Mandate holder (guarantor)" For="ps-snach-holder">
+                                                <input id="ps-snach-holder" class="field-input" @bind="_snach.MandateHolder" @bind:event="oninput" />
+                                            </FormField>
+                                        </div>
+                                    </Panel>
+                                }
+
+                                @* ---------- Tab 5: Insurance upload ---------- *@
+                                @if (_activeTab == InsuranceTab)
+                                {
+                                    <Panel Title="Insurance upload">
+                                        <div class="upload-block">
+                                            <span class="sub-block-label">Insurance / RC upload</span>
+                                            @{
+                                                var ins = FileNameOf(_disbursement.InsuranceFilePath);
+                                            }
+                                            @if (ins is not null)
+                                            {
+                                                <div class="uploaded-row">
+                                                    <a class="file-link" href="@UrlFor(_disbursement.InsuranceFilePath!)" target="_blank">✓ @ins</a>
+                                                    <label class="upload-button">
+                                                        Replace
+                                                        <InputFile OnChange="e => UploadAsync(e, InsuranceSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                    </label>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <label class="dropzone">
+                                                    Upload insurance / RC · PDF / JPG
+                                                    <InputFile OnChange="e => UploadAsync(e, InsuranceSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                </label>
+                                            }
+                                        </div>
+                                    </Panel>
+                                }
+
+                                @* ---------- Tab 6: Document upload ---------- *@
+                                @if (_activeTab == DocumentTab)
+                                {
+                                    <Panel Title="Document upload">
+                                        <div class="stacked">
+                                            <p class="placeholder-note">
+                                                Purpose unclear from the wireframe — possibly redundant with Insurance Upload
+                                                or Stage 4's checklist. Built as a placeholder pending confirmation.
+                                            </p>
+
+                                            <div class="upload-block">
+                                                <span class="sub-block-label">Document upload</span>
+                                                @{
+                                                    var doc = FileNameOf(_disbursement.GeneralDocFilePath);
+                                                }
+                                                @if (doc is not null)
+                                                {
+                                                    <div class="uploaded-row">
+                                                        <a class="file-link" href="@UrlFor(_disbursement.GeneralDocFilePath!)" target="_blank">✓ @doc</a>
+                                                        <label class="upload-button">
+                                                            Replace
+                                                            <InputFile OnChange="e => UploadAsync(e, GeneralDocSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                        </label>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <label class="dropzone">
+                                                        Upload document · PDF / JPG
+                                                        <InputFile OnChange="e => UploadAsync(e, GeneralDocSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                    </label>
+                                                }
+                                            </div>
+                                        </div>
+                                    </Panel>
+                                }
+
+                                @* ---------- Tab 7: Down payment ---------- *@
+                                @if (_activeTab == DownPaymentTab)
+                                {
+                                    <Panel Title="Down payment">
+                                        <div class="stacked">
+                                            <div class="field-grid">
+                                                <FormField Label="Amount received" For="ps-dp-amount">
+                                                    <div class="currency-input">
+                                                        <span class="currency-symbol">₹</span>
+                                                        <input id="ps-dp-amount" type="number" min="0" step="1" class="field-input"
+                                                               @bind="_downPayment.AmountReceived" @bind:event="oninput" />
+                                                    </div>
+                                                </FormField>
+
+                                                <FormField Label="Receipt number" For="ps-dp-receipt">
+                                                    <input id="ps-dp-receipt" class="field-input" @bind="_downPayment.ReceiptNo" @bind:event="oninput" />
+                                                </FormField>
+
+                                                <FormField Label="Received date" For="ps-dp-date">
+                                                    <input id="ps-dp-date" type="date" class="field-input" @bind="_downPayment.ReceivedDate" />
+                                                </FormField>
+                                            </div>
+
+                                            <div class="upload-block">
+                                                <span class="sub-block-label">Receipt upload</span>
+                                                @{
+                                                    var receipt = FileNameOf(_downPayment.ReceiptFilePath);
+                                                }
+                                                @if (receipt is not null)
+                                                {
+                                                    <div class="uploaded-row">
+                                                        <a class="file-link" href="@UrlFor(_downPayment.ReceiptFilePath!)" target="_blank">✓ @receipt</a>
+                                                        <label class="upload-button">
+                                                            Replace
+                                                            <InputFile OnChange="e => UploadAsync(e, ReceiptSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                        </label>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <label class="dropzone">
+                                                        Upload receipt · PDF / JPG
+                                                        <InputFile OnChange="e => UploadAsync(e, ReceiptSlot)" accept=".pdf,.jpg,.jpeg,.png" />
+                                                    </label>
+                                                }
+                                            </div>
+                                        </div>
+                                    </Panel>
+                                }
+
+                                @if (_uploadError is not null)
+                                {
+                                    <p class="inline-error" role="alert">@_uploadError</p>
+                                }
+                            </div>
+
+                            @* ---------- Mandates summary ---------- *@
+                            <div class="mandates-panel">
+                                <div class="mandates-header">Mandates</div>
+                                <div class="mandates-body">
+                                    <div class="mandate-card mandate-@BandFor(_enach.Status)">
+                                        <span class="mandate-label">E-Nach</span>
+                                        <span class="mandate-value">@_enach.Status</span>
+                                        <span class="mandate-caption">
+                                            debit @(_enach.DebitDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")
+                                        </span>
+                                    </div>
+
+                                    <div class="mandate-card mandate-@BandFor(_snach.Status)">
+                                        <span class="mandate-label">Security-Nach</span>
+                                        <span class="mandate-value">@_snach.Status</span>
+                                        <span class="mandate-caption">
+                                            @(string.IsNullOrWhiteSpace(_snach.MandateHolder) ? "no holder named" : _snach.MandateHolder)
+                                        </span>
+                                    </div>
+
+                                    <div class="mandate-card mandate-@(_downPayment.AmountReceived > 0 ? "healthy" : "caution")">
+                                        <span class="mandate-label">Down payment</span>
+                                        <span class="mandate-value">@FormatInr(_downPayment.AmountReceived)</span>
+                                        <span class="mandate-caption">
+                                            receipt @(string.IsNullOrWhiteSpace(_downPayment.ReceiptFilePath) ? "pending" : "attached")
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ---------- PDD panel ---------- *@
+                    <Panel Title="PDD · post-disbursement documents">
+                        <div class="table-scroll">
+                            <table class="row-table pdd-table">
+                                <thead>
+                                    <tr>
+                                        <th>PDD item</th>
+                                        <th>Responsible</th>
+                                        <th>Expected date</th>
+                                        <th>Status</th>
+                                        <th>Waiver approved by</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in _pdds)
+                                    {
+                                        <tr @key="row">
+                                            <td class="cell-name">@row.Item</td>
+                                            <td class="cell-muted">@row.Responsible</td>
+                                            <td class="cell-muted">
+                                                @(row.ExpectedDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")
+                                            </td>
+                                            <td>
+                                                <select class="flag-select flag-@PddBandFor(row.Status)"
+                                                        aria-label="@("Status for " + row.Item)"
+                                                        value="@row.Status"
+                                                        @onchange="e => SetPddStatus(row, (string?)e.Value)">
+                                                    @foreach (var o in PddStatuses) { <option value="@o">@o</option> }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                @if (row.Status == "Waived")
+                                                {
+                                                    <select class="cell-select" aria-label="@("Waiver approver for " + row.Item)"
+                                                            @bind="row.WaivedByOfficerId">
+                                                        <option value="">@BlankOption</option>
+                                                        @foreach (var o in _officers) { <option value="@o.Id">@o.Name</option> }
+                                                    </select>
+                                                }
+                                                else
+                                                {
+                                                    <span class="is-empty">—</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </Panel>
+                </div>
+            </div>
+        </div>
+
+        @if (_toast is not null)
+        {
+            <div class="toast" role="status">@_toast</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    private const string DisbursementTab = "Disbursement";
+    private const string RepaymentTab = "Repayment";
+    private const string EnachTab = "E-Nach";
+    private const string SecurityNachTab = "Security-Nach";
+    private const string InsuranceTab = "Insurance Upload";
+    private const string DocumentTab = "Document Upload";
+    private const string DownPaymentTab = "Down Payment";
+
+    private const string BlankOption = "— Select —";
+    private const long MaxUploadBytes = 10 * 1024 * 1024;
+
+    /// <summary>
+    /// What the content brief says the checklist should contain. Only 7 are defined, so the header
+    /// reads "n of 9" and says so — see the gate comment on <see cref="ReleaseBlocked"/>.
+    /// </summary>
+    private const int IntendedChecklistItems = 9;
+
+    private static readonly string[] Tabs =
+    {
+        DisbursementTab, RepaymentTab, EnachTab, SecurityNachTab,
+        InsuranceTab, DocumentTab, DownPaymentTab,
+    };
+
+    private static readonly string[] FlagOptions = { "Cleared", "Pending" };
+    private static readonly string[] MandateStatuses = { "Pending", "Registered", "Rejected" };
+    private static readonly string[] PddStatuses = { "Open", "Received", "Waived" };
+
+    private static readonly string[] DisbursementTypes =
+        { "Direct to dealer", "Direct to customer", "Direct to seller" };
+
+    private static readonly string[] PaymentModes = { "NEFT", "RTGS", "UTR Transfer", "Cheque" };
+
+    // Upload slots — which column a chosen file lands in.
+    private const string MemoSlot = "memo";
+    private const string InsuranceSlot = "insurance";
+    private const string GeneralDocSlot = "document";
+    private const string ReceiptSlot = "receipt";
+
+    private static readonly string[] AllowedExtensions = { ".pdf", ".jpg", ".jpeg", ".png" };
+
+    private static readonly CultureInfo IndianCulture = new("en-IN");
+
+    private Application? _application;
+    private bool _loading = true;
+    private bool _disbursed;
+    private string _activeTab = DisbursementTab;
+
+    private ApprovalDecision? _decision;
+    private List<Charge> _charges = new();
+
+    private Disbursement _disbursement = new();
+    private EnachMandate _enach = new();
+    private SecurityNachMandate _snach = new();
+    private DownPaymentRecord _downPayment = new();
+    private List<PostSanctionChecklist> _checklist = new();
+    private List<Pdd> _pdds = new();
+    private List<Officer> _officers = new();
+
+    private string? _uploadError;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _application = await db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            _disbursed = _application.Disbursed;
+            await LoadAsync(db);
+        }
+
+        _loading = false;
+    }
+
+    private async Task LoadAsync(LosDbContext db)
+    {
+        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+
+        _decision = await db.ApprovalDecisions.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
+
+        _charges = await db.Charges.AsNoTracking()
+            .Where(c => c.ApplicationId == ApplicationId).ToListAsync();
+
+        var created = false;
+
+        _disbursement = await db.Disbursements.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
+            ?? Track(db.Disbursements, new Disbursement { ApplicationId = ApplicationId }, ref created);
+
+        _enach = await db.EnachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId)
+            ?? Track(db.EnachMandates, new EnachMandate { ApplicationId = ApplicationId }, ref created);
+
+        _snach = await db.SecurityNachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId)
+            ?? Track(db.SecurityNachMandates, new SecurityNachMandate { ApplicationId = ApplicationId }, ref created);
+
+        _downPayment = await db.DownPaymentRecords.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
+            ?? Track(db.DownPaymentRecords, new DownPaymentRecord { ApplicationId = ApplicationId }, ref created);
+
+        // Seeded once and only once — a reload must never re-create rows an officer has since edited.
+        if (!await db.PostSanctionChecklists.AnyAsync(c => c.ApplicationId == ApplicationId))
+        {
+            db.PostSanctionChecklists.AddRange(SeedChecklist());
+            created = true;
+        }
+
+        if (!await db.Pdds.AnyAsync(p => p.ApplicationId == ApplicationId))
+        {
+            db.Pdds.AddRange(SeedPdds());
+            created = true;
+        }
+
+        if (created)
+        {
+            await db.SaveChangesAsync();
+        }
+
+        _checklist = await db.PostSanctionChecklists.AsNoTracking()
+            .Where(c => c.ApplicationId == ApplicationId).OrderBy(c => c.Id).ToListAsync();
+
+        _pdds = await db.Pdds.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId).OrderBy(p => p.Id).ToListAsync();
+    }
+
+    private static T Track<T>(DbSet<T> set, T entity, ref bool created) where T : class
+    {
+        set.Add(entity);
+        created = true;
+        return entity;
+    }
+
+    /// <summary>The seven defined branch controls. The brief says nine exist; two are undefined.</summary>
+    private IEnumerable<PostSanctionChecklist> SeedChecklist()
+    {
+        yield return NewChecklistItem("CAM approval", "Credit head");
+        yield return NewChecklistItem("Rate & PF approval", "Business head");
+        yield return NewChecklistItem("Agreement executed", "Branch ops");
+        yield return NewChecklistItem("RC / hypothecation endorsement", "Branch ops");
+        yield return NewChecklistItem("Insurance assignment", "Branch ops");
+        yield return NewChecklistItem("E-Nach registration", "Branch ops");
+        yield return NewChecklistItem("Down payment receipt", "Cashier");
+    }
+
+    private PostSanctionChecklist NewChecklistItem(string item, string owner) => new()
+    {
+        ApplicationId = ApplicationId,
+        Item = item,
+        Owner = owner,
+    };
+
+    private IEnumerable<Pdd> SeedPdds()
+    {
+        yield return NewPdd("Registration certificate", "Branch ops");
+        yield return NewPdd("Invoice — original", "Branch ops");
+        yield return NewPdd("Guarantor re-verification", "Credit");
+        yield return NewPdd("Insurance endorsement copy", "Branch ops");
+    }
+
+    private Pdd NewPdd(string item, string responsible) => new()
+    {
+        ApplicationId = ApplicationId,
+        Item = item,
+        Responsible = responsible,
+    };
+
+    // ---------------------------------------------------------------------
+    // The release gate
+    // ---------------------------------------------------------------------
+
+    private int ClearedCount => _checklist.Count(c => c.Flag == "Cleared");
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // GATE COVERS ONLY 7 OF 9 INTENDED ITEMS. The other 2 checklist items are not
+    // yet defined (see Post Sanction content brief). The moment they are added to
+    // this table, this gate must require ALL rows including them — do not let this
+    // silently stay at 7 once 9 exist.
+    //
+    // Written against every row rather than a count of 7 precisely so that adding
+    // the missing items tightens the control automatically. Releasing funds is a
+    // real-money action; 7-of-7 is not "done" while the brief says there are 9.
+    // ─────────────────────────────────────────────────────────────────────────────
+    private bool ReleaseBlocked => _checklist.Count == 0 || _checklist.Any(c => c.Flag != "Cleared");
+
+    private string? ReleaseBlockedReason =>
+        ReleaseBlocked
+            ? $"{_checklist.Count - ClearedCount} checklist item(s) still pending."
+            : null;
+
+    // ---------------------------------------------------------------------
+    // Sanctioned terms — Stage 7's decision, not the originally requested figures
+    // ---------------------------------------------------------------------
+
+    private decimal SanctionedAmount => _decision?.SanctionedAmount ?? 0m;
+
+    private decimal SanctionedRoi => _decision?.SanctionedRoi ?? 0m;
+
+    private int SanctionedTenure => _decision?.SanctionedTenure ?? 0;
+
+    /// <summary>Stage 7's charges, waived rows excluded — the same rule the Charges tab totals use.</summary>
+    private decimal ChargesTotal => _charges.Where(c => !c.Waived).Sum(c => c.Amount + c.Gst);
+
+    /// <summary>
+    /// Computed on every render, never stored. Storing it would let it drift the moment a Stage 7
+    /// charge is edited or waived.
+    /// </summary>
+    private decimal NetDisbursement => SanctionedAmount - ChargesTotal;
+
+    private List<AmortizationRow> Schedule =>
+        _disbursement.FirstEmiDate is { } firstDue
+            ? LoanMath.Schedule(SanctionedAmount, SanctionedRoi, SanctionedTenure, firstDue)
+            : new List<AmortizationRow>();
+
+    // ---------------------------------------------------------------------
+    // Editing
+    // ---------------------------------------------------------------------
+
+    private void GoToDisbursementTab() => _activeTab = DisbursementTab;
+
+    /// <summary>Clearing a flag stamps the server date; reverting to Pending clears it again.</summary>
+    private void SetFlag(PostSanctionChecklist row, string? flag)
+    {
+        row.Flag = string.IsNullOrWhiteSpace(flag) ? "Pending" : flag;
+        row.ClearedOn = row.Flag == "Cleared" ? DateOnly.FromDateTime(DateTime.Now) : null;
+    }
+
+    /// <summary>Moving a PDD off Waived drops the approver — an approval cannot outlive its waiver.</summary>
+    private void SetPddStatus(Pdd row, string? status)
+    {
+        row.Status = string.IsNullOrWhiteSpace(status) ? "Open" : status;
+
+        if (row.Status != "Waived")
+        {
+            row.WaivedByOfficerId = null;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Uploads — same pattern as every other screen: outside wwwroot, served by /files
+    // ---------------------------------------------------------------------
+
+    private async Task UploadAsync(InputFileChangeEventArgs e, string slot)
+    {
+        _uploadError = null;
+        var file = e.File;
+
+        if (file is null || _application is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _uploadError = $"File is too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB.";
+            return;
+        }
+
+        var extension = Path.GetExtension(file.Name);
+        if (!AllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+        {
+            _uploadError = "Only PDF, JPG or PNG files are accepted.";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, "postsanction");
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"{slot}-{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+
+        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "postsanction", fileName);
+
+        // Persist everything the officer has typed before reloading, or an upload would discard it —
+        // the lesson from the Stage 5 report upload.
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await PersistAsync(db);
+
+        switch (slot)
+        {
+            case MemoSlot:
+                (await CurrentDisbursementAsync(db)).MemoFilePath = relativePath;
+                break;
+            case InsuranceSlot:
+                (await CurrentDisbursementAsync(db)).InsuranceFilePath = relativePath;
+                break;
+            case GeneralDocSlot:
+                (await CurrentDisbursementAsync(db)).GeneralDocFilePath = relativePath;
+                break;
+            case ReceiptSlot:
+                var record = await db.DownPaymentRecords.FirstAsync(d => d.ApplicationId == ApplicationId);
+                record.ReceiptFilePath = relativePath;
+                break;
+        }
+
+        await db.SaveChangesAsync();
+        await LoadAsync(db);
+
+        await ShowToastAsync("File uploaded");
+    }
+
+    private Task<Disbursement> CurrentDisbursementAsync(LosDbContext db) =>
+        db.Disbursements.FirstAsync(d => d.ApplicationId == ApplicationId);
+
+    private static string? FileNameOf(string? relativePath) =>
+        string.IsNullOrWhiteSpace(relativePath) ? null : Path.GetFileName(relativePath);
+
+    /// <summary>Maps a stored relative path onto the guarded /files endpoint built in Stage 4.</summary>
+    private string UrlFor(string relativePath) =>
+        $"/files/{ApplicationId}/postsanction/{Path.GetFileName(relativePath)}";
+
+    // ---------------------------------------------------------------------
+    // Release funds
+    // ---------------------------------------------------------------------
+
+    private async Task ReleaseFundsAsync()
+    {
+        // The button carries a real disabled attribute; this repeats the check so a crafted request
+        // cannot release funds against an unfinished checklist.
+        if (ReleaseBlocked || _application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        await PersistAsync(db);
+
+        var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
+        application.Disbursed = true;
+
+        // CurrentStage deliberately stays at 8 — this is the final stage, there is no Stage 9.
+
+        await db.SaveChangesAsync();
+
+        _disbursed = true;
+        await ShowToastAsync("Funds released");
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private async Task PersistAsync(LosDbContext db)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        var disbursement = await db.Disbursements.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
+        if (disbursement is null)
+        {
+            disbursement = new Disbursement { ApplicationId = ApplicationId };
+            db.Disbursements.Add(disbursement);
+        }
+
+        disbursement.Type = _disbursement.Type;
+        disbursement.BeneficiaryName = _disbursement.BeneficiaryName;
+        disbursement.BeneficiaryAccount = _disbursement.BeneficiaryAccount;
+        disbursement.PaymentMode = _disbursement.PaymentMode;
+        disbursement.ValueDate = _disbursement.ValueDate;
+        disbursement.Utr = _disbursement.Utr;
+        disbursement.FirstEmiDate = _disbursement.FirstEmiDate;
+
+        var enach = await db.EnachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
+        if (enach is null)
+        {
+            enach = new EnachMandate { ApplicationId = ApplicationId };
+            db.EnachMandates.Add(enach);
+        }
+
+        enach.Umrn = _enach.Umrn;
+        enach.Status = _enach.Status;
+        enach.DebitDate = _enach.DebitDate;
+        enach.LinkedAccount = _enach.LinkedAccount;
+
+        var snach = await db.SecurityNachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
+        if (snach is null)
+        {
+            snach = new SecurityNachMandate { ApplicationId = ApplicationId };
+            db.SecurityNachMandates.Add(snach);
+        }
+
+        snach.Umrn = _snach.Umrn;
+        snach.Status = _snach.Status;
+        snach.MandateHolder = _snach.MandateHolder;
+
+        var downPayment = await db.DownPaymentRecords.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
+        if (downPayment is null)
+        {
+            downPayment = new DownPaymentRecord { ApplicationId = ApplicationId };
+            db.DownPaymentRecords.Add(downPayment);
+        }
+
+        downPayment.AmountReceived = _downPayment.AmountReceived;
+        downPayment.ReceiptNo = _downPayment.ReceiptNo;
+        downPayment.ReceivedDate = _downPayment.ReceivedDate;
+
+        // Checklist and PDD rows are seeded, never added or removed by the officer, so these are
+        // straight field updates rather than the insert/update/delete diff the earlier stages need.
+        var storedChecklist = await db.PostSanctionChecklists
+            .Where(c => c.ApplicationId == ApplicationId).ToListAsync();
+
+        foreach (var row in _checklist)
+        {
+            var target = storedChecklist.FirstOrDefault(c => c.Id == row.Id);
+            if (target is null)
+            {
+                continue;
+            }
+
+            target.Flag = row.Flag;
+            target.ClearedOn = row.ClearedOn;
+            target.Remarks = row.Remarks;
+        }
+
+        var storedPdds = await db.Pdds.Where(p => p.ApplicationId == ApplicationId).ToListAsync();
+
+        foreach (var row in _pdds)
+        {
+            var target = storedPdds.FirstOrDefault(p => p.Id == row.Id);
+            if (target is null)
+            {
+                continue;
+            }
+
+            target.Status = row.Status;
+            target.WaivedByOfficerId = row.WaivedByOfficerId;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Presentation helpers
+    // ---------------------------------------------------------------------
+
+    private static string BandFor(string status) => status switch
+    {
+        "Registered" => "healthy",
+        "Rejected" => "risk",
+        _ => "caution",
+    };
+
+    private static string PddBandFor(string status) => status switch
+    {
+        "Received" => "healthy",
+        "Waived" => "caution",
+        _ => "risk",
+    };
+
+    private static string FormatInr(decimal amount) =>
+        "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", IndianCulture);
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Explicit render — see the note in CustomerDetails.razor; without it the toast is set and
+        // cleared between the only two renders an async handler triggers.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+}

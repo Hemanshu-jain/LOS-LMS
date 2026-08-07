@@ -1,0 +1,1005 @@
+@page "/applications/{ApplicationId}/customer-details"
+@using System.Globalization
+@using System.Text.RegularExpressions
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment HostEnvironment
+
+<PageTitle>Customer Details · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">
+                No application exists with the reference <strong>@ApplicationId</strong>.
+                It may have been deleted, or the link may be wrong.
+            </p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    var party = ActiveParty;
+    var sections = ActiveSections;
+
+    <div class="stage-page">
+        <div class="stage-card">
+
+            <StageSubHeader ApplicationId="@_application.Id"
+                            CompleteBlocked="@(BlockedReason is not null)"
+                            BlockedReason="@BlockedReason"
+                            OnSaveDraft="SaveDraftAsync"
+                            OnCompleteStage="CompleteStageAsync" />
+
+            <div class="stepper-band">
+                @* Always 1 on this page: this screen is stage 1 regardless of how far the
+                   application has progressed. *@
+                <StageStepper CurrentStep="1" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">02</span>
+                        <span class="stage-title-text">STAGE 1 — CUSTOMER DETAILS</span>
+                        <span class="stage-title-of">Stage 1 of 8</span>
+                    </div>
+
+                    <div class="party-tabs" role="tablist" aria-label="Party">
+                        @foreach (var tab in PartyTabs)
+                        {
+                            <button type="button" role="tab"
+                                    class="party-tab @(_activeTab == tab.Key ? "is-active" : null)"
+                                    aria-selected="@(_activeTab == tab.Key)"
+                                    @onclick="() => SelectTab(tab.Key)">
+                                @tab.Label
+                            </button>
+                        }
+                    </div>
+
+                    @* ---------- Personal information ---------- *@
+                    <CollapsibleSection Title="Personal information"
+                                        Collapsed="sections.PersonalCollapsed"
+                                        SummaryText="@(party.IsPersonalComplete ? "8 fields · complete" : null)"
+                                        OnToggle="() => TogglePersonal()">
+                        <div class="personal-layout">
+                            <div class="photo-block">
+                                <div class="photo-frame">
+                                    @if (party.PhotoPreview is not null)
+                                    {
+                                        <img src="@party.PhotoPreview" alt="Selected photograph" class="photo-preview" />
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(party.PhotoPath))
+                                    {
+                                        <span class="photo-onfile">On file<br />@Path.GetFileName(party.PhotoPath)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="photo-empty">Photo</span>
+                                    }
+                                </div>
+                                <label class="upload-button">
+                                    Capture / upload
+                                    @* Live camera capture is out of scope this pass — file upload only. *@
+                                    <InputFile class="visually-hidden" accept="image/*"
+                                               OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.Photo))" />
+                                </label>
+                            </div>
+
+                            <div class="field-grid">
+                                <FormField Label="Full name (as per PAN)" For="personal-fullname">
+                                    <input id="personal-fullname" type="text" class="field-input"
+                                           @bind="party.FullName" @bind:after="EvaluateAutoCollapse" />
+                                </FormField>
+
+                                <FormField Label="Date of birth" For="personal-dob">
+                                    <input id="personal-dob" type="date" class="field-input"
+                                           @bind="party.DateOfBirth" @bind:after="EvaluateAutoCollapse" />
+                                </FormField>
+
+                                <FormField Label="Gender" For="personal-gender">
+                                    <select id="personal-gender" class="field-input"
+                                            @bind="party.Gender" @bind:after="EvaluateAutoCollapse">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in GenderOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Marital status" For="personal-marital">
+                                    <select id="personal-marital" class="field-input"
+                                            @bind="party.MaritalStatus" @bind:after="EvaluateAutoCollapse">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in MaritalOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Father / spouse name" For="personal-father">
+                                    <input id="personal-father" type="text" class="field-input"
+                                           @bind="party.FatherSpouseName" @bind:after="EvaluateAutoCollapse" />
+                                </FormField>
+
+                                <FormField Label="Customer category" For="personal-category">
+                                    <select id="personal-category" class="field-input"
+                                            @bind="party.CustomerCategory" @bind:after="EvaluateAutoCollapse">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in CategoryOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Nationality" For="personal-nationality">
+                                    <select id="personal-nationality" class="field-input"
+                                            @bind="party.Nationality" @bind:after="EvaluateAutoCollapse">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in NationalityOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Mother tongue" For="personal-tongue">
+                                    <select id="personal-tongue" class="field-input"
+                                            @bind="party.MotherTongue" @bind:after="EvaluateAutoCollapse">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in TongueOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+                            </div>
+                        </div>
+                    </CollapsibleSection>
+
+                    @* ---------- Identity + Gates ---------- *@
+                    <div class="panel-pair">
+                        <div class="panel">
+                            <div class="panel-header"><span class="panel-title">Identity · OCR verify</span></div>
+                            <div class="panel-body">
+                                <div class="identity-row">
+                                    <FormField Label="PAN" For="identity-pan" Error="@ErrorFor("pan")">
+                                        <input id="identity-pan" type="text" class="field-input" maxlength="10"
+                                               value="@party.Pan"
+                                               @oninput="e => party.Pan = Upper(e.Value)"
+                                               @onblur='() => Validate("pan")' />
+                                    </FormField>
+                                    <button type="button" class="verify-button" @onclick='() => NotConfigured("pan-ocr", PanOcrUnavailable)'>Verify OCR</button>
+                                </div>
+                                @if (_notices.TryGetValue("pan-ocr", out var panNotice))
+                                {
+                                    <p class="inline-error" role="alert">@panNotice</p>
+                                }
+
+                                <div class="identity-row">
+                                    <FormField Label="Aadhaar" For="identity-aadhaar" Error="@ErrorFor("aadhaar")">
+                                        @* Masked once valid and unfocused; the real value stays in state and in the
+                                           database, and comes back on focus so it stays editable. *@
+                                        <input id="identity-aadhaar" type="text" class="field-input" maxlength="12"
+                                               value="@AadhaarDisplay(party)"
+                                               @onfocus="() => _aadhaarFocused = true"
+                                               @oninput="e => party.Aadhaar = e.Value?.ToString()"
+                                               @onblur='() => { _aadhaarFocused = false; Validate("aadhaar"); }' />
+                                    </FormField>
+                                    <button type="button" class="verify-button" @onclick='() => NotConfigured("aadhaar-ocr", AadhaarOcrUnavailable)'>Verify OCR</button>
+                                </div>
+                                @if (_notices.TryGetValue("aadhaar-ocr", out var aadhaarNotice))
+                                {
+                                    <p class="inline-error" role="alert">@aadhaarNotice</p>
+                                }
+
+                                <div class="panel-divider"></div>
+
+                                <div class="scan-row">
+                                    <label class="scan-drop">
+                                        <span>@ScanLabel("PAN card scan", party.PanScanPath)</span>
+                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.PanScan))" />
+                                    </label>
+                                    <label class="scan-drop">
+                                        <span>@ScanLabel("Aadhaar scan", party.AadhaarScanPath)</span>
+                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AadhaarScan))" />
+                                    </label>
+                                </div>
+                                @if (_uploadError is not null)
+                                {
+                                    <p class="inline-error" role="alert">@_uploadError</p>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="panel">
+                            <div class="panel-header"><span class="panel-title">Gates</span></div>
+                            <div class="panel-body">
+                                <div class="gate gate-@DedupeClass(party.DedupeStatus)">
+                                    <span class="gate-label">Dedupe check</span>
+                                    <span class="gate-value">@DedupeText(party.DedupeStatus)</span>
+                                    <span class="gate-note">Blocks stage completion when a match exists</span>
+                                </div>
+
+                                <div class="gate gate-inactive">
+                                    <span class="gate-label">Video KYC</span>
+                                    <span class="gate-note">Not initiated · agent-assisted call</span>
+                                    <button type="button" class="verify-button is-block"
+                                            @onclick='() => NotConfigured("video-kyc", VideoKycUnavailable)'>
+                                        Start video KYC
+                                    </button>
+                                    @if (_notices.TryGetValue("video-kyc", out var kycNotice))
+                                    {
+                                        <p class="inline-error" role="alert">@kycNotice</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* ---------- Contact details ---------- *@
+                    <CollapsibleSection Title="Contact details"
+                                        Collapsed="sections.ContactCollapsed"
+                                        SummaryText="@(party.IsContactComplete ? "10 fields · complete" : null)"
+                                        OnToggle="() => ToggleContact()">
+                        <div class="field-grid">
+                            <FormField Label="Mobile" For="contact-mobile" Error="@ErrorFor("mobile")" Verified="party.MobileVerified">
+                                <div class="inline-input-row">
+                                    <input id="contact-mobile" type="tel" class="field-input" maxlength="10"
+                                           @bind="party.Mobile" @bind:after="AfterContactChanged" @onblur='() => Validate("mobile")' />
+                                    <button type="button" class="verify-button" @onclick='() => NotConfigured("mobile-verify", MobileVerifyUnavailable)'>Verify</button>
+                                </div>
+                            </FormField>
+
+                            <FormField Label="Alternate mobile" For="contact-altmobile" Error="@ErrorFor("altMobile")">
+                                <input id="contact-altmobile" type="tel" class="field-input" maxlength="10"
+                                       @bind="party.AltMobile" @bind:after="AfterContactChanged" @onblur='() => Validate("altMobile")' />
+                            </FormField>
+
+                            <FormField Label="Email" For="contact-email" Error="@ErrorFor("email")">
+                                <input id="contact-email" type="email" class="field-input"
+                                       @bind="party.Email" @bind:after="AfterContactChanged" @onblur='() => Validate("email")' />
+                            </FormField>
+
+                            <FormField Label="Address line 1" For="contact-address1">
+                                <input id="contact-address1" type="text" class="field-input"
+                                       @bind="party.Address1" @bind:after="AfterContactChanged" />
+                            </FormField>
+
+                            <FormField Label="Address line 2" For="contact-address2">
+                                <input id="contact-address2" type="text" class="field-input"
+                                       @bind="party.Address2" @bind:after="AfterContactChanged" />
+                            </FormField>
+
+                            <FormField Label="City" For="contact-city">
+                                <input id="contact-city" type="text" class="field-input"
+                                       @bind="party.City" @bind:after="AfterContactChanged" />
+                            </FormField>
+
+                            <FormField Label="State" For="contact-state">
+                                <select id="contact-state" class="field-input"
+                                        @bind="party.State" @bind:after="AfterContactChanged">
+                                    <option value="">@BlankOption</option>
+                                    @foreach (var o in StateOptions) { <option value="@o">@o</option> }
+                                </select>
+                            </FormField>
+
+                            <FormField Label="PIN code" For="contact-pin" Error="@ErrorFor("pinCode")">
+                                <input id="contact-pin" type="text" class="field-input" maxlength="6"
+                                       @bind="party.PinCode" @bind:after="AfterContactChanged" @onblur='() => Validate("pinCode")' />
+                            </FormField>
+
+                            <FormField Label="Residence type" For="contact-residence">
+                                <select id="contact-residence" class="field-input"
+                                        @bind="party.ResidenceType" @bind:after="AfterContactChanged">
+                                    <option value="">@BlankOption</option>
+                                    @foreach (var o in ResidenceOptions) { <option value="@o">@o</option> }
+                                </select>
+                            </FormField>
+
+                            <FormField Label="Years at address" For="contact-years">
+                                <input id="contact-years" type="number" min="0" step="1" class="field-input"
+                                       @bind="party.YearsAtAddress" @bind:after="AfterContactChanged" />
+                            </FormField>
+                        </div>
+                    </CollapsibleSection>
+
+                    @* ---------- Employment details ---------- *@
+                    <CollapsibleSection Title="Employment details"
+                                        Collapsed="sections.EmploymentCollapsed"
+                                        SummaryText="@(party.IsEmploymentComplete ? "6 fields · complete" : null)"
+                                        OnToggle="() => ToggleEmployment()">
+                        <div class="field-grid">
+                            <FormField Label="Employment type" For="emp-type">
+                                <select id="emp-type" class="field-input" @bind="party.EmploymentType">
+                                    <option value="">@BlankOption</option>
+                                    @foreach (var o in EmploymentOptions) { <option value="@o">@o</option> }
+                                </select>
+                            </FormField>
+
+                            <FormField Label="Employer / Business name" For="emp-employer">
+                                <input id="emp-employer" type="text" class="field-input" @bind="party.EmployerName" />
+                            </FormField>
+
+                            <FormField Label="Designation / Nature of business" For="emp-designation">
+                                <input id="emp-designation" type="text" class="field-input" @bind="party.Designation" />
+                            </FormField>
+
+                            <FormField Label="Monthly income" For="emp-income">
+                                <input id="emp-income" type="number" min="0" step="0.01" class="field-input"
+                                       @bind="party.MonthlyIncome" />
+                                @if (party.MonthlyIncome.HasValue)
+                                {
+                                    <span class="field-hint">@FormatInr(party.MonthlyIncome.Value)</span>
+                                }
+                            </FormField>
+
+                            <FormField Label="Years in current job / business" For="emp-years">
+                                <input id="emp-years" type="number" min="0" step="1" class="field-input"
+                                       @bind="party.YearsInJob" />
+                            </FormField>
+
+                            <FormField Label="Office / business address" For="emp-address">
+                                <input id="emp-address" type="text" class="field-input" @bind="party.OfficeAddress" />
+                            </FormField>
+                        </div>
+                    </CollapsibleSection>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_toast is not null)
+    {
+        <div class="toast" role="status">@_toast</div>
+    }
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    // ---------------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------------
+
+    private const string BlankOption = "— Select —";
+
+    // No provider is configured for any of these. Each attempt reports that honestly and never
+    // sets a *Verified flag — a fake success here would be a compliance problem, not a shortcut.
+    private const string PanOcrUnavailable = "PAN verification unavailable — API key not configured. Enter and save manually.";
+    private const string AadhaarOcrUnavailable = "Aadhaar verification unavailable — API key not configured. Enter and save manually.";
+    private const string MobileVerifyUnavailable = "Mobile verification unavailable — SMS provider not configured.";
+    private const string VideoKycUnavailable = "Video KYC unavailable — service not configured yet.";
+
+    private const long MaxUploadBytes = 5 * 1024 * 1024;
+
+    private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
+
+    private static readonly (string Key, string Label)[] PartyTabs =
+    {
+        ("Applicant", "Applicant"),
+        ("CoApplicant", "Co-Applicant"),
+        ("Guarantor", "Guarantor"),
+    };
+
+    private static readonly string[] GenderOptions = { "Male", "Female", "Other" };
+    private static readonly string[] MaritalOptions = { "Single", "Married", "Other" };
+    private static readonly string[] CategoryOptions = { "Individual", "Proprietorship", "Partnership firm", "Private limited company", "HUF" };
+    private static readonly string[] NationalityOptions = { "Indian", "Other" };
+    private static readonly string[] TongueOptions = { "Marathi", "Hindi", "English", "Other" };
+    private static readonly string[] StateOptions = { "Maharashtra", "Other" };
+    private static readonly string[] ResidenceOptions = { "Owned", "Rented", "Company provided" };
+    private static readonly string[] EmploymentOptions = { "Salaried", "Self-employed", "Business owner" };
+
+    private static readonly Regex PanPattern = new("^[A-Z]{5}[0-9]{4}[A-Z]$", RegexOptions.Compiled);
+    private static readonly Regex AadhaarPattern = new(@"^\d{12}$", RegexOptions.Compiled);
+    private static readonly Regex MobilePattern = new(@"^[6-9]\d{9}$", RegexOptions.Compiled);
+    private static readonly Regex PinPattern = new(@"^\d{6}$", RegexOptions.Compiled);
+    private static readonly Regex EmailPattern = new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.Compiled);
+
+    private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
+
+    private enum UploadKind { Photo, PanScan, AadhaarScan }
+
+    /// <summary>Per-party collapse state, so collapsing on one tab doesn't move another.</summary>
+    private sealed class SectionState
+    {
+        public bool PersonalCollapsed;
+        public bool ContactCollapsed;
+        public bool EmploymentCollapsed = true;   // starts collapsed, matching the wireframe
+        public bool PersonalAutoCollapsed;
+        public bool ContactAutoCollapsed;
+    }
+
+    // ---------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------
+
+    private Application? _application;
+    private bool _loading = true;
+    private string _activeTab = "Applicant";
+    private bool _aadhaarFocused;
+    private string? _uploadError;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    private readonly Dictionary<string, PartyForm> _parties = new();
+    private readonly Dictionary<string, SectionState> _sections = new();
+    private readonly Dictionary<string, string> _errors = new();
+    private readonly Dictionary<string, string> _notices = new();
+
+    private PartyForm ActiveParty => _parties[_activeTab];
+
+    private SectionState ActiveSections => _sections[_activeTab];
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        foreach (var (key, _) in PartyTabs)
+        {
+            _parties[key] = new PartyForm { PartyType = key };
+            _sections[key] = new SectionState();
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _application = await db.Applications
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            var existing = await db.Parties
+                .AsNoTracking()
+                .Where(p => p.ApplicationId == ApplicationId)
+                .ToListAsync();
+
+            foreach (var row in existing)
+            {
+                if (_parties.TryGetValue(row.PartyType, out var form))
+                {
+                    MapEntityToForm(row, form);
+                }
+            }
+        }
+
+        _loading = false;
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+
+    // ---------------------------------------------------------------------
+    // Tabs and sections
+    // ---------------------------------------------------------------------
+
+    private void SelectTab(string tab)
+    {
+        // Only changes which party renders. Nothing is copied or cleared, so each party's
+        // in-progress edits survive tab switching until a save writes all three.
+        _activeTab = tab;
+        _aadhaarFocused = false;
+        _errors.Clear();
+        _notices.Clear();
+        _uploadError = null;
+    }
+
+    private void TogglePersonal()
+    {
+        var s = ActiveSections;
+        s.PersonalCollapsed = !s.PersonalCollapsed;
+        // A manual toggle retires the one-shot auto-collapse, otherwise a completed section
+        // would snap shut again on the next keystroke and could never be reopened.
+        s.PersonalAutoCollapsed = true;
+    }
+
+    private void ToggleContact()
+    {
+        var s = ActiveSections;
+        s.ContactCollapsed = !s.ContactCollapsed;
+        s.ContactAutoCollapsed = true;
+    }
+
+    private void ToggleEmployment() => ActiveSections.EmploymentCollapsed = !ActiveSections.EmploymentCollapsed;
+
+    private void EvaluateAutoCollapse()
+    {
+        var party = ActiveParty;
+        var s = ActiveSections;
+
+        if (!s.PersonalAutoCollapsed && party.IsPersonalComplete)
+        {
+            s.PersonalCollapsed = true;
+            s.PersonalAutoCollapsed = true;
+        }
+    }
+
+    private void AfterContactChanged()
+    {
+        var party = ActiveParty;
+        var s = ActiveSections;
+
+        if (!s.ContactAutoCollapsed && party.IsContactComplete)
+        {
+            s.ContactCollapsed = true;
+            s.ContactAutoCollapsed = true;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Validation — inline only, never blocks a draft save
+    // ---------------------------------------------------------------------
+
+    private string? ErrorFor(string field) => _errors.GetValueOrDefault(ErrorKey(field));
+
+    private string ErrorKey(string field) => $"{_activeTab}.{field}";
+
+    private void Validate(string field)
+    {
+        var party = ActiveParty;
+        var key = ErrorKey(field);
+        _errors.Remove(key);
+
+        string? value = field switch
+        {
+            "pan" => party.Pan,
+            "aadhaar" => party.Aadhaar,
+            "mobile" => party.Mobile,
+            "altMobile" => party.AltMobile,
+            "email" => party.Email,
+            "pinCode" => party.PinCode,
+            _ => null,
+        };
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;   // blank is allowed while drafting
+        }
+
+        var message = field switch
+        {
+            "pan" when !PanPattern.IsMatch(value) => "PAN must be 5 letters, 4 digits, then 1 letter.",
+            "aadhaar" when !AadhaarPattern.IsMatch(value) => "Aadhaar must be exactly 12 digits.",
+            "mobile" when !MobilePattern.IsMatch(value) => "Mobile must be 10 digits starting 6-9.",
+            "altMobile" when !MobilePattern.IsMatch(value) => "Mobile must be 10 digits starting 6-9.",
+            "email" when !EmailPattern.IsMatch(value) => "Enter a valid email address.",
+            "pinCode" when !PinPattern.IsMatch(value) => "PIN code must be exactly 6 digits.",
+            _ => null,
+        };
+
+        if (message is not null)
+        {
+            _errors[key] = message;
+        }
+    }
+
+    private static string? Upper(object? value) => value?.ToString()?.ToUpperInvariant();
+
+    private string AadhaarDisplay(PartyForm party)
+    {
+        var value = party.Aadhaar;
+        if (_aadhaarFocused || string.IsNullOrWhiteSpace(value) || !AadhaarPattern.IsMatch(value))
+        {
+            return value ?? string.Empty;
+        }
+
+        return "•••• •••• " + value[^4..];
+    }
+
+    // ---------------------------------------------------------------------
+    // Unconfigured integrations
+    // ---------------------------------------------------------------------
+
+    private void NotConfigured(string key, string message) => _notices[key] = message;
+
+    // ---------------------------------------------------------------------
+    // Uploads
+    // ---------------------------------------------------------------------
+
+    private static string ScanLabel(string label, string? path) =>
+        string.IsNullOrWhiteSpace(path) ? label : $"{label} · {Path.GetFileName(path)}";
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e, PartyForm party, UploadKind kind)
+    {
+        _uploadError = null;
+        var file = e.File;
+
+        if (file is null || _application is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _uploadError = $"File is too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB.";
+            return;
+        }
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension))
+        {
+            _uploadError = "Unsupported file type. Use JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
+        if (kind == UploadKind.Photo && extension == ".pdf")
+        {
+            _uploadError = "The photograph must be an image file.";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        // Stored outside wwwroot on purpose: PAN and Aadhaar scans are PII, and anything under
+        // wwwroot is downloadable by anyone who guesses the URL. The client's filename is never
+        // used in the path — only its extension, after whitelisting.
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, party.PartyType);
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
+        var fullPath = Path.Combine(folder, fileName);
+        await File.WriteAllBytesAsync(fullPath, bytes);
+
+        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, party.PartyType, fileName);
+
+        switch (kind)
+        {
+            case UploadKind.Photo:
+                party.PhotoPath = relativePath;
+                // Preview is held in memory only, never written to the database.
+                party.PhotoPreview = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
+                break;
+            case UploadKind.PanScan:
+                party.PanScanPath = relativePath;
+                break;
+            case UploadKind.AadhaarScan:
+                party.AadhaarScanPath = relativePath;
+                break;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Stage completion gate
+    // ---------------------------------------------------------------------
+
+    /// <summary>Null when the stage may be completed; otherwise why it may not.</summary>
+    private string? BlockedReason
+    {
+        get
+        {
+            if (_application is null)
+            {
+                return "Application not loaded.";
+            }
+
+            var applicantReason = ReasonFor("Applicant", "Applicant", required: true);
+            if (applicantReason is not null)
+            {
+                return applicantReason;
+            }
+
+            foreach (var (key, label) in PartyTabs.Skip(1))
+            {
+                var reason = ReasonFor(key, label, required: false);
+                if (reason is not null)
+                {
+                    return reason;
+                }
+            }
+
+            return null;
+        }
+    }
+
+    private string? ReasonFor(string key, string label, bool required)
+    {
+        var party = _parties[key];
+
+        // A party with nothing entered is not part of this application and never blocks.
+        if (!required && !party.HasAnyData)
+        {
+            return null;
+        }
+
+        if (!party.IsPersonalComplete)
+        {
+            return $"{label}: personal information is incomplete.";
+        }
+
+        if (!party.IsContactComplete)
+        {
+            return $"{label}: contact details are incomplete.";
+        }
+
+        return party.DedupeStatus switch
+        {
+            "Pass" => null,
+            "Fail" => $"{label}: dedupe found a potential match — review required.",
+            _ => $"{label}: save the draft to run the dedupe check.",
+        };
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private async Task SaveDraftAsync()
+    {
+        await PersistAsync(completeStage: false);
+        await ShowToastAsync("Draft saved");
+    }
+
+    private async Task CompleteStageAsync()
+    {
+        // Defence in depth: the button carries a real disabled attribute, and the guard is
+        // repeated here so a crafted request cannot advance the stage either.
+        if (BlockedReason is not null)
+        {
+            return;
+        }
+
+        await PersistAsync(completeStage: true);
+        Navigation.NavigateTo($"/applications/{ApplicationId}/loan-security");
+    }
+
+    private async Task PersistAsync(bool completeStage)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var existing = await db.Parties
+            .Where(p => p.ApplicationId == _application.Id)
+            .ToListAsync();
+
+        var touched = new List<(PartyForm Form, Party Entity)>();
+
+        foreach (var (key, _) in PartyTabs)
+        {
+            var form = _parties[key];
+            var entity = existing.FirstOrDefault(p => p.PartyType == key);
+
+            // Nothing entered and nothing stored — leave the party out of the application.
+            if (entity is null && !form.HasAnyData)
+            {
+                continue;
+            }
+
+            if (entity is null)
+            {
+                entity = new Party { ApplicationId = _application.Id, PartyType = key };
+                db.Parties.Add(entity);
+            }
+
+            MapFormToEntity(form, entity);
+            touched.Add((form, entity));
+        }
+
+        // The party rows are written first so the dedupe query sees current values.
+        await db.SaveChangesAsync();
+
+        foreach (var (form, entity) in touched)
+        {
+            form.Id = entity.Id;
+            var status = await RunDedupeAsync(db, entity);
+            entity.DedupeStatus = status;
+            form.DedupeStatus = status;
+        }
+
+        var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
+
+        var applicantName = _parties["Applicant"].FullName;
+        if (!string.IsNullOrWhiteSpace(applicantName))
+        {
+            application.CustomerName = applicantName;
+        }
+
+        if (completeStage)
+        {
+            // Never move an application backwards. Revisiting a completed stage to correct a
+            // detail and clicking Complete stage must not undo later progress.
+            application.CurrentStage = Math.Max(application.CurrentStage, 2);
+
+            // First real progress off the starting line. Only "New" advances — a file already
+            // In progress (or further) keeps whatever status it has earned.
+            if (application.Status == "New")
+            {
+                application.Status = "In progress";
+            }
+        }
+
+        await db.SaveChangesAsync();
+
+        // Refresh the summary rail from what was actually stored.
+        _application = await db.Applications.AsNoTracking().FirstAsync(a => a.Id == application.Id);
+    }
+
+    /// <summary>
+    /// Looks for any other party — on any application — sharing this one's PAN, Aadhaar or mobile.
+    /// </summary>
+    /// <remarks>
+    /// Blank identifiers are skipped: matching on null would make every empty party a duplicate of
+    /// every other empty party. Three small queries rather than one composite predicate, because
+    /// this shape is guaranteed to translate to SQL and is obvious at a glance.
+    ///
+    /// The matched party is never surfaced to the officer — only that a match exists.
+    /// </remarks>
+    private static async Task<string> RunDedupeAsync(LosDbContext db, Party party)
+    {
+        var pan = Blank(party.Pan);
+        var aadhaar = Blank(party.Aadhaar);
+        var mobile = Blank(party.Mobile);
+
+        if (pan is not null && await db.Parties.AnyAsync(p => p.Id != party.Id && p.Pan == pan))
+        {
+            return "Fail";
+        }
+
+        if (aadhaar is not null && await db.Parties.AnyAsync(p => p.Id != party.Id && p.Aadhaar == aadhaar))
+        {
+            return "Fail";
+        }
+
+        if (mobile is not null && await db.Parties.AnyAsync(p => p.Id != party.Id && p.Mobile == mobile))
+        {
+            return "Fail";
+        }
+
+        return "Pass";
+    }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static void MapFormToEntity(PartyForm form, Party entity)
+    {
+        entity.FullName = form.FullName;
+        entity.DateOfBirth = form.DateOfBirth;
+        entity.Gender = form.Gender;
+        entity.MaritalStatus = form.MaritalStatus;
+        entity.FatherSpouseName = form.FatherSpouseName;
+        entity.CustomerCategory = form.CustomerCategory;
+        entity.Nationality = form.Nationality;
+        entity.MotherTongue = form.MotherTongue;
+
+        entity.Pan = form.Pan;
+        entity.Aadhaar = form.Aadhaar;
+        entity.PhotoPath = form.PhotoPath;
+        entity.PanScanPath = form.PanScanPath;
+        entity.AadhaarScanPath = form.AadhaarScanPath;
+
+        entity.Mobile = form.Mobile;
+        entity.AltMobile = form.AltMobile;
+        entity.Email = form.Email;
+        entity.Address1 = form.Address1;
+        entity.Address2 = form.Address2;
+        entity.City = form.City;
+        entity.State = form.State;
+        entity.PinCode = form.PinCode;
+        entity.ResidenceType = form.ResidenceType;
+        entity.YearsAtAddress = form.YearsAtAddress;
+
+        entity.EmploymentType = form.EmploymentType;
+        entity.EmployerName = form.EmployerName;
+        entity.Designation = form.Designation;
+        entity.MonthlyIncome = form.MonthlyIncome;
+        entity.YearsInJob = form.YearsInJob;
+        entity.OfficeAddress = form.OfficeAddress;
+
+        // The *Verified flags are intentionally not written from the form. Nothing in this build
+        // can legitimately set them, so they stay owned by the entity.
+    }
+
+    private static void MapEntityToForm(Party entity, PartyForm form)
+    {
+        form.Id = entity.Id;
+        form.FullName = entity.FullName;
+        form.DateOfBirth = entity.DateOfBirth;
+        form.Gender = entity.Gender;
+        form.MaritalStatus = entity.MaritalStatus;
+        form.FatherSpouseName = entity.FatherSpouseName;
+        form.CustomerCategory = entity.CustomerCategory;
+        form.Nationality = entity.Nationality;
+        form.MotherTongue = entity.MotherTongue;
+
+        form.Pan = entity.Pan;
+        form.Aadhaar = entity.Aadhaar;
+        form.PhotoPath = entity.PhotoPath;
+        form.PanScanPath = entity.PanScanPath;
+        form.AadhaarScanPath = entity.AadhaarScanPath;
+
+        form.Mobile = entity.Mobile;
+        form.AltMobile = entity.AltMobile;
+        form.Email = entity.Email;
+        form.Address1 = entity.Address1;
+        form.Address2 = entity.Address2;
+        form.City = entity.City;
+        form.State = entity.State;
+        form.PinCode = entity.PinCode;
+        form.ResidenceType = entity.ResidenceType;
+        form.YearsAtAddress = entity.YearsAtAddress;
+
+        form.EmploymentType = entity.EmploymentType;
+        form.EmployerName = entity.EmployerName;
+        form.Designation = entity.Designation;
+        form.MonthlyIncome = entity.MonthlyIncome;
+        form.YearsInJob = entity.YearsInJob;
+        form.OfficeAddress = entity.OfficeAddress;
+
+        form.DedupeStatus = entity.DedupeStatus;
+        form.PanVerified = entity.PanVerified;
+        form.AadhaarVerified = entity.AadhaarVerified;
+        form.MobileVerified = entity.MobileVerified;
+    }
+
+    // ---------------------------------------------------------------------
+    // Presentation helpers
+    // ---------------------------------------------------------------------
+
+    private static string DedupeClass(string status) => status switch
+    {
+        "Pass" => "pass",
+        "Fail" => "fail",
+        _ => "notrun",
+    };
+
+    private static string DedupeText(string status) => status switch
+    {
+        "Pass" => "✓ No match found — clear to proceed",
+        "Fail" => "✕ Potential match found — review required",
+        _ => "Not yet checked — save to run dedupe check.",
+    };
+
+    private static string FormatInr(decimal amount) => "₹" + amount.ToString("N0", IndianCulture);
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Render now, explicitly — see the matching note in LoanSecurity.razor. Without this the
+        // toast is set and cleared between the only two renders an async handler triggers.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+}

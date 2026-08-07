@@ -1,0 +1,853 @@
+@page "/applications/{ApplicationId}/bank-financial"
+@using System.Globalization
+@using System.Text.RegularExpressions
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment HostEnvironment
+@inject IJSRuntime JS
+
+<PageTitle>Bank &amp; Financial · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">
+                No application exists with the reference <strong>@ApplicationId</strong>.
+            </p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="stage-page">
+        <div class="stage-card">
+
+            @* No completion gate on this stage, matching Loan & Security.
+               TODO: confirm with Arun/client whether Stage 3 needs a real completion gate. *@
+            <StageSubHeader ApplicationId="@_application.Id"
+                            CompleteBlocked="false"
+                            OnSaveDraft="SaveDraftAsync"
+                            OnCompleteStage="CompleteStageAsync" />
+
+            <div class="stepper-band">
+                <StageStepper CurrentStep="3" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">04</span>
+                        <span class="stage-title-text">STAGE 3 — BANK &amp; FINANCIAL</span>
+                        <span class="stage-title-of">Stage 3 of 8</span>
+                    </div>
+
+                    <div class="bf-tabs" role="tablist" aria-label="Bank and financial sections">
+                        @foreach (var tab in Tabs)
+                        {
+                            <button type="button" role="tab"
+                                    class="bf-tab @(_activeTab == tab ? "is-active" : null)"
+                                    aria-selected="@(_activeTab == tab)"
+                                    @onclick="() => _activeTab = tab">@tab</button>
+                        }
+                    </div>
+
+                    @* ---------- Tab 1: Bank details ---------- *@
+                    @if (_activeTab == BankTab)
+                    {
+                        <Panel Title="Bank details">
+                            <div class="bank-layout">
+                                <div class="bank-fields">
+                                    <div class="field-grid">
+                                        <FormField Label="Bank name" For="bf-bankname">
+                                            @if (ResolvedBankName is { } resolved)
+                                            {
+                                                @* Read-only once the IFSC prefix resolves — nothing to pick. *@
+                                                <div id="bf-bankname" class="resolved-bank">@resolved</div>
+                                                <span class="field-caption">Auto-detected from IFSC</span>
+                                            }
+                                            else
+                                            {
+                                                <select id="bf-bankname" class="field-input" @bind="_bank.BankName">
+                                                    <option value="">@BlankOption</option>
+                                                    @foreach (var o in BankOptions) { <option value="@o">@o</option> }
+                                                </select>
+                                            }
+                                        </FormField>
+
+                                        <FormField Label="Account number" For="bf-account" Error="@ErrorFor("account")">
+                                            <input id="bf-account" type="text" class="field-input" maxlength="18"
+                                                   @bind="_bank.AccountNumber" @onblur='() => Validate("account")' />
+                                        </FormField>
+
+                                        <FormField Label="IFSC" For="bf-ifsc" Error="@ErrorFor("ifsc")">
+                                            @* oninput so the bank-name resolution happens as it is typed. *@
+                                            <input id="bf-ifsc" type="text" class="field-input" maxlength="11"
+                                                   value="@_bank.Ifsc"
+                                                   @oninput="e => _bank.Ifsc = Upper(e.Value)"
+                                                   @onblur='() => Validate("ifsc")' />
+                                        </FormField>
+
+                                        <FormField Label="Account type" For="bf-acctype">
+                                            <select id="bf-acctype" class="field-input" @bind="_bank.AccountType">
+                                                <option value="">@BlankOption</option>
+                                                @foreach (var o in AccountTypeOptions) { <option value="@o">@o</option> }
+                                            </select>
+                                        </FormField>
+
+                                        <FormField Label="Account holder name" For="bf-holder">
+                                            <input id="bf-holder" type="text" class="field-input" @bind="_bank.AccountHolderName" />
+                                        </FormField>
+
+                                        <FormField Label="Vintage with bank" For="bf-vintage">
+                                            <select id="bf-vintage" class="field-input" @bind="_bank.Vintage">
+                                                <option value="">@BlankOption</option>
+                                                @foreach (var o in VintageOptions) { <option value="@o">@o</option> }
+                                            </select>
+                                        </FormField>
+                                    </div>
+                                </div>
+
+                                <div class="pennydrop-card">
+                                    <span class="pennydrop-label">Penny-drop name match</span>
+
+                                    @if (_bank.PennyDropStatus == "Unavailable")
+                                    {
+                                        <span class="pennydrop-value is-unavailable">Unavailable — banking verification provider not configured</span>
+                                        <span class="pennydrop-note is-muted">Compared against KYC name from Stage 1</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="pennydrop-value">Not yet verified</span>
+                                        <span class="pennydrop-note">Compared against KYC name from Stage 1</span>
+                                        <button type="button" class="pennydrop-button" @onclick="RunPennyDrop">Run penny-drop check</button>
+                                    }
+                                </div>
+                            </div>
+                        </Panel>
+
+                        <Panel Title="Banking statements">
+                            <Right>
+                                <button type="button" class="small-button" @onclick="() => _showAddStatement = !_showAddStatement">
+                                    + Add statement period
+                                </button>
+                            </Right>
+                            <ChildContent>
+                                @if (_showAddStatement)
+                                {
+                                    <div class="add-statement">
+                                        <input type="text" class="field-input add-period" placeholder="e.g. Apr 2026"
+                                               aria-label="Statement period" @bind="_newPeriod" />
+                                        <label class="upload-target @(_newFilePath is null ? null : "is-filled")">
+                                            @(_newFileName ?? "Choose statement file")
+                                            <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                       OnChange="OnStatementFileSelectedAsync" />
+                                        </label>
+                                        <button type="button" class="small-button is-primary"
+                                                disabled="@(_newFilePath is null)"
+                                                @onclick="AddStatement">Add</button>
+                                        <button type="button" class="small-button" @onclick="CancelAddStatement">Cancel</button>
+                                    </div>
+                                    @if (_uploadError is not null)
+                                    {
+                                        <p class="inline-error" role="alert">@_uploadError</p>
+                                    }
+                                }
+
+                                <div class="statements-scroll">
+                                    <table class="statements-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Statement period</th>
+                                                <th>File</th>
+                                                <th>Uploaded on</th>
+                                                <th>Parsed</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var statement in _statements)
+                                            {
+                                                var current = statement;
+                                                <tr>
+                                                    <td>@Display(current.Period)</td>
+                                                    @* Filename only, not a link: statements are PII and live outside
+                                                       wwwroot, so serving them back needs an authenticated endpoint
+                                                       that does not exist yet. *@
+                                                    <td class="cell-file">@Display(Path.GetFileName(current.FilePath))</td>
+                                                    <td class="cell-muted">@current.UploadedOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                                    <td><span class="chip">Not configured</span></td>
+                                                    <td>
+                                                        <button type="button" class="remove-link"
+                                                                @onclick="() => RemoveStatementAsync(current)">Remove</button>
+                                                    </td>
+                                                </tr>
+                                            }
+
+                                            @if (_statements.Count == 0)
+                                            {
+                                                <tr>
+                                                    <td class="empty-row" colspan="5">No statements uploaded yet.</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </ChildContent>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 2: CAM ---------- *@
+                    @if (_activeTab == CamTab)
+                    {
+                        <Panel Title="CAM · credit appraisal memo">
+                            <Right>
+                                <div class="cam-actions">
+                                    <button type="button" class="link-action" @onclick="() => _showSchedule = true">
+                                        Repayment schedule
+                                    </button>
+                                    <button type="button" class="link-action"
+                                            disabled="@(!HasRecalculated)"
+                                            title="@(HasRecalculated ? null : "Run Recalculate CAM first")"
+                                            @onclick="DownloadCamAsync">CAM.pdf</button>
+                                </div>
+                            </Right>
+                            <ChildContent>
+                                <div class="cam-layout">
+                                    <div class="cam-breakdown">
+                                        <span class="section-label">Cost breakdown</span>
+                                        <table class="cam-table">
+                                            <tbody>
+                                                <tr class="is-editable">
+                                                    <td>Ex-showroom cost</td>
+                                                    <td class="align-right">
+                                                        <div class="currency-input">
+                                                            <span class="currency-symbol">₹</span>
+                                                            <input type="number" min="0" step="1" class="cam-input"
+                                                                   aria-label="Ex-showroom cost"
+                                                                   @bind="_cam.DraftExShowroomCost" @bind:event="oninput" />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                <tr class="is-editable">
+                                                    <td>Body / accessories</td>
+                                                    <td class="align-right">
+                                                        <div class="currency-input">
+                                                            <span class="currency-symbol">₹</span>
+                                                            <input type="number" min="0" step="1" class="cam-input"
+                                                                   aria-label="Body and accessories"
+                                                                   @bind="_cam.DraftBodyAccessories" @bind:event="oninput" />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                <tr class="is-editable">
+                                                    <td>Insurance &amp; registration</td>
+                                                    <td class="align-right">
+                                                        <div class="currency-input">
+                                                            <span class="currency-symbol">₹</span>
+                                                            <input type="number" min="0" step="1" class="cam-input"
+                                                                   aria-label="Insurance and registration"
+                                                                   @bind="_cam.DraftInsuranceRegistration" @bind:event="oninput" />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>On-road cost</td>
+                                                    <td class="align-right cam-value">@FormatInr(OnRoadCost)</td>
+                                                </tr>
+                                                <tr class="is-editable">
+                                                    <td>Margin / down payment</td>
+                                                    <td class="align-right">
+                                                        <div class="currency-input">
+                                                            <span class="currency-symbol">₹</span>
+                                                            <input type="number" min="0" step="1" class="cam-input"
+                                                                   aria-label="Margin or down payment"
+                                                                   @bind="_cam.DraftMargin" @bind:event="oninput" />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Processing fee</td>
+                                                    <td class="align-right">
+                                                        <span class="cam-value">@FormatInr(_application.ProcessingFee ?? 0m)</span>
+                                                        @if (ProcessingFeePercent is { } pct)
+                                                        {
+                                                            <span class="cam-extra">(@pct.ToString("0.#", CultureInfo.InvariantCulture)% of loan amount)</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Loan amount</td>
+                                                    <td class="align-right cam-value">@FormatInr(_application.LoanAmount)</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>LTV on on-road cost</td>
+                                                    <td class="align-right cam-value ltv-@LtvBand">@LtvDisplay</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+
+                                        @if (CamDirty)
+                                        {
+                                            <span class="cam-dirty">● Unsaved changes — click Recalculate CAM to apply</span>
+                                        }
+                                    </div>
+
+                                    <div class="cam-summary">
+                                        <span class="section-label">Sanction summary</span>
+                                        <div class="tile-grid">
+                                            <div class="tile">
+                                                <span class="tile-label">EMI</span>
+                                                <span class="tile-value">@FormatInr(Emi)</span>
+                                            </div>
+                                            <div class="tile">
+                                                <span class="tile-label">ROI</span>
+                                                <span class="tile-value">@(_application.Roi.HasValue ? _application.Roi.Value.ToString("0.##", CultureInfo.InvariantCulture) + " %" : "—")</span>
+                                            </div>
+                                            <div class="tile">
+                                                <span class="tile-label">Term</span>
+                                                <span class="tile-value">@(_application.Tenure.HasValue ? _application.Tenure.Value + " mo" : "—")</span>
+                                            </div>
+                                            <div class="tile tile-@LtvBand">
+                                                <span class="tile-label">LTV</span>
+                                                <span class="tile-value">@LtvDisplay</span>
+                                            </div>
+                                        </div>
+
+                                        <button type="button" class="recalc-button @(CamDirty ? "is-dirty" : null)"
+                                                @onclick="RecalculateAsync">Recalculate CAM</button>
+                                    </div>
+                                </div>
+                            </ChildContent>
+                        </Panel>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_showSchedule)
+    {
+        <RepaymentScheduleModal Principal="_application.LoanAmount"
+                                AnnualRatePct="@(_application.Roi ?? 0m)"
+                                Months="@(_application.Tenure ?? 0)"
+                                OnClose="() => _showSchedule = false" />
+    }
+
+    @if (_toast is not null)
+    {
+        <div class="toast" role="status">@_toast</div>
+    }
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    // ---------------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------------
+
+    private const string BlankOption = "— Select —";
+    private const string BankTab = "Bank Details";
+    private const string CamTab = "CAM";
+    private const long MaxUploadBytes = 10 * 1024 * 1024;
+
+    // PLACEHOLDER thresholds, same shape as Stage 2's FOIR bands and equally unconfirmed —
+    // verify the real LTV risk cutoffs with Arun/the client before these drive any decision.
+    private const decimal LtvHealthyMax = 75m;
+    private const decimal LtvCautionMax = 90m;
+
+    private const string PennyDropUnavailable = "Unavailable — banking verification provider not configured";
+
+    private static readonly string[] Tabs = { BankTab, CamTab };
+    private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
+
+    private static readonly string[] BankOptions =
+    {
+        "HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank",
+        "Bank of Baroda", "Punjab National Bank", "Other",
+    };
+
+    private static readonly string[] AccountTypeOptions = { "Savings", "Current" };
+    private static readonly string[] VintageOptions = { "< 1 year", "1–3 years", "3–5 years", "5+ years" };
+
+    private static readonly Regex AccountPattern = new(@"^\d{9,18}$", RegexOptions.Compiled);
+    private static readonly Regex IfscPattern = new("^[A-Z]{4}0[A-Z0-9]{6}$", RegexOptions.Compiled);
+
+    private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
+
+    // ---------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------
+
+    private Application? _application;
+    private bool _loading = true;
+    private string _activeTab = BankTab;
+
+    private BankDetail _bank = new();
+    private List<BankStatement> _statements = new();
+    private CamCostBreakdown _cam = new();
+    private Dictionary<string, string> _ifscLookup = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _showAddStatement;
+    private string? _newPeriod;
+    private string? _newFilePath;
+    private string? _newFileName;
+
+    private bool _showSchedule;
+    private string? _uploadError;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    private readonly Dictionary<string, string> _errors = new();
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _application = await db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            _bank = await db.BankDetails.AsNoTracking()
+                .FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId)
+                ?? new BankDetail { ApplicationId = ApplicationId };
+
+            _statements = await db.BankStatements.AsNoTracking()
+                .Where(s => s.ApplicationId == ApplicationId)
+                .OrderBy(s => s.Id)
+                .ToListAsync();
+
+            _cam = await db.CamCostBreakdowns.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.ApplicationId == ApplicationId)
+                ?? new CamCostBreakdown { ApplicationId = ApplicationId };
+
+            _ifscLookup = await db.IfscBankLookups.AsNoTracking()
+                .ToDictionaryAsync(i => i.IfscPrefix, i => i.BankName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        _loading = false;
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+
+    // ---------------------------------------------------------------------
+    // Derived values
+    // ---------------------------------------------------------------------
+
+    /// <summary>Bank name resolved from the IFSC prefix, or null when the prefix is unknown.</summary>
+    private string? ResolvedBankName
+    {
+        get
+        {
+            var ifsc = _bank.Ifsc;
+            if (string.IsNullOrWhiteSpace(ifsc) || ifsc.Length < 4)
+            {
+                return null;
+            }
+
+            return _ifscLookup.GetValueOrDefault(ifsc[..4]);
+        }
+    }
+
+    // Applied, never Draft — editing a draft must not move any computed figure until Recalculate.
+    private decimal OnRoadCost =>
+        (_cam.AppliedExShowroomCost ?? 0m)
+        + (_cam.AppliedBodyAccessories ?? 0m)
+        + (_cam.AppliedInsuranceRegistration ?? 0m);
+
+    private decimal? Ltv =>
+        OnRoadCost > 0 && _application is not null ? _application.LoanAmount / OnRoadCost * 100m : null;
+
+    /// <remarks>
+    /// Deliberately "—" rather than the reference file's literal 0 when there is no on-road cost.
+    /// A green 0% LTV on a CAM that was never recalculated reads as a healthy risk figure when it
+    /// actually means "not computed".
+    /// </remarks>
+    private string LtvDisplay =>
+        Ltv is { } value ? value.ToString("0", CultureInfo.InvariantCulture) + " %" : "—";
+
+    private string LtvBand => Ltv switch
+    {
+        null => "none",
+        <= LtvHealthyMax => "healthy",
+        <= LtvCautionMax => "caution",
+        _ => "risk",
+    };
+
+    private bool CamDirty =>
+        (_cam.DraftExShowroomCost ?? 0m) != (_cam.AppliedExShowroomCost ?? 0m)
+        || (_cam.DraftBodyAccessories ?? 0m) != (_cam.AppliedBodyAccessories ?? 0m)
+        || (_cam.DraftInsuranceRegistration ?? 0m) != (_cam.AppliedInsuranceRegistration ?? 0m)
+        || (_cam.DraftMargin ?? 0m) != (_cam.AppliedMargin ?? 0m);
+
+    private bool HasRecalculated => _cam.LastRecalculatedAt is not null;
+
+    private decimal Emi => _application is null
+        ? 0m
+        : LoanMath.Emi(_application.LoanAmount, _application.Roi ?? 0m, _application.Tenure ?? 0);
+
+    /// <summary>Display-only. Never stored — the fee itself comes from Loan &amp; Security.</summary>
+    private decimal? ProcessingFeePercent =>
+        _application is { LoanAmount: > 0m } && _application.ProcessingFee is { } fee
+            ? fee / _application.LoanAmount * 100m
+            : null;
+
+    // ---------------------------------------------------------------------
+    // Validation — inline only, never blocks a draft save
+    // ---------------------------------------------------------------------
+
+    private string? ErrorFor(string field) => _errors.GetValueOrDefault(field);
+
+    private void Validate(string field)
+    {
+        _errors.Remove(field);
+
+        var value = field == "account" ? _bank.AccountNumber : _bank.Ifsc;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var message = field switch
+        {
+            "account" when !AccountPattern.IsMatch(value) => "Account number must be 9–18 digits.",
+            "ifsc" when !IfscPattern.IsMatch(value) => "IFSC must be 4 letters, 0, then 6 letters or digits.",
+            _ => null,
+        };
+
+        if (message is not null)
+        {
+            _errors[field] = message;
+        }
+    }
+
+    private static string? Upper(object? value) => value?.ToString()?.ToUpperInvariant();
+
+    // ---------------------------------------------------------------------
+    // Penny drop
+    // ---------------------------------------------------------------------
+
+    /// <remarks>
+    /// No provider is configured, so this reports unavailable and nothing else. It must never set
+    /// Matched — a fabricated name match on a lending file is worse than no check at all.
+    /// The run button then disappears; there is nothing to retry until a real provider exists.
+    /// </remarks>
+    private void RunPennyDrop()
+    {
+        _bank.PennyDropStatus = "Unavailable";
+        _bank.PennyDropCheckedAt = DateTime.UtcNow;
+    }
+
+    // ---------------------------------------------------------------------
+    // Statements
+    // ---------------------------------------------------------------------
+
+    private async Task OnStatementFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _uploadError = null;
+        var file = e.File;
+
+        if (file is null || _application is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _uploadError = $"File is too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB.";
+            return;
+        }
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension))
+        {
+            _uploadError = "Unsupported file type. Use JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        // Outside wwwroot: bank statements are PII and anything under wwwroot is downloadable by
+        // anyone who guesses the URL. The client filename is never used in the path.
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, "statements");
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"statement-{Guid.NewGuid():N}{extension}";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+
+        _newFilePath = Path.Combine("App_Data", "uploads", _application.Id, "statements", fileName);
+        _newFileName = file.Name;
+    }
+
+    private void AddStatement()
+    {
+        if (_newFilePath is null || _application is null)
+        {
+            return;
+        }
+
+        _statements.Add(new BankStatement
+        {
+            ApplicationId = _application.Id,
+            Period = _newPeriod,
+            FilePath = _newFilePath,
+            UploadedOn = DateTime.UtcNow,
+        });
+
+        CancelAddStatement();
+    }
+
+    private void CancelAddStatement()
+    {
+        _showAddStatement = false;
+        _newPeriod = null;
+        _newFilePath = null;
+        _newFileName = null;
+        _uploadError = null;
+    }
+
+    /// <remarks>
+    /// Deletes the row only. The file stays on disk — orphaned statement files need a retention
+    /// policy, which is recorded in OPEN-QUESTIONS-FOR-ARUN.md rather than guessed at here.
+    /// </remarks>
+    private async Task RemoveStatementAsync(BankStatement statement)
+    {
+        _statements.Remove(statement);
+
+        if (statement.Id == 0)
+        {
+            return;   // never persisted; removing it from the list is the whole job
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.BankStatements.FirstOrDefaultAsync(s => s.Id == statement.Id);
+        if (existing is not null)
+        {
+            db.BankStatements.Remove(existing);
+            await db.SaveChangesAsync();
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // CAM
+    // ---------------------------------------------------------------------
+
+    /// <remarks>
+    /// Persists immediately rather than waiting for Save draft. Recalculate is a deliberate "apply"
+    /// action and it is what unlocks CAM.pdf, so the stored state must match what the officer sees.
+    /// </remarks>
+    private async Task RecalculateAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var cam = await db.CamCostBreakdowns.FirstOrDefaultAsync(c => c.ApplicationId == _application.Id);
+        if (cam is null)
+        {
+            cam = new CamCostBreakdown { ApplicationId = _application.Id };
+            db.CamCostBreakdowns.Add(cam);
+        }
+
+        cam.DraftExShowroomCost = _cam.DraftExShowroomCost;
+        cam.DraftBodyAccessories = _cam.DraftBodyAccessories;
+        cam.DraftInsuranceRegistration = _cam.DraftInsuranceRegistration;
+        cam.DraftMargin = _cam.DraftMargin;
+
+        cam.AppliedExShowroomCost = _cam.DraftExShowroomCost;
+        cam.AppliedBodyAccessories = _cam.DraftBodyAccessories;
+        cam.AppliedInsuranceRegistration = _cam.DraftInsuranceRegistration;
+        cam.AppliedMargin = _cam.DraftMargin;
+
+        cam.LastRecalculatedAt = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        _cam.Id = cam.Id;
+        _cam.AppliedExShowroomCost = cam.AppliedExShowroomCost;
+        _cam.AppliedBodyAccessories = cam.AppliedBodyAccessories;
+        _cam.AppliedInsuranceRegistration = cam.AppliedInsuranceRegistration;
+        _cam.AppliedMargin = cam.AppliedMargin;
+        _cam.LastRecalculatedAt = cam.LastRecalculatedAt;
+
+        await ShowToastAsync("CAM recalculated");
+    }
+
+    private async Task DownloadCamAsync()
+    {
+        if (_application is null || !HasRecalculated)
+        {
+            return;
+        }
+
+        var pdf = CamPdf.Build(_application, _cam);
+
+        using var stream = new MemoryStream(pdf);
+        using var streamReference = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("downloadFileFromStream",
+            CamPdf.FileNameFor(_application), "application/pdf", streamReference);
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private async Task SaveDraftAsync()
+    {
+        await PersistAsync(completeStage: false);
+        await ShowToastAsync("Draft saved");
+    }
+
+    private async Task CompleteStageAsync()
+    {
+        await PersistAsync(completeStage: true);
+        Navigation.NavigateTo($"/applications/{ApplicationId}/document-checklist");
+    }
+
+    private async Task PersistAsync(bool completeStage)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var bank = await db.BankDetails.FirstOrDefaultAsync(b => b.ApplicationId == _application.Id);
+        if (bank is null)
+        {
+            bank = new BankDetail { ApplicationId = _application.Id };
+            db.BankDetails.Add(bank);
+        }
+
+        // Whichever control is on screen is what gets stored: the IFSC-resolved name when the
+        // prefix is known, otherwise the officer's manual pick.
+        bank.BankName = ResolvedBankName ?? _bank.BankName;
+        bank.AccountNumber = _bank.AccountNumber;
+        bank.Ifsc = _bank.Ifsc;
+        bank.AccountType = _bank.AccountType;
+        bank.AccountHolderName = _bank.AccountHolderName;
+        bank.Vintage = _bank.Vintage;
+        bank.PennyDropStatus = _bank.PennyDropStatus;
+        bank.PennyDropCheckedAt = _bank.PennyDropCheckedAt;
+
+        // Statements are additive — only rows that have never been persisted are inserted, so an
+        // unrelated save can never disturb a file already on record.
+        foreach (var statement in _statements.Where(s => s.Id == 0))
+        {
+            db.BankStatements.Add(new BankStatement
+            {
+                ApplicationId = _application.Id,
+                Period = statement.Period,
+                FilePath = statement.FilePath,
+                UploadedOn = statement.UploadedOn,
+            });
+        }
+
+        // Draft columns only. Applied and LastRecalculatedAt belong to Recalculate alone.
+        var cam = await db.CamCostBreakdowns.FirstOrDefaultAsync(c => c.ApplicationId == _application.Id);
+        if (cam is null)
+        {
+            cam = new CamCostBreakdown { ApplicationId = _application.Id };
+            db.CamCostBreakdowns.Add(cam);
+        }
+
+        cam.DraftExShowroomCost = _cam.DraftExShowroomCost;
+        cam.DraftBodyAccessories = _cam.DraftBodyAccessories;
+        cam.DraftInsuranceRegistration = _cam.DraftInsuranceRegistration;
+        cam.DraftMargin = _cam.DraftMargin;
+
+        if (completeStage)
+        {
+            var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
+            // Never move an application backwards — see CustomerDetails for the same guard.
+            application.CurrentStage = Math.Max(application.CurrentStage, 4);
+        }
+
+        await db.SaveChangesAsync();
+
+        _bank.Id = bank.Id;
+        _cam.Id = cam.Id;
+
+        // Reload so newly-inserted statements carry their database ids and are not inserted twice.
+        _statements = await db.BankStatements.AsNoTracking()
+            .Where(s => s.ApplicationId == _application.Id)
+            .OrderBy(s => s.Id)
+            .ToListAsync();
+    }
+
+    // ---------------------------------------------------------------------
+    // Presentation helpers
+    // ---------------------------------------------------------------------
+
+    private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    private static string FormatInr(decimal amount) =>
+        "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", IndianCulture);
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Explicit render — see the note in CustomerDetails.razor; without it the toast is set and
+        // cleared between the only two renders an async handler triggers.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+}

@@ -1,0 +1,863 @@
+@page "/applications/{ApplicationId}/document-checklist"
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment HostEnvironment
+@inject IJSRuntime JS
+
+<PageTitle>Document Checklist · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">No application exists with the reference <strong>@ApplicationId</strong>.</p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    var aggregate = AggregateCounts();
+    var counts = CountsFor(_activeTab);
+
+    <div class="stage-page">
+        <div class="stage-card">
+
+            @* No completion gate, matching Stages 2 and 3.
+               TODO: confirm with Arun/client whether Stage 4 needs a real completion gate. *@
+            <StageSubHeader ApplicationId="@_application.Id"
+                            CompleteBlocked="false"
+                            OnSaveDraft="SaveDraftAsync"
+                            OnCompleteStage="CompleteStageAsync" />
+
+            <div class="stepper-band">
+                <StageStepper CurrentStep="4" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">05</span>
+                        <span class="stage-title-text">STAGE 4 — DOCUMENT CHECKLIST</span>
+                        <span class="stage-title-of">Stage 4 of 8</span>
+                    </div>
+
+                    @* Cross-party totals, independent of which tab is active. *@
+                    <div class="aggregate-line">
+                        Across all parties: <strong>@aggregate.Collected collected</strong> ·
+                        <strong>@aggregate.Pending pending</strong>
+                        @if (aggregate.Overdue > 0)
+                        {
+                            <span> · <strong class="is-overdue">@aggregate.Overdue overdue</strong></span>
+                        }
+                    </div>
+
+                    <div class="party-tabs" role="tablist" aria-label="Party">
+                        @foreach (var party in VisibleParties)
+                        {
+                            <button type="button" role="tab"
+                                    class="party-tab @(_activeTab == party.Key ? "is-active" : null)"
+                                    aria-selected="@(_activeTab == party.Key)"
+                                    @onclick="() => _activeTab = party.Key">
+                                @party.Label
+                                @if (IsPartyComplete(party.Key))
+                                {
+                                    <span class="complete-tick" title="All documents collected">✓</span>
+                                }
+                            </button>
+                        }
+                    </div>
+
+                    <div class="counter-strip">
+                        <div class="counter-tile">
+                            <span class="counter-label">Collected</span>
+                            <span class="counter-value">@counts.Collected</span>
+                        </div>
+                        <div class="counter-tile">
+                            <span class="counter-label">Pending</span>
+                            <span class="counter-value">@counts.Pending</span>
+                        </div>
+                        <div class="counter-tile @(counts.Overdue > 0 ? "is-warn" : null)">
+                            <span class="counter-label">Overdue vs target</span>
+                            <span class="counter-value">@counts.Overdue</span>
+                        </div>
+                    </div>
+
+                    @* ---------- KYC documents ---------- *@
+                    <Panel Title="@($"KYC documents · {ActivePartyLabel}")">
+                        <Right>
+                            <div class="panel-links">
+                                <label class="link-action">
+                                    Bulk upload
+                                    <InputFile class="visually-hidden" multiple
+                                               accept="image/*,application/pdf"
+                                               OnChange="OnBulkFilesSelectedAsync" />
+                                </label>
+                                <button type="button" class="link-action" @onclick="PrintAsync">Print checklist</button>
+                            </div>
+                        </Right>
+                        <ChildContent>
+                            @if (_bulkInProgress)
+                            {
+                                @* Blazor Server streams file bytes over the SignalR circuit, so a
+                                   batch is not instant. *@
+                                <p class="bulk-progress" role="status">
+                                    Uploading @_bulkDone of @_bulkTotal…
+                                </p>
+                            }
+
+                            <div class="kyc-scroll">
+                                <table class="kyc-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Document name</th>
+                                            <th>Uploaded file</th>
+                                            <th>Upload date</th>
+                                            <th>Status</th>
+                                            <th>Target date</th>
+                                            <th>Remarks</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var kyc in KycTypes)
+                                        {
+                                            var type = kyc.Type;
+                                            var doc = _docs[_activeTab][type];
+                                            var status = DisplayStatus(_activeTab, type);
+                                            var chaseable = status != "Collected";
+                                            var overdue = chaseable && IsOverdue(doc);
+                                            var storedPath = FilePathFor(_activeTab, type);
+                                            var uploadedOn = UploadDateFor(_activeTab, type);
+
+                                            <tr>
+                                                <td class="cell-name">@kyc.Label</td>
+                                                <td class="cell-file @(storedPath is null ? "is-empty" : null)">
+                                                    @(storedPath is null ? "—" : Path.GetFileName(storedPath))
+                                                </td>
+                                                <td class="cell-muted">
+                                                    @(uploadedOn?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—")
+                                                </td>
+                                                <td>
+                                                    <span class="chip chip-@status.ToLowerInvariant()">@status</span>
+                                                    @if (overdue)
+                                                    {
+                                                        <span class="overdue-icon" title="Past target date">⚠</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (chaseable)
+                                                    {
+                                                        <input type="date" class="target-input"
+                                                               aria-label="@($"Target date for {kyc.Label}")"
+                                                               @bind="doc.TargetDate" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="is-empty">—</span>
+                                                    }
+                                                </td>
+                                                <td class="cell-remarks">
+                                                    @if (chaseable)
+                                                    {
+                                                        @foreach (var remark in RemarksFor(doc.Id))
+                                                        {
+                                                            <div class="remark-entry">
+                                                                <span class="remark-date">@remark.CreatedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span>
+                                                                — @remark.Text
+                                                            </div>
+                                                        }
+                                                        <div class="remark-add">
+                                                            <input type="text" class="remark-input" placeholder="Add a note…"
+                                                                   aria-label="@($"Add remark for {kyc.Label}")"
+                                                                   @bind="_remarkDrafts[doc.Id]" @bind:event="oninput"
+                                                                   @onkeydown="e => OnRemarkKeyDown(e, doc.Id)" />
+                                                            <button type="button" class="remark-button"
+                                                                    @onclick="() => AddRemark(doc.Id)">Add</button>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        @* Existing remark rows stay in the database; they are simply
+                                                           not shown once the document is collected. *@
+                                                        <span class="is-empty">—</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (!chaseable)
+                                                    {
+                                                        <button type="button" class="view-link"
+                                                                @onclick="() => OpenPreview(kyc.Label, storedPath, uploadedOn)">View</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <label class="upload-button">
+                                                            @(status == "Stale" ? "Re-upload" : "Upload")
+                                                            <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                                       OnChange="@(e => OnSingleFileSelectedAsync(e, type))" />
+                                                        </label>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            @if (_uploadError is not null)
+                            {
+                                <p class="inline-error" role="alert">@_uploadError</p>
+                            }
+                        </ChildContent>
+                    </Panel>
+
+                    @* ---------- Other documents ---------- *@
+                    <Panel Title="Other documents">
+                        <div class="other-grid">
+                            @foreach (var other in OtherTypes)
+                            {
+                                var type = other.Type;
+                                var storedPath = _docs[_activeTab][type].FilePath;
+
+                                <div class="other-card">
+                                    <span class="other-label">@other.Label</span>
+                                    <label class="other-target @(storedPath is null ? null : "is-filled")">
+                                        @(storedPath is null ? "Upload · PDF / JPG" : "✓ " + Path.GetFileName(storedPath))
+                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                   OnChange="@(e => OnSingleFileSelectedAsync(e, type))" />
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    </Panel>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_preview is { } preview)
+    {
+        <DocumentPreviewModal DocumentName="@preview.Name"
+                              FileUrl="@preview.Url"
+                              FileName="@preview.FileName"
+                              UploadedOn="@preview.UploadedOn"
+                              OnClose="() => _preview = null" />
+    }
+
+    @if (_toast is not null)
+    {
+        <div class="toast" role="status">@_toast</div>
+    }
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    // ---------------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------------
+
+    /// <summary>Only ever applied to Address, and only once Address is actually collected.</summary>
+    private const int AddressValidityDays = 90;
+
+    private const long MaxUploadBytes = 10 * 1024 * 1024;
+    private const int MaxBulkFiles = 13;
+
+    private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
+
+    private static readonly (string Type, string Label)[] KycTypes =
+    {
+        ("Pan", "PAN card"),
+        ("Aadhaar", "Aadhaar (masked)"),
+        ("Photo", "Photograph"),
+        ("Signature", "Signature proof"),
+        ("Address", "Address proof"),
+    };
+
+    private static readonly (string Type, string Label)[] OtherTypes =
+    {
+        ("Income", "Income proof — ITR / GST"),
+        ("Stability", "Stability proof"),
+        ("Utility", "Utility proof"),
+        ("Ownership", "Ownership proof"),
+        ("ExistingLoan", "Existing loan statement"),
+        ("TradeLicence", "Trade licence / permit"),
+        ("RouteSheets", "Route / trip sheets"),
+        ("GuarantorDocs", "Guarantor documents"),
+    };
+
+    /// <summary>All 13 types in the order bulk upload fills them.</summary>
+    private static readonly string[] AllTypes =
+        KycTypes.Concat(OtherTypes).Select(t => t.Type).ToArray();
+
+    private static readonly (string Key, string Label)[] AllPartyTabs =
+    {
+        ("Applicant", "Applicant"),
+        ("CoApplicant", "Co-Applicant"),
+        ("Guarantor", "Guarantor"),
+    };
+
+    /// <summary>Pan, Aadhaar and Photo live on the Parties row, not on their own Documents row.</summary>
+    private static bool IsPartySourced(string documentType) =>
+        documentType is "Pan" or "Aadhaar" or "Photo";
+
+    // ---------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------
+
+    private Application? _application;
+    private bool _loading = true;
+    private string _activeTab = "Applicant";
+    private bool _hasGuarantor;
+
+    private Dictionary<string, Party> _parties = new(StringComparer.Ordinal);
+    private Dictionary<string, Dictionary<string, ChecklistDocument>> _docs = new(StringComparer.Ordinal);
+
+    /// <summary>Saved remarks plus unsaved ones (Id == 0), keyed by document id.</summary>
+    private Dictionary<int, List<DocumentRemark>> _remarks = new();
+
+    private Dictionary<int, string> _remarkDrafts = new();
+
+    private (string Name, string Url, string FileName, DateTime? UploadedOn)? _preview;
+
+    private bool _bulkInProgress;
+    private int _bulkDone;
+    private int _bulkTotal;
+
+    private string? _uploadError;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    private IEnumerable<(string Key, string Label)> VisibleParties =>
+        AllPartyTabs.Where(p => p.Key != "Guarantor" || _hasGuarantor);
+
+    private string ActivePartyLabel =>
+        AllPartyTabs.First(p => p.Key == _activeTab).Label;
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _application = await db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            await LoadAsync(db);
+        }
+
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Loads every visible party's rows in one pass and creates any that are missing.
+    /// </summary>
+    /// <remarks>
+    /// All parties are loaded up front rather than per tab: the aggregate line and the cross-party
+    /// save both need every party anyway, so one load beats a database write on every tab switch.
+    /// </remarks>
+    private async Task LoadAsync(LosDbContext db)
+    {
+        var parties = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId)
+            .ToListAsync();
+
+        _parties = parties.ToDictionary(p => p.PartyType, StringComparer.Ordinal);
+
+        _hasGuarantor = PartyRules.HasGuarantor(parties);
+
+        if (!VisibleParties.Any(p => p.Key == _activeTab))
+        {
+            _activeTab = "Applicant";
+        }
+
+        var existing = await db.ChecklistDocuments
+            .Where(d => d.ApplicationId == ApplicationId)
+            .ToListAsync();
+
+        var missing = new List<ChecklistDocument>();
+        foreach (var party in VisibleParties)
+        {
+            foreach (var type in AllTypes)
+            {
+                var found = existing.Any(d => d.PartyType == party.Key && d.DocumentType == type);
+                if (!found)
+                {
+                    missing.Add(new ChecklistDocument
+                    {
+                        ApplicationId = ApplicationId,
+                        PartyType = party.Key,
+                        DocumentType = type,
+                    });
+                }
+            }
+        }
+
+        if (missing.Count > 0)
+        {
+            db.ChecklistDocuments.AddRange(missing);
+            await db.SaveChangesAsync();
+            existing.AddRange(missing);
+        }
+
+        _docs = existing
+            .GroupBy(d => d.PartyType, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => g.ToDictionary(d => d.DocumentType, StringComparer.Ordinal),
+                StringComparer.Ordinal);
+
+        var documentIds = existing.Select(d => d.Id).ToList();
+        var remarks = await db.DocumentRemarks.AsNoTracking()
+            .Where(r => documentIds.Contains(r.DocumentId))
+            .OrderBy(r => r.CreatedAt)
+            .ToListAsync();
+
+        _remarks = remarks.GroupBy(r => r.DocumentId).ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var id in documentIds)
+        {
+            _remarks.TryAdd(id, new List<DocumentRemark>());
+            _remarkDrafts.TryAdd(id, string.Empty);
+        }
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+
+    // ---------------------------------------------------------------------
+    // Status derivation
+    // ---------------------------------------------------------------------
+
+    /// <summary>Where the file actually lives — Parties for the KYC three, Documents for the rest.</summary>
+    private string? FilePathFor(string partyType, string documentType)
+    {
+        if (!IsPartySourced(documentType))
+        {
+            return NullIfBlank(_docs[partyType][documentType].FilePath);
+        }
+
+        var party = _parties.GetValueOrDefault(partyType);
+        return NullIfBlank(documentType switch
+        {
+            "Pan" => party?.PanScanPath,
+            "Aadhaar" => party?.AadhaarScanPath,
+            _ => party?.PhotoPath,
+        });
+    }
+
+    private DateTime? UploadDateFor(string partyType, string documentType)
+    {
+        if (!IsPartySourced(documentType))
+        {
+            return _docs[partyType][documentType].UploadDate;
+        }
+
+        return FilePathFor(partyType, documentType) is null
+            ? null
+            : _parties.GetValueOrDefault(partyType)?.UpdatedAt;
+    }
+
+    /// <remarks>
+    /// Computed, never stored, so it cannot drift out of sync with today's date. Only Address ever
+    /// carries ValidityDays, so only Address can ever read Stale.
+    /// </remarks>
+    private string DisplayStatus(string partyType, string documentType)
+    {
+        if (FilePathFor(partyType, documentType) is null)
+        {
+            return "Pending";
+        }
+
+        var document = _docs[partyType][documentType];
+        if (document.ValidityDays is { } validity
+            && UploadDateFor(partyType, documentType) is { } uploaded
+            && (DateTime.Today - uploaded.Date).TotalDays > validity)
+        {
+            return "Stale";
+        }
+
+        return "Collected";
+    }
+
+    private static bool IsOverdue(ChecklistDocument document) =>
+        document.TargetDate is { } target && target < DateOnly.FromDateTime(DateTime.Today);
+
+    private (int Collected, int Pending, int Overdue) CountsFor(string partyType)
+    {
+        var collected = 0;
+        var pending = 0;
+        var overdue = 0;
+
+        foreach (var type in AllTypes)
+        {
+            if (DisplayStatus(partyType, type) == "Collected")
+            {
+                collected++;
+                continue;
+            }
+
+            pending++;
+            if (IsOverdue(_docs[partyType][type]))
+            {
+                overdue++;
+            }
+        }
+
+        return (collected, pending, overdue);
+    }
+
+    private (int Collected, int Pending, int Overdue) AggregateCounts()
+    {
+        var collected = 0;
+        var pending = 0;
+        var overdue = 0;
+
+        foreach (var party in VisibleParties)
+        {
+            var counts = CountsFor(party.Key);
+            collected += counts.Collected;
+            pending += counts.Pending;
+            overdue += counts.Overdue;
+        }
+
+        return (collected, pending, overdue);
+    }
+
+    /// <summary>Stale does not count as complete.</summary>
+    private bool IsPartyComplete(string partyType) =>
+        AllTypes.All(type => DisplayStatus(partyType, type) == "Collected");
+
+    private List<DocumentRemark> RemarksFor(int documentId) =>
+        _remarks.TryGetValue(documentId, out var list) ? list : new List<DocumentRemark>();
+
+    // ---------------------------------------------------------------------
+    // Remarks — added in memory, written by Save draft
+    // ---------------------------------------------------------------------
+
+    private void AddRemark(int documentId)
+    {
+        var text = _remarkDrafts.GetValueOrDefault(documentId);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        _remarks.TryAdd(documentId, new List<DocumentRemark>());
+        _remarks[documentId].Add(new DocumentRemark
+        {
+            DocumentId = documentId,
+            Text = text.Trim(),
+            CreatedAt = DateTime.Now,
+        });
+
+        _remarkDrafts[documentId] = string.Empty;
+    }
+
+    private void OnRemarkKeyDown(KeyboardEventArgs e, int documentId)
+    {
+        if (e.Key == "Enter")
+        {
+            AddRemark(documentId);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Preview
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Turns a stored relative path into a URL the /files endpoint serves.
+    /// </summary>
+    /// <remarks>
+    /// Takes the last three segments so it works for every folder shape already in use —
+    /// party types, "security", "statements" — and regardless of separator.
+    /// </remarks>
+    private static string? FileUrlFor(string? storedPath)
+    {
+        if (string.IsNullOrWhiteSpace(storedPath))
+        {
+            return null;
+        }
+
+        var parts = storedPath.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3)
+        {
+            return null;
+        }
+
+        return "/files/"
+            + Uri.EscapeDataString(parts[^3]) + "/"
+            + Uri.EscapeDataString(parts[^2]) + "/"
+            + Uri.EscapeDataString(parts[^1]);
+    }
+
+    private void OpenPreview(string documentName, string? storedPath, DateTime? uploadedOn)
+    {
+        if (FileUrlFor(storedPath) is not { } url)
+        {
+            return;
+        }
+
+        _preview = (documentName, url, Path.GetFileName(storedPath!), uploadedOn);
+    }
+
+    // ---------------------------------------------------------------------
+    // Uploads — persisted immediately, so the live lookup re-renders as Collected
+    // ---------------------------------------------------------------------
+
+    private async Task OnSingleFileSelectedAsync(InputFileChangeEventArgs e, string documentType)
+    {
+        _uploadError = null;
+
+        if (e.File is not null)
+        {
+            await StoreFileAsync(_activeTab, documentType, e.File);
+        }
+    }
+
+    private async Task OnBulkFilesSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _uploadError = null;
+
+        var files = e.GetMultipleFiles(MaxBulkFiles);
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        // Outstanding items for the active party only, in the declared 13-type order.
+        var outstanding = AllTypes
+            .Where(type => DisplayStatus(_activeTab, type) != "Collected")
+            .ToList();
+
+        _bulkTotal = Math.Min(files.Count, outstanding.Count);
+        _bulkDone = 0;
+        _bulkInProgress = true;
+        StateHasChanged();
+
+        // Zip stops at the shorter sequence: spare files are ignored and leftover outstanding
+        // items simply stay outstanding, exactly as specified.
+        foreach (var (file, type) in files.Zip(outstanding))
+        {
+            await StoreFileAsync(_activeTab, type, file);
+            _bulkDone++;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        _bulkInProgress = false;
+    }
+
+    private async Task StoreFileAsync(string partyType, string documentType, IBrowserFile file)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _uploadError = $"{file.Name}: too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB.";
+            return;
+        }
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension))
+        {
+            _uploadError = $"{file.Name}: unsupported type. Use JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        // Outside wwwroot: these are KYC and financial documents. Served back only through the
+        // /files endpoint. The client filename is never used in the path.
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, partyType);
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"{documentType.ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+
+        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, partyType, fileName);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        if (IsPartySourced(documentType))
+        {
+            // Writes back to Parties, never into Documents — Stage 1 owns these three.
+            var party = await db.Parties
+                .FirstOrDefaultAsync(p => p.ApplicationId == _application.Id && p.PartyType == partyType);
+
+            if (party is null)
+            {
+                // FullName stays null, so creating this row cannot flip hasGuarantor.
+                party = new Party { ApplicationId = _application.Id, PartyType = partyType };
+                db.Parties.Add(party);
+            }
+
+            switch (documentType)
+            {
+                case "Pan": party.PanScanPath = relativePath; break;
+                case "Aadhaar": party.AadhaarScanPath = relativePath; break;
+                default: party.PhotoPath = relativePath; break;
+            }
+        }
+        else
+        {
+            var document = await db.ChecklistDocuments
+                .FirstAsync(d => d.Id == _docs[partyType][documentType].Id);
+
+            document.FilePath = relativePath;
+            document.UploadDate = DateTime.Now;
+
+            if (documentType == "Address")
+            {
+                document.ValidityDays = AddressValidityDays;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        await LoadAsync(db);
+    }
+
+    // ---------------------------------------------------------------------
+    // Print
+    // ---------------------------------------------------------------------
+
+    /// <remarks>
+    /// ponytail: no JS file needed. "print" resolves window.print, which already exists — the only
+    /// round trip is the interop call itself.
+    /// </remarks>
+    private async Task PrintAsync() => await JS.InvokeVoidAsync("print");
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private async Task SaveDraftAsync()
+    {
+        await PersistAsync(completeStage: false);
+        await ShowToastAsync("Draft saved");
+    }
+
+    private async Task CompleteStageAsync()
+    {
+        await PersistAsync(completeStage: true);
+        Navigation.NavigateTo($"/applications/{ApplicationId}/reports-rcu");
+    }
+
+    /// <summary>Writes target dates and any unsaved remarks for every visible party in one action.</summary>
+    private async Task PersistAsync(bool completeStage)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // One query for every row rather than one per document.
+        var tracked = await db.ChecklistDocuments
+            .Where(d => d.ApplicationId == _application.Id)
+            .ToListAsync();
+
+        foreach (var document in tracked)
+        {
+            if (_docs.TryGetValue(document.PartyType, out var byType)
+                && byType.TryGetValue(document.DocumentType, out var local))
+            {
+                document.TargetDate = local.TargetDate;
+            }
+        }
+
+        foreach (var (documentId, entries) in _remarks)
+        {
+            foreach (var pending in entries.Where(r => r.Id == 0))
+            {
+                db.DocumentRemarks.Add(new DocumentRemark
+                {
+                    DocumentId = documentId,
+                    Text = pending.Text,
+                    CreatedAt = pending.CreatedAt,
+                });
+            }
+        }
+
+        if (completeStage)
+        {
+            var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
+            // Never move an application backwards — see CustomerDetails for the same guard.
+            application.CurrentStage = Math.Max(application.CurrentStage, 5);
+        }
+
+        await db.SaveChangesAsync();
+        await LoadAsync(db);
+    }
+
+    // ---------------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------------
+
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Explicit render — an async handler otherwise only renders before the toast is set and
+        // after it is cleared. See the matching note in CustomerDetails.razor.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+}

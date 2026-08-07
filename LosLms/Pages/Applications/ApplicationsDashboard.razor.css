@@ -1,0 +1,758 @@
+/* The reference spec is React, which is virtually always served with a reset applying
+   border-box. The Blazor empty template ships no reset, so without this every padded,
+   explicitly sized element (search box, date inputs, page buttons) overflows its container. */
+.dashboard,
+.dashboard * {
+    box-sizing: border-box;
+}
+
+/* Design tokens ported 1:1 from the reference spec's COLORS object.
+   Declared here rather than inline so child components can inherit them. */
+.dashboard {
+    --los-page: #f4f5f7;
+    --los-card: #ffffff;
+    --los-border: #d8dbe1;
+    --los-border-strong: #b9bfc9;
+    --los-text-primary: #1a1f29;
+    --los-text-secondary: #5b6472;
+    --los-text-muted: #93999a;
+    --los-accent: #1f3a5f;
+    --los-accent-hover: #16304f;
+    --los-row-hover: #fafbfc;
+    --los-warning-text: #7a4b06;
+
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    background: var(--los-page);
+    color: var(--los-text-primary);
+    font-size: 12px;
+    min-height: 100vh;
+}
+
+.dashboard-card {
+    border: 1px solid var(--los-border);
+    background: var(--los-card);
+    position: relative;
+}
+
+/* Square corners and inherited typography everywhere — locked visual direction. */
+.dashboard button,
+.dashboard input,
+.dashboard select {
+    font-family: inherit;
+    border-radius: 0;
+}
+
+.dashboard button {
+    cursor: pointer;
+}
+
+.dashboard button:disabled {
+    cursor: default;
+    opacity: .45;
+}
+
+/* ---------- Top bar ---------- */
+.top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--los-border);
+}
+
+.system-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--los-text-secondary);
+}
+
+.user-context {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.user-name {
+    font-size: 12px;
+    color: var(--los-text-secondary);
+}
+
+.avatar {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--los-border);
+    background: #e8e9ec;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--los-text-secondary);
+}
+
+/* ---------- Toolbar ---------- */
+.toolbar {
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.toolbar-left {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.search-wrap {
+    position: relative;
+    width: 300px;
+    max-width: 100%;
+}
+
+.search-icon {
+    position: absolute;
+    left: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--los-text-muted);
+    display: flex;
+    pointer-events: none;
+}
+
+.search-input {
+    width: 100%;
+    height: 32px;
+    border: 1px solid var(--los-border);
+    background: #fafbfc;
+    padding: 0 10px 0 30px;
+    font-size: 12px;
+    color: var(--los-text-primary);
+}
+
+.search-input:focus-visible {
+    outline: 2px solid var(--los-accent);
+    outline-offset: -2px;
+}
+
+.ghost-button {
+    height: 32px;
+    border: 1px solid var(--los-border);
+    background: #fff;
+    padding: 0 11px;
+    font-size: 12px;
+    color: #3b4453;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.ghost-button:hover {
+    border-color: var(--los-border-strong);
+}
+
+.primary-button {
+    height: 32px;
+    border: none;
+    background: var(--los-accent);
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.primary-button:hover {
+    background: var(--los-accent-hover);
+}
+
+.density-toggle {
+    display: flex;
+    border: 1px solid var(--los-border);
+}
+
+.density-toggle button {
+    height: 30px;
+    border: none;
+    background: #fff;
+    color: #3b4453;
+    padding: 0 9px;
+    font-size: 11px;
+}
+
+.density-toggle button + button {
+    border-left: 1px solid var(--los-border);
+}
+
+.density-toggle button.is-active {
+    background: var(--los-accent);
+    color: #fff;
+}
+
+/* ---------- Panels ---------- */
+.panel {
+    border-top: 1px solid var(--los-border);
+    border-bottom: 1px solid var(--los-border);
+    background: #fafbfc;
+}
+
+.column-panel {
+    padding: 10px 16px;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #3b4453;
+    cursor: pointer;
+}
+
+.filter-panel {
+    padding: 14px 16px;
+}
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.date-range-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.field-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--los-text-secondary);
+}
+
+.date-range-inputs {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.date-input {
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    border: 1px solid var(--los-border);
+    font-size: 12px;
+    padding: 0 6px;
+    color: var(--los-text-primary);
+    background: #fff;
+}
+
+.date-range-dash {
+    color: var(--los-text-muted);
+}
+
+.filter-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.link-button {
+    background: none;
+    border: none;
+    font-size: 12px;
+    color: var(--los-text-secondary);
+    padding: 0;
+}
+
+.link-button:hover {
+    color: var(--los-text-primary);
+    text-decoration: underline;
+}
+
+.apply-button {
+    height: 28px;
+    border: none;
+    background: var(--los-accent);
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.apply-button:hover {
+    background: var(--los-accent-hover);
+}
+
+/* ---------- Chip rows: saved views, recently viewed ---------- */
+.chip-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--los-border);
+    flex-wrap: wrap;
+    color: var(--los-text-muted);
+}
+
+.chip-row-label {
+    font-size: 11px;
+    color: var(--los-text-muted);
+}
+
+.chip-button {
+    font-size: 11.5px;
+    padding: 4px 9px;
+    border: 1px solid var(--los-border);
+    background: #fff;
+    color: var(--los-text-secondary);
+}
+
+.chip-button:hover {
+    border-color: var(--los-border-strong);
+    color: var(--los-text-primary);
+}
+
+/* ---------- Triage strip ---------- */
+.triage-strip {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+}
+
+.triage-card {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 12px;
+    min-width: 88px;
+    border: 1px solid var(--los-border);
+    background: #fff;
+    text-align: left;
+}
+
+.triage-card.is-active {
+    border-color: var(--los-accent);
+}
+
+.triage-card:hover {
+    border-color: var(--los-border-strong);
+}
+
+.triage-count {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.triage-label {
+    font-size: 10.5px;
+    color: var(--los-text-secondary);
+}
+
+.triage-clear {
+    font-size: 11px;
+    align-self: center;
+}
+
+/* ---------- Tabs ---------- */
+.tabs {
+    display: flex;
+    gap: 18px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--los-border);
+}
+
+.tab {
+    padding: 10px 2px;
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--los-text-secondary);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+}
+
+.tab.is-active {
+    font-weight: 500;
+    color: var(--los-text-primary);
+    border-bottom-color: var(--los-accent);
+}
+
+.tab-placeholder {
+    padding: 40px 16px;
+    text-align: center;
+    border-bottom: 1px solid var(--los-border);
+}
+
+.tab-placeholder-title {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--los-text-primary);
+}
+
+.tab-placeholder-body {
+    margin: 0;
+    font-size: 12px;
+    color: var(--los-text-secondary);
+}
+
+/* ---------- Bulk action bar ---------- */
+.bulk-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: #eef2f6;
+    border-bottom: 1px solid var(--los-border);
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.bulk-count {
+    font-size: 12px;
+}
+
+.bulk-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* ---------- Table ---------- */
+.table-scroll {
+    overflow-x: auto;
+}
+
+.applications-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.applications-table thead tr {
+    background: #f4f5f7;
+}
+
+.checkbox-header {
+    width: 32px;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--los-border);
+}
+
+.data-row {
+    border-bottom: 1px solid #eceef1;
+    cursor: pointer;
+}
+
+/* CSS hover, not the spec's onMouseEnter/onMouseLeave handlers — in Blazor Server those
+   would be a SignalR round trip for every mouse movement across the table. */
+.data-row:hover {
+    background: var(--los-row-hover);
+}
+
+.applications-table td {
+    padding: 9px 10px;
+}
+
+.density-comfortable td {
+    padding: 14px 10px;
+}
+
+.checkbox-cell {
+    width: 32px;
+}
+
+.cell-id {
+    color: var(--los-accent);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.cell-truncate {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cell-amount {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.status-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 7px;
+}
+
+.cell-stage {
+    font-size: 11px;
+    color: var(--los-text-muted);
+    margin-top: 3px;
+    white-space: nowrap;
+}
+
+.cell-queue-date {
+    color: var(--los-text-secondary);
+    white-space: nowrap;
+}
+
+.queue-date-inner {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.sla-warning {
+    color: var(--los-warning-text);
+    display: flex;
+}
+
+.empty-row {
+    padding: 32px 10px;
+    text-align: center;
+    color: var(--los-text-secondary);
+}
+
+/* ---------- Footer ---------- */
+.table-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-top: 1px solid var(--los-border);
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.footer-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.footer-count {
+    font-size: 11.5px;
+    color: var(--los-text-secondary);
+}
+
+.rows-per-page {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--los-text-secondary);
+}
+
+.rows-per-page select {
+    height: 26px;
+    border: 1px solid var(--los-border);
+    font-size: 11.5px;
+    background: #fff;
+    color: var(--los-text-primary);
+}
+
+.pagination {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.page-btn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--los-border);
+    background: #fff;
+    font-size: 11.5px;
+    color: #3b4453;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.page-btn:hover:not(:disabled):not(.is-active) {
+    border-color: var(--los-border-strong);
+}
+
+.page-btn.is-active {
+    background: var(--los-accent);
+    border-color: var(--los-accent);
+    color: #fff;
+}
+
+.page-gap {
+    font-size: 11.5px;
+    color: var(--los-text-muted);
+    padding: 0 4px;
+}
+
+/* ---------- Quick-view drawer ---------- */
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 31, 41, 0.35);
+    display: flex;
+    justify-content: flex-end;
+    z-index: 50;
+}
+
+.drawer-panel {
+    width: 320px;
+    max-width: 90%;
+    background: #fff;
+    height: 100%;
+    border-left: 1px solid var(--los-border);
+    padding: 18px;
+    overflow-y: auto;
+}
+
+.drawer-panel:focus {
+    outline: none;
+}
+
+.drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 14px;
+}
+
+.drawer-id {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--los-accent);
+}
+
+.drawer-status {
+    margin-top: 6px;
+}
+
+.drawer-close {
+    border: none;
+    background: none;
+    color: var(--los-text-secondary);
+    display: flex;
+    padding: 0;
+}
+
+.drawer-close:hover {
+    color: var(--los-text-primary);
+}
+
+.drawer-stage {
+    font-size: 11px;
+    color: var(--los-text-muted);
+    margin-bottom: 16px;
+}
+
+.drawer-open-button {
+    margin-top: 18px;
+    width: 100%;
+    height: 34px;
+    border: none;
+    background: var(--los-accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.drawer-open-button:hover {
+    background: var(--los-accent-hover);
+}
+
+.drawer-rejected-banner {
+    border: 1px solid #e6b3b3;
+    background: #f8d7d7;
+    color: #8a1f1f;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.5;
+    padding: 9px 10px;
+    margin-bottom: 14px;
+}
+
+.drawer-assign {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--los-border);
+}
+
+.drawer-assign-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--los-text-muted);
+}
+
+.drawer-assign-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.drawer-assign-select {
+    flex: 1;
+    height: 30px;
+    border: 1px solid var(--los-border);
+    background: #fafbfc;
+    font-size: 12px;
+    padding: 0 6px;
+    border-radius: 0;
+    color: var(--los-text);
+    font-family: inherit;
+}
+
+.drawer-assign-select:focus-visible {
+    outline: 2px solid var(--los-accent);
+    outline-offset: -2px;
+}
+
+.drawer-saved {
+    font-size: 11px;
+    font-weight: 600;
+    color: #1f5c2a;
+    white-space: nowrap;
+}
+
+.drawer-reject-button {
+    margin-top: 8px;
+    width: 100%;
+    height: 32px;
+    border: 1px solid #e6b3b3;
+    background: #fff;
+    color: #8a1f1f;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    font-family: inherit;
+    border-radius: 0;
+}
+
+.drawer-reject-button:hover {
+    background: #f8d7d7;
+}

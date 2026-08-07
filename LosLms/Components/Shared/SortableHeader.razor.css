@@ -1,0 +1,37 @@
+.sortable-header {
+    box-sizing: border-box;
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--los-text-secondary, #5b6472);
+    border-bottom: 1px solid var(--los-border, #d8dbe1);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+
+.sortable-header.align-right {
+    text-align: right;
+}
+
+.sortable-header:hover {
+    color: var(--los-text-primary, #1a1f29);
+}
+
+.sortable-header-inner {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.sort-indicator {
+    font-size: 9px;
+    color: var(--los-text-muted, #93999a);
+}
+
+.sort-indicator.is-active {
+    color: var(--los-text-primary, #1a1f29);
+}

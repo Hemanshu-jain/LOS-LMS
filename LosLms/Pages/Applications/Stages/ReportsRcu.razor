@@ -1,0 +1,833 @@
+@page "/applications/{ApplicationId}/reports-rcu"
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment HostEnvironment
+
+<PageTitle>Reports (RCU) · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">No application exists with the reference <strong>@ApplicationId</strong>.</p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    var overall = OverallStatus;
+    var band = BandFor(overall);
+
+    <div class="stage-page">
+        <div class="stage-card">
+
+            <StageSubHeader ApplicationId="@_application.Id"
+                            SecondaryLabel="Re-submit to vendor"
+                            CompleteBlocked="CompleteBlocked"
+                            BlockedReason="@BlockedReason"
+                            OnSaveDraft="() => _showResubmitConfirm = true"
+                            OnCompleteStage="CompleteStageAsync" />
+
+            <div class="stepper-band">
+                <StageStepper CurrentStep="5" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">06</span>
+                        <span class="stage-title-text">STAGE 5 — REPORTS (RCU)</span>
+                        <span class="stage-title-of">Stage 5 of 8</span>
+                    </div>
+
+                    @* ---------- RCU initiation ---------- *@
+                    <Panel Title="RCU initiation">
+                        <Right>
+                            <div class="mode-toggle" role="group" aria-label="RCU mode">
+                                @foreach (var mode in Modes)
+                                {
+                                    <button type="button"
+                                            class="@(_initiation.Mode == mode ? "is-active" : null)"
+                                            aria-pressed="@(_initiation.Mode == mode)"
+                                            @onclick="() => _initiation.Mode = mode">@mode</button>
+                                }
+                            </div>
+                        </Right>
+                        <ChildContent>
+                            <div class="initiation-layout">
+                                <div class="initiation-fields">
+                                    <div class="field-grid">
+                                        <FormField Label="Branch name" For="rcu-branch">
+                                            <select id="rcu-branch" class="field-input" @bind="_initiation.Branch">
+                                                <option value="">@BlankOption</option>
+                                                @foreach (var o in BranchOptions) { <option value="@o">@o</option> }
+                                            </select>
+                                        </FormField>
+
+                                        <FormField Label="Vendor name" For="rcu-vendor">
+                                            <select id="rcu-vendor" class="field-input" @bind="_initiation.Vendor">
+                                                <option value="">@BlankOption</option>
+                                                @foreach (var o in VendorOptions) { <option value="@o">@o</option> }
+                                            </select>
+                                        </FormField>
+
+                                        <FormField Label="Initiation date" For="rcu-init-date">
+                                            <input id="rcu-init-date" type="date" class="field-input" @bind="_initiation.InitiationDate" />
+                                        </FormField>
+
+                                        <FormField Label="Completion date" For="rcu-done-date">
+                                            <input id="rcu-done-date" type="date" class="field-input" @bind="_initiation.CompletionDate" />
+                                        </FormField>
+
+                                        <FormField Label="TAT (days)" For="rcu-tat">
+                                            <input id="rcu-tat" type="number" min="0" step="1" class="field-input" @bind="_initiation.Tat" />
+                                        </FormField>
+
+                                        <FormField Label="Case reference no." For="rcu-caseref">
+                                            <input id="rcu-caseref" type="text" class="field-input" @bind="_initiation.CaseRef" />
+                                        </FormField>
+                                    </div>
+
+                                    @* Only meaningful before a completion is recorded. *@
+                                    @if (TatBreached)
+                                    {
+                                        <div class="tat-breach">
+                                            ⚠ TAT breached by @TatDaysOver day@(TatDaysOver == 1 ? "" : "s") — vendor is past their committed turnaround
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="status-card status-@band">
+                                    <span class="status-label">Overall status</span>
+                                    <span class="status-value">@StatusLabel(overall)</span>
+                                    <span class="status-caption">Derived from all applicant outcomes</span>
+                                    <span class="status-breakdown">@Breakdown()</span>
+                                </div>
+                            </div>
+                        </ChildContent>
+                    </Panel>
+
+                    @* ---------- Override — only when there is something to override ---------- *@
+                    @if (overall == "NotRecommended")
+                    {
+                        <div class="override-panel">
+                            <label class="override-toggle">
+                                <input type="checkbox" @bind="_initiation.OverrideActive" />
+                                Override and proceed despite "Not recommended"
+                            </label>
+
+                            @if (_initiation.OverrideActive)
+                            {
+                                <div class="override-fields">
+                                    <div class="override-field">
+                                        <span class="override-label">Reason (required)</span>
+                                        <input type="text" class="field-input"
+                                               placeholder="Why is this proceeding despite the outcome?"
+                                               aria-label="Override reason"
+                                               @bind="_initiation.OverrideReason" @bind:event="oninput" />
+                                    </div>
+                                    <div class="override-field">
+                                        <span class="override-label">Approved by (required)</span>
+                                        <select class="field-input" aria-label="Override approver"
+                                                @bind="_initiation.OverrideApproverOfficerId">
+                                            <option value="">@BlankOption</option>
+                                            @foreach (var officer in _officers)
+                                            {
+                                                <option value="@officer.Id">@officer.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <div class="outcome-report-row">
+                        @* ---------- Per-applicant outcome ---------- *@
+                        <div class="outcome-wrap">
+                            <Panel Title="Per-applicant outcome">
+                                <div class="outcome-scroll">
+                                    <table class="outcome-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Applicant</th>
+                                                <th>Role</th>
+                                                <th>RCU status</th>
+                                                <th>Verified on</th>
+                                                <th>Verified by</th>
+                                                <th>Remarks</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var partyKey in VisiblePartyKeys)
+                                            {
+                                                var key = partyKey;
+                                                var outcome = _outcomes[key];
+                                                var name = PartyName(key);
+                                                var rowBand = BandFor(outcome.Status);
+                                                var isPending = outcome.Status == "Pending";
+
+                                                <tr>
+                                                    <td class="cell-name">@name</td>
+                                                    <td class="cell-muted">@RoleLabel(key)</td>
+                                                    <td>
+                                                        <select class="status-select status-select-@rowBand"
+                                                                aria-label="@($"RCU status for {name}")"
+                                                                value="@outcome.Status"
+                                                                @onchange="e => OnStatusChanged(key, e.Value?.ToString())">
+                                                            @foreach (var status in Statuses)
+                                                            {
+                                                                <option value="@status">@StatusLabel(status)</option>
+                                                            }
+                                                        </select>
+                                                    </td>
+                                                    <td>
+                                                        @if (isPending)
+                                                        {
+                                                            <span class="is-empty">—</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <input type="date" class="small-input"
+                                                                   aria-label="@($"Verified-on date for {name}")"
+                                                                   @bind="outcome.VerifiedOn" />
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @if (isPending)
+                                                        {
+                                                            <span class="is-empty">—</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <select class="small-input"
+                                                                    aria-label="@($"Verified by, for {name}")"
+                                                                    @bind="outcome.VerifiedByOfficerId">
+                                                                <option value="">@BlankOption</option>
+                                                                @foreach (var officer in _officers)
+                                                                {
+                                                                    <option value="@officer.Id">@officer.Name</option>
+                                                                }
+                                                            </select>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <input type="text" class="remarks-input"
+                                                               aria-label="@($"Remarks for {name}")"
+                                                               @bind="outcome.Remarks" />
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </Panel>
+                        </div>
+
+                        @* ---------- Report ---------- *@
+                        <div class="report-wrap">
+                            <Panel Title="Report">
+                                <div class="report-body">
+                                    @if (CurrentReport is { FilePath: not null } current)
+                                    {
+                                        <div class="report-current">
+                                            <div class="report-file">@Path.GetFileName(current.FilePath)</div>
+                                            <div class="report-date">
+                                                Uploaded @(current.UploadedAt?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—")
+                                            </div>
+                                        </div>
+                                        <button type="button" class="report-view"
+                                                @onclick="() => OpenPreview(current)">View</button>
+                                    }
+                                    else
+                                    {
+                                        @* The upload IS the save — there is no separate Save button. *@
+                                        <label class="report-upload">
+                                            Upload RCU report · PDF
+                                            <InputFile class="visually-hidden" accept="application/pdf"
+                                                       OnChange="OnReportFileSelectedAsync" />
+                                        </label>
+                                    }
+
+                                    @if (_uploadError is not null)
+                                    {
+                                        <p class="inline-error" role="alert">@_uploadError</p>
+                                    }
+
+                                    @if (ReportHistory.Any())
+                                    {
+                                        <div class="report-history">
+                                            <span class="history-label">Report history</span>
+                                            @foreach (var report in ReportHistory)
+                                            {
+                                                <div class="history-entry">
+                                                    @if (report.FilePath is not null)
+                                                    {
+                                                        <button type="button" class="history-link"
+                                                                @onclick="() => OpenPreview(report)">
+                                                            @Path.GetFileName(report.FilePath)
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="history-awaiting">Awaiting upload</span>
+                                                    }
+                                                    <span class="history-date">
+                                                        · @report.CreatedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                                                    </span>
+                                                    @if (!string.IsNullOrWhiteSpace(report.Note))
+                                                    {
+                                                        <div class="history-note">@report.Note</div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </Panel>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_showResubmitConfirm)
+    {
+        <ConfirmDialog Title="Re-submit to vendor"
+                       Message="Re-submit this case to the RCU vendor? This starts a new verification cycle."
+                       ConfirmLabel="Re-submit"
+                       OnConfirm="ConfirmResubmitAsync"
+                       OnCancel="() => _showResubmitConfirm = false" />
+    }
+
+    @if (_preview is { } preview)
+    {
+        <DocumentPreviewModal DocumentName="RCU report"
+                              FileUrl="@preview.Url"
+                              FileName="@preview.FileName"
+                              UploadedOn="@preview.UploadedOn"
+                              OnClose="() => _preview = null" />
+    }
+
+    @if (_toast is not null)
+    {
+        <div class="toast" role="status">@_toast</div>
+    }
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    // ---------------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------------
+
+    private const string BlankOption = "— Select —";
+    private const long MaxUploadBytes = 10 * 1024 * 1024;
+
+    private static readonly string[] Modes = { "Screened", "Sampled" };
+    private static readonly string[] Statuses = { "Pending", "Recommended", "NotRecommended" };
+    private static readonly string[] AllParties = { "Applicant", "CoApplicant", "Guarantor" };
+
+    private static readonly string[] BranchOptions =
+        { "Nashik West", "Nashik East", "Pune Camp", "Aurangabad", "Jalgaon" };
+
+    private static readonly string[] VendorOptions =
+    {
+        "Verified Field Services", "TransUnion CIBIL RCU", "CRISIL Risk Solutions",
+        "SecureCheck Verifications", "Other",
+    };
+
+    // ---------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------
+
+    private Application? _application;
+    private bool _loading = true;
+    private bool _hasGuarantor;
+
+    private Dictionary<string, Party> _parties = new(StringComparer.Ordinal);
+    private Dictionary<string, RcuOutcome> _outcomes = new(StringComparer.Ordinal);
+    private RcuInitiation _initiation = new();
+    private List<RcuReport> _reports = new();
+    private List<Officer> _officers = new();
+
+    private bool _showResubmitConfirm;
+    private (string Url, string FileName, DateTime? UploadedOn)? _preview;
+    private string? _uploadError;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    private IEnumerable<string> VisiblePartyKeys =>
+        AllParties.Where(p => p != "Guarantor" || _hasGuarantor);
+
+    private RcuReport? CurrentReport =>
+        _reports.OrderByDescending(r => r.SequenceNumber).FirstOrDefault();
+
+    private IEnumerable<RcuReport> ReportHistory =>
+        _reports.OrderByDescending(r => r.SequenceNumber).Skip(1);
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _application = await db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            await EnsureRowsAsync(db);
+            await LoadAsync(db);
+        }
+
+        _loading = false;
+    }
+
+    /// <summary>Creates the initiation row and one outcome row per visible party if missing.</summary>
+    private async Task EnsureRowsAsync(LosDbContext db)
+    {
+        var parties = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId)
+            .ToListAsync();
+
+        var hasGuarantor = PartyRules.HasGuarantor(parties);
+        var visible = AllParties.Where(p => p != "Guarantor" || hasGuarantor);
+
+        var changed = false;
+
+        if (!await db.RcuInitiations.AnyAsync(i => i.ApplicationId == ApplicationId))
+        {
+            db.RcuInitiations.Add(new RcuInitiation
+            {
+                ApplicationId = ApplicationId,
+                Mode = "Screened",
+                InitiationDate = DateOnly.FromDateTime(DateTime.Today),
+                Tat = 0,
+                CaseRef = await NextCaseRefAsync(db),
+            });
+
+            changed = true;
+        }
+
+        var existingOutcomes = await db.RcuOutcomes
+            .Where(o => o.ApplicationId == ApplicationId)
+            .Select(o => o.PartyType)
+            .ToListAsync();
+
+        foreach (var partyType in visible.Where(p => !existingOutcomes.Contains(p)))
+        {
+            db.RcuOutcomes.Add(new RcuOutcome { ApplicationId = ApplicationId, PartyType = partyType });
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await db.SaveChangesAsync();
+        }
+    }
+
+    /// <remarks>
+    /// ponytail: highest-sequence-plus-one, the same shape as the application-number generator on
+    /// the dashboard, and with the same ceiling — two officers raising a case in the same instant
+    /// can collide. A database sequence is the fix when this is genuinely concurrent.
+    /// </remarks>
+    private static async Task<string> NextCaseRefAsync(LosDbContext db)
+    {
+        var prefix = $"RCU-{DateTime.Today.Year}-";
+
+        var highest = await db.RcuInitiations
+            .Where(i => i.CaseRef != null && i.CaseRef.StartsWith(prefix))
+            .OrderByDescending(i => i.CaseRef)
+            .Select(i => i.CaseRef)
+            .FirstOrDefaultAsync();
+
+        var next = 1;
+        if (highest is not null && int.TryParse(highest.AsSpan(prefix.Length), out var parsed))
+        {
+            next = parsed + 1;
+        }
+
+        return prefix + next.ToString("D5", CultureInfo.InvariantCulture);
+    }
+
+    private async Task LoadAsync(LosDbContext db)
+    {
+        var parties = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId)
+            .ToListAsync();
+
+        _parties = parties.ToDictionary(p => p.PartyType, StringComparer.Ordinal);
+        _hasGuarantor = _parties.TryGetValue("Guarantor", out var guarantor)
+            && !string.IsNullOrWhiteSpace(guarantor.FullName);
+
+        _initiation = await db.RcuInitiations.AsNoTracking()
+            .FirstAsync(i => i.ApplicationId == ApplicationId);
+
+        _outcomes = await db.RcuOutcomes.AsNoTracking()
+            .Where(o => o.ApplicationId == ApplicationId)
+            .ToDictionaryAsync(o => o.PartyType, StringComparer.Ordinal);
+
+        _reports = await db.RcuReports.AsNoTracking()
+            .Where(r => r.ApplicationId == ApplicationId)
+            .ToListAsync();
+
+        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+
+    // ---------------------------------------------------------------------
+    // Derived state — the gate
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Rolled up from the dropdowns currently on screen, not from the database — the verdict and the
+    /// gate below it move as the officer changes an outcome, before anything is saved.
+    /// </summary>
+    private string OverallStatus =>
+        RcuOutcomes.OverallStatus(VisiblePartyKeys
+            .Where(_outcomes.ContainsKey)
+            .Select(p => _outcomes[p].Status));
+
+    /// <summary>All three parts are required — a ticked box with no reason or approver is not an override.</summary>
+    private bool OverrideValid =>
+        _initiation.OverrideActive
+        && !string.IsNullOrWhiteSpace(_initiation.OverrideReason)
+        && _initiation.OverrideApproverOfficerId is not null;
+
+    private bool CompleteBlocked =>
+        OverallStatus == "Pending"
+        || (OverallStatus == "NotRecommended" && !OverrideValid);
+
+    private string? BlockedReason => OverallStatus switch
+    {
+        "Pending" => "Every party needs an RCU outcome before this stage can complete.",
+        "NotRecommended" when !OverrideValid =>
+            "Outcome is Not recommended — tick the override and record both a reason and an approver.",
+        _ => null,
+    };
+
+    // ---------------------------------------------------------------------
+    // TAT
+    // ---------------------------------------------------------------------
+
+    private DateOnly? ExpectedCompletion => _initiation.InitiationDate?.AddDays(_initiation.Tat);
+
+    private int TatDaysOver => ExpectedCompletion is { } expected
+        ? DateOnly.FromDateTime(DateTime.Today).DayNumber - expected.DayNumber
+        : 0;
+
+    private bool TatBreached => _initiation.CompletionDate is null && TatDaysOver > 0;
+
+    // ---------------------------------------------------------------------
+    // Outcome editing
+    // ---------------------------------------------------------------------
+
+    private void OnStatusChanged(string partyType, string? newStatus)
+    {
+        if (newStatus is null || !_outcomes.TryGetValue(partyType, out var outcome))
+        {
+            return;
+        }
+
+        outcome.Status = newStatus;
+
+        if (newStatus == "Pending")
+        {
+            // Nothing has been verified, so the audit fields must not claim otherwise.
+            outcome.VerifiedOn = null;
+            outcome.VerifiedByOfficerId = null;
+        }
+        else if (outcome.VerifiedOn is null)
+        {
+            outcome.VerifiedOn = DateOnly.FromDateTime(DateTime.Today);
+        }
+    }
+
+    private string PartyName(string partyType) =>
+        _parties.TryGetValue(partyType, out var party) && !string.IsNullOrWhiteSpace(party.FullName)
+            ? party.FullName
+            : "—";
+
+    private static string RoleLabel(string partyType) =>
+        partyType == "CoApplicant" ? "Co-Applicant" : partyType;
+
+    private static string StatusLabel(string status) =>
+        status == "NotRecommended" ? "Not recommended" : status;
+
+    private static string BandFor(string status) => status switch
+    {
+        "Recommended" => "healthy",
+        "NotRecommended" => "risk",
+        _ => "caution",
+    };
+
+    private string Breakdown()
+    {
+        var counts = VisiblePartyKeys
+            .Where(_outcomes.ContainsKey)
+            .GroupBy(p => _outcomes[p].Status)
+            .Select(g => $"{g.Count()} {StatusLabel(g.Key)}");
+
+        return string.Join(" · ", counts);
+    }
+
+    // ---------------------------------------------------------------------
+    // Reports
+    // ---------------------------------------------------------------------
+
+    private void OpenPreview(RcuReport report)
+    {
+        if (FileUrlFor(report.FilePath) is not { } url)
+        {
+            return;
+        }
+
+        _preview = (url, Path.GetFileName(report.FilePath!), report.UploadedAt);
+    }
+
+    /// <summary>Turns a stored relative path into a URL the /files endpoint serves.</summary>
+    private static string? FileUrlFor(string? storedPath)
+    {
+        if (string.IsNullOrWhiteSpace(storedPath))
+        {
+            return null;
+        }
+
+        var parts = storedPath.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 3)
+        {
+            return null;
+        }
+
+        return "/files/"
+            + Uri.EscapeDataString(parts[^3]) + "/"
+            + Uri.EscapeDataString(parts[^2]) + "/"
+            + Uri.EscapeDataString(parts[^1]);
+    }
+
+    /// <remarks>The upload is the save — there is no separate confirm step.</remarks>
+    private async Task OnReportFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        _uploadError = null;
+        var file = e.File;
+
+        if (file is null || _application is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _uploadError = $"File is too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB.";
+            return;
+        }
+
+        if (!string.Equals(Path.GetExtension(file.Name), ".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            _uploadError = "The RCU report must be a PDF.";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        // Outside wwwroot, like every other upload in this project; served by the /files endpoint.
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, "rcu");
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"rcu-report-{Guid.NewGuid():N}.pdf";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+
+        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "rcu", fileName);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Persist whatever the officer has typed first. This method reloads state at the end, so
+        // without this an upload would silently wipe any in-progress outcome or initiation edits.
+        // Same reason ConfirmResubmitAsync does it — every path that calls LoadAsync must.
+        await PersistEditsAsync(db, completeStage: false);
+
+        var current = await db.RcuReports
+            .Where(r => r.ApplicationId == _application.Id)
+            .OrderByDescending(r => r.SequenceNumber)
+            .FirstOrDefaultAsync();
+
+        if (current is null)
+        {
+            // First ever report for this application.
+            current = new RcuReport { ApplicationId = _application.Id, SequenceNumber = 1 };
+            db.RcuReports.Add(current);
+        }
+
+        current.FilePath = relativePath;
+        current.UploadedAt = DateTime.Now;
+
+        await db.SaveChangesAsync();
+        await LoadAsync(db);
+    }
+
+    private async Task ConfirmResubmitAsync()
+    {
+        _showResubmitConfirm = false;
+
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Persist whatever the officer has typed first. This method reloads state at the end, so
+        // without this any in-progress outcome or initiation edits would be silently discarded.
+        await PersistEditsAsync(db, completeStage: false);
+
+        var highest = await db.RcuReports
+            .Where(r => r.ApplicationId == _application.Id)
+            .MaxAsync(r => (int?)r.SequenceNumber) ?? 0;
+
+        db.RcuReports.Add(new RcuReport
+        {
+            ApplicationId = _application.Id,
+            SequenceNumber = highest + 1,
+            Note = "Re-submitted to vendor",
+        });
+
+        // The new row becomes "current" purely by having the highest sequence — the previous one
+        // drops into history with no archiving step.
+        var initiation = await db.RcuInitiations.FirstAsync(i => i.ApplicationId == _application.Id);
+        initiation.InitiationDate = DateOnly.FromDateTime(DateTime.Today);
+        initiation.CompletionDate = null;
+
+        await db.SaveChangesAsync();
+        await LoadAsync(db);
+
+        await ShowToastAsync("Re-submitted to vendor");
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private async Task CompleteStageAsync()
+    {
+        // Defence in depth: the button carries a real disabled attribute, and the same gate is
+        // re-checked here so a crafted request cannot advance the stage either.
+        if (CompleteBlocked || _application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await PersistEditsAsync(db, completeStage: true);
+        await db.SaveChangesAsync();
+
+        Navigation.NavigateTo($"/applications/{ApplicationId}/eligibility");
+    }
+
+    /// <summary>Copies in-memory edits onto tracked entities. Caller owns SaveChangesAsync.</summary>
+    private async Task PersistEditsAsync(LosDbContext db, bool completeStage)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        var initiation = await db.RcuInitiations.FirstAsync(i => i.ApplicationId == _application.Id);
+        initiation.Mode = _initiation.Mode;
+        initiation.Branch = _initiation.Branch;
+        initiation.Vendor = _initiation.Vendor;
+        initiation.InitiationDate = _initiation.InitiationDate;
+        initiation.CompletionDate = _initiation.CompletionDate;
+        initiation.Tat = _initiation.Tat;
+        initiation.CaseRef = _initiation.CaseRef;
+        initiation.OverrideActive = _initiation.OverrideActive;
+        initiation.OverrideReason = _initiation.OverrideReason;
+        initiation.OverrideApproverOfficerId = _initiation.OverrideApproverOfficerId;
+
+        var outcomes = await db.RcuOutcomes
+            .Where(o => o.ApplicationId == _application.Id)
+            .ToListAsync();
+
+        foreach (var outcome in outcomes)
+        {
+            if (!_outcomes.TryGetValue(outcome.PartyType, out var local))
+            {
+                continue;
+            }
+
+            outcome.Status = local.Status;
+            outcome.VerifiedOn = local.VerifiedOn;
+            outcome.VerifiedByOfficerId = local.VerifiedByOfficerId;
+            outcome.Remarks = local.Remarks;
+        }
+
+        if (completeStage)
+        {
+            var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
+            // Never move an application backwards — see CustomerDetails for the same guard.
+            application.CurrentStage = Math.Max(application.CurrentStage, 6);
+        }
+    }
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Explicit render — see the matching note in CustomerDetails.razor.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+}

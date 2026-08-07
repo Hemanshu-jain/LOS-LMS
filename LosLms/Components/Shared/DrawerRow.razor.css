@@ -1,0 +1,19 @@
+.drawer-row {
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid #eceef1;
+    font-size: 12px;
+}
+
+.drawer-row-label {
+    color: var(--los-text-secondary, #5b6472);
+    white-space: nowrap;
+}
+
+.drawer-row-value {
+    text-align: right;
+    word-break: break-word;
+}

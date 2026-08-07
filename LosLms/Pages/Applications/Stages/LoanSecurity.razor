@@ -1,0 +1,866 @@
+@page "/applications/{ApplicationId}/loan-security"
+@using System.Globalization
+@using System.Text.RegularExpressions
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment HostEnvironment
+
+<PageTitle>Loan &amp; Security · @ApplicationId</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading application…</p></div>
+}
+else if (_application is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Application not found</h1>
+            <p class="not-found-body">
+                No application exists with the reference <strong>@ApplicationId</strong>.
+            </p>
+            <button type="button" class="not-found-action" @onclick='() => Navigation.NavigateTo("/applications")'>
+                ← Back to applications
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="stage-page">
+        <div class="stage-card">
+
+            @* No completion gate on this stage, unlike Stage 1's dedupe gate.
+               TODO: confirm with Arun/client whether Stage 2 needs a real completion gate. *@
+            <StageSubHeader ApplicationId="@_application.Id"
+                            CompleteBlocked="false"
+                            OnSaveDraft="SaveDraftAsync"
+                            OnCompleteStage="CompleteStageAsync" />
+
+            <div class="stepper-band">
+                <StageStepper CurrentStep="2" />
+            </div>
+
+            <div class="stage-body">
+                <div class="stage-rail">
+                    @* Bound to the live in-memory application, so the amount, tenure and ROI here
+                       track what is typed on the Loan Details tab before anything is saved. *@
+                    <ApplicationSummaryRail Application="_application" />
+                </div>
+
+                <div class="stage-main">
+                    <div class="stage-title">
+                        <span class="stage-title-number">03</span>
+                        <span class="stage-title-text">STAGE 2 — LOAN &amp; SECURITY</span>
+                        <span class="stage-title-of">Stage 2 of 8</span>
+                    </div>
+
+                    <div class="loan-tabs" role="tablist" aria-label="Loan and security sections">
+                        @foreach (var tab in Tabs)
+                        {
+                            var isActive = _activeTab == tab;
+                            var isStale = tab == ViabilityTab && ViabilityStale;
+                            var isComplete = IsTabComplete(tab);
+
+                            <button type="button" role="tab"
+                                    class="loan-tab @(isActive ? "is-active" : null)"
+                                    aria-selected="@isActive"
+                                    @onclick="() => SelectTab(tab)">
+                                @tab
+                                @if (isStale && !isActive)
+                                {
+                                    <span class="stale-dot" title="Loan terms changed since you last viewed this"></span>
+                                }
+                                else if (isComplete && !isStale)
+                                {
+                                    <span class="complete-tick" title="All fields filled">✓</span>
+                                }
+                            </button>
+                        }
+                    </div>
+
+                    @* ---------- Tab 1: Loan details ---------- *@
+                    @if (_activeTab == LoanTab)
+                    {
+                        <Panel Title="Loan details">
+                            <div class="field-grid">
+                                <FormField Label="DSA / sourcing channel" For="ls-dsa">
+                                    <select id="ls-dsa" class="field-input" @bind="_application.SourcingChannel">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in ChannelOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Sourcing branch" For="ls-branch">
+                                    <select id="ls-branch" class="field-input" @bind="_application.Branch">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in BranchOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Scheme" For="ls-scheme">
+                                    <select id="ls-scheme" class="field-input" @bind="_application.Scheme">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in SchemeOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Requested amount" For="ls-amount">
+                                    <div class="currency-input">
+                                        <span class="currency-symbol">₹</span>
+                                        <input id="ls-amount" type="number" min="0" step="1" class="field-input has-prefix"
+                                               @bind="_application.LoanAmount" @bind:event="oninput" />
+                                    </div>
+                                </FormField>
+
+                                <FormField Label="Tenure (months)" For="ls-tenure">
+                                    <input id="ls-tenure" type="number" min="0" step="1" class="field-input"
+                                           @bind="_application.Tenure" @bind:event="oninput" />
+                                </FormField>
+
+                                <FormField Label="ROI %" For="ls-roi">
+                                    <input id="ls-roi" type="number" min="0" step="0.01" class="field-input"
+                                           @bind="_application.Roi" @bind:event="oninput" />
+                                </FormField>
+
+                                <FormField Label="Processing fee" For="ls-fee">
+                                    <div class="currency-input">
+                                        <span class="currency-symbol">₹</span>
+                                        <input id="ls-fee" type="number" min="0" step="1" class="field-input has-prefix"
+                                               @bind="_application.ProcessingFee" />
+                                    </div>
+                                </FormField>
+
+                                <FormField Label="Advance EMI" For="ls-advemi">
+                                    <div class="currency-input">
+                                        <span class="currency-symbol">₹</span>
+                                        <input id="ls-advemi" type="number" min="0" step="1" class="field-input has-prefix"
+                                               @bind="_application.AdvanceEmi" />
+                                    </div>
+                                </FormField>
+
+                                <FormField Label="Repayment mode" For="ls-repay">
+                                    <select id="ls-repay" class="field-input" @bind="_application.RepaymentMode">
+                                        <option value="">@BlankOption</option>
+                                        @foreach (var o in RepaymentOptions) { <option value="@o">@o</option> }
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="Expected disbursal date" For="ls-disbursal">
+                                    <input id="ls-disbursal" type="date" class="field-input"
+                                           @bind="_application.DisbursalDate" />
+                                </FormField>
+                            </div>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 2: Security details ---------- *@
+                    @if (_activeTab == SecurityTab)
+                    {
+                        <Panel Title="Security details">
+                            <Right>
+                                <div class="asset-toggle" role="group" aria-label="Asset type">
+                                    @foreach (var type in AssetTypes)
+                                    {
+                                        <button type="button"
+                                                class="@(_security.AssetType == type ? "is-active" : null)"
+                                                aria-pressed="@(_security.AssetType == type)"
+                                                @onclick="() => _security.AssetType = type">@type</button>
+                                    }
+                                </div>
+                            </Right>
+                            <ChildContent>
+                                <div class="security-layout">
+                                    @* Both field sets stay in one form object, so switching the toggle
+                                       hides fields without discarding anything already typed. *@
+                                    <div class="field-grid">
+                                        @if (_security.AssetType == "Vehicle")
+                                        {
+                                            <FormField Label="Make &amp; model" For="sec-make">
+                                                <input id="sec-make" type="text" class="field-input" @bind="_security.MakeModel" />
+                                            </FormField>
+
+                                            <FormField Label="Manufacturing year" For="sec-year">
+                                                <select id="sec-year" class="field-input" @bind="_security.MfgYear">
+                                                    <option value="">@BlankOption</option>
+                                                    @foreach (var y in MfgYearOptions) { <option value="@y">@y</option> }
+                                                </select>
+                                            </FormField>
+
+                                            <FormField Label="Registration no." For="sec-reg">
+                                                <input id="sec-reg" type="text" class="field-input" @bind="_security.RegNo" />
+                                                <span class="field-caption">Manual entry — Vahan RC verification is v2 scope</span>
+                                            </FormField>
+
+                                            <FormField Label="Chassis no." For="sec-chassis">
+                                                <input id="sec-chassis" type="text" class="field-input" @bind="_security.ChassisNo" />
+                                            </FormField>
+
+                                            <FormField Label="Engine no." For="sec-engine">
+                                                <input id="sec-engine" type="text" class="field-input" @bind="_security.EngineNo" />
+                                            </FormField>
+
+                                            <FormField Label="Invoice no." For="sec-invno">
+                                                <input id="sec-invno" type="text" class="field-input" @bind="_security.InvoiceNo" />
+                                            </FormField>
+
+                                            <FormField Label="Invoice date" For="sec-invdate">
+                                                <input id="sec-invdate" type="date" class="field-input" @bind="_security.InvoiceDate" />
+                                            </FormField>
+
+                                            <FormField Label="Invoice value" For="sec-invval">
+                                                <div class="currency-input">
+                                                    <span class="currency-symbol">₹</span>
+                                                    <input id="sec-invval" type="number" min="0" step="1" class="field-input has-prefix"
+                                                           @bind="_security.InvoiceValue" />
+                                                </div>
+                                            </FormField>
+
+                                            <FormField Label="Insurance provider" For="sec-insurer">
+                                                <select id="sec-insurer" class="field-input" @bind="_security.InsuranceProvider">
+                                                    <option value="">@BlankOption</option>
+                                                    @foreach (var o in InsurerOptions) { <option value="@o">@o</option> }
+                                                </select>
+                                            </FormField>
+
+                                            <FormField Label="Policy no." For="sec-policy">
+                                                <input id="sec-policy" type="text" class="field-input" @bind="_security.PolicyNo" />
+                                            </FormField>
+
+                                            <FormField Label="Policy expiry" For="sec-policyexp">
+                                                <input id="sec-policyexp" type="date" class="field-input" @bind="_security.PolicyExpiry" />
+                                            </FormField>
+
+                                            <FormField Label="Assessed asset value" For="sec-assessed">
+                                                <div class="currency-input">
+                                                    <span class="currency-symbol">₹</span>
+                                                    <input id="sec-assessed" type="number" min="0" step="1" class="field-input has-prefix"
+                                                           @bind="_security.AssessedValue" />
+                                                </div>
+                                            </FormField>
+                                        }
+                                        else
+                                        {
+                                            <FormField Label="Property type" For="sec-ptype">
+                                                <select id="sec-ptype" class="field-input" @bind="_security.PropertyType">
+                                                    <option value="">@BlankOption</option>
+                                                    @foreach (var o in PropertyTypeOptions) { <option value="@o">@o</option> }
+                                                </select>
+                                            </FormField>
+
+                                            <FormField Label="Property address" For="sec-paddr">
+                                                <input id="sec-paddr" type="text" class="field-input" @bind="_security.PropertyAddress" />
+                                            </FormField>
+
+                                            <FormField Label="Area (sq. ft.)" For="sec-area">
+                                                <input id="sec-area" type="number" min="0" step="0.01" class="field-input" @bind="_security.Area" />
+                                            </FormField>
+
+                                            <FormField Label="Ownership type" For="sec-owner">
+                                                <select id="sec-owner" class="field-input" @bind="_security.OwnershipType">
+                                                    <option value="">@BlankOption</option>
+                                                    @foreach (var o in OwnershipOptions) { <option value="@o">@o</option> }
+                                                </select>
+                                            </FormField>
+
+                                            <FormField Label="Registration / sale deed no." For="sec-deed">
+                                                <input id="sec-deed" type="text" class="field-input" @bind="_security.SaleDeedNo" />
+                                            </FormField>
+
+                                            <FormField Label="Valuation report ref. no." For="sec-valref">
+                                                <input id="sec-valref" type="text" class="field-input" @bind="_security.ValuationRefNo" />
+                                            </FormField>
+
+                                            <FormField Label="Assessed property value" For="sec-passessed">
+                                                <div class="currency-input">
+                                                    <span class="currency-symbol">₹</span>
+                                                    <input id="sec-passessed" type="number" min="0" step="1" class="field-input has-prefix"
+                                                           @bind="_security.AssessedValue" />
+                                                </div>
+                                            </FormField>
+
+                                            <FormField Label="Encumbrance certificate ref." For="sec-enc">
+                                                <input id="sec-enc" type="text" class="field-input" @bind="_security.EncumbranceRef" />
+                                            </FormField>
+                                        }
+                                    </div>
+
+                                    <div class="upload-row">
+                                        <div class="upload-slot">
+                                            <span class="upload-label">Invoice</span>
+                                            <label class="upload-target @(_security.HasInvoiceFile ? "is-filled" : null)">
+                                                @(_security.HasInvoiceFile
+                                                    ? "✓ " + Path.GetFileName(_security.InvoiceFilePath)
+                                                    : "Upload proforma / tax invoice")
+                                                <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                           OnChange="@(e => OnFileSelectedAsync(e, UploadKind.Invoice))" />
+                                            </label>
+                                        </div>
+                                        <div class="upload-slot">
+                                            <span class="upload-label">Insurance</span>
+                                            <label class="upload-target @(_security.HasInsuranceFile ? "is-filled" : null)">
+                                                @(_security.HasInsuranceFile
+                                                    ? "✓ " + Path.GetFileName(_security.InsuranceFilePath)
+                                                    : "Upload policy copy")
+                                                <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                           OnChange="@(e => OnFileSelectedAsync(e, UploadKind.Insurance))" />
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    @if (_uploadError is not null)
+                                    {
+                                        <p class="inline-error" role="alert">@_uploadError</p>
+                                    }
+                                </div>
+                            </ChildContent>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 3: Reference details ---------- *@
+                    @if (_activeTab == ReferenceTab)
+                    {
+                        <Panel Title="Reference details · 2 required">
+                            <Right>
+                                <button type="button" class="add-reference" @onclick="AddReference">+ Add reference</button>
+                            </Right>
+                            <ChildContent>
+                                <div class="reference-scroll">
+                                    <table class="reference-table">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>Name</th>
+                                                <th>Relationship</th>
+                                                <th>Mobile</th>
+                                                <th>Address</th>
+                                                <th>Known since</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (var i = 0; i < _references.Count; i++)
+                                            {
+                                                var index = i;
+                                                var reference = _references[index];
+
+                                                <tr>
+                                                    <td class="row-number">@(index + 1)</td>
+                                                    <td><input class="reference-input" @bind="reference.Name" /></td>
+                                                    <td><input class="reference-input" @bind="reference.Relationship" /></td>
+                                                    <td>
+                                                        <input class="reference-input" maxlength="10" placeholder="10-digit mobile"
+                                                               @bind="reference.Mobile"
+                                                               @onblur="() => ValidateMobile(index)" />
+                                                        @if (_referenceErrors.TryGetValue(index, out var refError))
+                                                        {
+                                                            <span class="reference-error" role="alert">@refError</span>
+                                                        }
+                                                    </td>
+                                                    <td><input class="reference-input" @bind="reference.Address" /></td>
+                                                    <td><input class="reference-input" @bind="reference.KnownSince" /></td>
+                                                    <td class="remove-cell">
+                                                        @* Only offered above the two-row minimum. *@
+                                                        @if (_references.Count > MinimumReferences)
+                                                        {
+                                                            <button type="button" class="remove-reference"
+                                                                    aria-label="@($"Remove reference {index + 1}")"
+                                                                    @onclick="() => RemoveReference(index)">×</button>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </ChildContent>
+                        </Panel>
+                    }
+
+                    @* ---------- Tab 4: Viability ---------- *@
+                    @if (_activeTab == ViabilityTab)
+                    {
+                        <Panel Title="Viability · income vs expense">
+                            <ViabilityPanel Model="_viability" ProposedEmi="ProposedEmi" />
+                        </Panel>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (_toast is not null)
+    {
+        <div class="toast" role="status">@_toast</div>
+    }
+}
+
+@code {
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    // ---------------------------------------------------------------------
+    // Constants
+    // ---------------------------------------------------------------------
+
+    private const string BlankOption = "— Select —";
+    private const int MinimumReferences = 2;
+    private const long MaxUploadBytes = 5 * 1024 * 1024;
+
+    private const string LoanTab = "Loan Details";
+    private const string SecurityTab = "Security Details";
+    private const string ReferenceTab = "Reference Details";
+    private const string ViabilityTab = "Viability";
+
+    private static readonly string[] Tabs = { LoanTab, SecurityTab, ReferenceTab, ViabilityTab };
+    private static readonly string[] AssetTypes = { "Vehicle", "Property" };
+    private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
+
+    private static readonly string[] ChannelOptions =
+        { "DSA — Patil Motors", "DSA — Shree Associates", "Branch walk-in", "Digital" };
+
+    private static readonly string[] BranchOptions =
+        { "Nashik West", "Nashik East", "Pune Camp", "Aurangabad", "Jalgaon" };
+
+    private static readonly string[] SchemeOptions = { "CV-STD-2026", "CV-PRIME-2026", "LAP-STD-2026" };
+
+    // Placeholder options pending confirmation with Arun/the client.
+    private static readonly string[] RepaymentOptions = { "NACH", "Post-dated cheques", "Cash" };
+
+    private static readonly string[] MfgYearOptions = { "2026", "2025", "2024", "2023", "2022", "2021" };
+
+    private static readonly string[] InsurerOptions =
+        { "ICICI Lombard", "Bajaj Allianz", "HDFC Ergo", "National Insurance", "Other" };
+
+    private static readonly string[] PropertyTypeOptions = { "Residential", "Commercial", "Industrial", "Land" };
+    private static readonly string[] OwnershipOptions = { "Freehold", "Leasehold" };
+
+    private static readonly Regex MobilePattern = new(@"^[6-9]\d{9}$", RegexOptions.Compiled);
+
+    private enum UploadKind { Invoice, Insurance }
+
+    // ---------------------------------------------------------------------
+    // State
+    // ---------------------------------------------------------------------
+
+    private Application? _application;
+    private bool _loading = true;
+    private string _activeTab = LoanTab;
+
+    private SecurityForm _security = new();
+    private List<ReferenceForm> _references = new();
+    private Viability _viability = new();
+
+    private string _viabilityLastSeen = string.Empty;
+    private string? _uploadError;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    private readonly Dictionary<int, string> _referenceErrors = new();
+
+    // ---------------------------------------------------------------------
+    // Lifecycle
+    // ---------------------------------------------------------------------
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // AsNoTracking on purpose: this instance is mutated as the officer types so the summary
+        // rail tracks unsaved values. A tracked copy is loaded fresh at save time.
+        _application = await db.Applications.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == ApplicationId);
+
+        if (_application is not null)
+        {
+            var security = await db.SecurityDetails.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
+            _security = security is null ? new SecurityForm() : ToForm(security);
+
+            var references = await db.References.AsNoTracking()
+                .Where(r => r.ApplicationId == ApplicationId)
+                .OrderBy(r => r.Id)
+                .ToListAsync();
+
+            _references = references.Select(ToForm).ToList();
+            while (_references.Count < MinimumReferences)
+            {
+                _references.Add(new ReferenceForm());
+            }
+
+            _viability = await db.Viabilities.AsNoTracking()
+                .FirstOrDefaultAsync(v => v.ApplicationId == ApplicationId)
+                ?? new Viability { ApplicationId = ApplicationId };
+
+            _viabilityLastSeen = CurrentTermsKey;
+        }
+
+        _loading = false;
+    }
+
+    public void Dispose()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+    }
+
+    // ---------------------------------------------------------------------
+    // Tabs and completion
+    // ---------------------------------------------------------------------
+
+    private void SelectTab(string tab)
+    {
+        _activeTab = tab;
+
+        // Opening Viability re-snapshots the loan terms, which clears the stale marker.
+        if (tab == ViabilityTab)
+        {
+            _viabilityLastSeen = CurrentTermsKey;
+        }
+    }
+
+    private string CurrentTermsKey =>
+        $"{_application?.LoanAmount}|{_application?.Tenure}|{_application?.Roi}";
+
+    /// <summary>In-memory only, reset on reload — deliberately not persisted.</summary>
+    private bool ViabilityStale => _viabilityLastSeen != CurrentTermsKey;
+
+    private bool IsTabComplete(string tab) => tab switch
+    {
+        LoanTab => IsLoanComplete,
+        SecurityTab => _security.IsComplete,
+        ReferenceTab => _references.Count(r => r.IsComplete) >= MinimumReferences,
+        ViabilityTab => IsViabilityComplete,
+        _ => false,
+    };
+
+    private bool IsLoanComplete =>
+        _application is not null
+        && !string.IsNullOrWhiteSpace(_application.SourcingChannel)
+        && !string.IsNullOrWhiteSpace(_application.Branch)
+        && !string.IsNullOrWhiteSpace(_application.Scheme)
+        && _application.LoanAmount > 0
+        && _application.Tenure > 0
+        && _application.Roi > 0
+        && _application.ProcessingFee > 0
+        && _application.AdvanceEmi > 0
+        && !string.IsNullOrWhiteSpace(_application.RepaymentMode)
+        && _application.DisbursalDate.HasValue;
+
+    private bool IsViabilityComplete =>
+        _viability.IncomeFreight > 0 && _viability.IncomeSalary > 0 && _viability.IncomeOther > 0
+        && _viability.ExpenseHousehold > 0 && _viability.ExpenseFuelDriver > 0
+        && _viability.ExpenseExistingEmi > 0;
+
+    // ---------------------------------------------------------------------
+    // EMI
+    // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Reducing-balance EMI from the current, possibly unsaved, Loan Details terms.
+    /// </summary>
+    private decimal ProposedEmi => CalculateEmi(
+        _application?.LoanAmount ?? 0m,
+        _application?.Roi ?? 0m,
+        _application?.Tenure ?? 0);
+
+    private static decimal CalculateEmi(decimal principal, decimal annualRatePct, int months)
+    {
+        // A blank or zero term also protects the divide by (factor - 1) below.
+        if (principal <= 0 || annualRatePct <= 0 || months <= 0)
+        {
+            return 0m;
+        }
+
+        var monthlyRate = (double)annualRatePct / 12d / 100d;
+        var factor = Math.Pow(1 + monthlyRate, months);
+
+        if (factor <= 1d)
+        {
+            return 0m;
+        }
+
+        return (decimal)((double)principal * monthlyRate * factor / (factor - 1d));
+    }
+
+    // ---------------------------------------------------------------------
+    // References
+    // ---------------------------------------------------------------------
+
+    private void AddReference() => _references.Add(new ReferenceForm());
+
+    private void RemoveReference(int index)
+    {
+        if (_references.Count <= MinimumReferences)
+        {
+            return;
+        }
+
+        _references.RemoveAt(index);
+        _referenceErrors.Clear();   // indices shifted, so stale messages would point at the wrong row
+    }
+
+    private void ValidateMobile(int index)
+    {
+        _referenceErrors.Remove(index);
+
+        var mobile = _references[index].Mobile;
+        if (string.IsNullOrWhiteSpace(mobile))
+        {
+            return;   // blank is allowed while drafting
+        }
+
+        if (!MobilePattern.IsMatch(mobile))
+        {
+            _referenceErrors[index] = "Mobile must be 10 digits starting 6-9.";
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Uploads
+    // ---------------------------------------------------------------------
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e, UploadKind kind)
+    {
+        _uploadError = null;
+        var file = e.File;
+
+        if (file is null || _application is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _uploadError = $"File is too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB.";
+            return;
+        }
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension))
+        {
+            _uploadError = "Unsupported file type. Use JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        // Outside wwwroot, same as Customer Details: these are customer financial documents and
+        // anything under wwwroot is downloadable by anyone who guesses the URL. The client's
+        // filename is never used in the path — only its whitelisted extension.
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, "security");
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+
+        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "security", fileName);
+
+        if (kind == UploadKind.Invoice)
+        {
+            _security.InvoiceFilePath = relativePath;
+        }
+        else
+        {
+            _security.InsuranceFilePath = relativePath;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Persistence
+    // ---------------------------------------------------------------------
+
+    private async Task SaveDraftAsync()
+    {
+        await PersistAsync(completeStage: false);
+        await ShowToastAsync("Draft saved");
+    }
+
+    private async Task CompleteStageAsync()
+    {
+        await PersistAsync(completeStage: true);
+        Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial");
+    }
+
+    /// <summary>Writes all four tabs in a single operation. No validation blocks this.</summary>
+    private async Task PersistAsync(bool completeStage)
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
+        application.SourcingChannel = _application.SourcingChannel;
+        application.Branch = _application.Branch;
+        application.Scheme = _application.Scheme;
+        application.LoanAmount = _application.LoanAmount;
+        application.Tenure = _application.Tenure;
+        application.Roi = _application.Roi;
+        application.ProcessingFee = _application.ProcessingFee;
+        application.AdvanceEmi = _application.AdvanceEmi;
+        application.RepaymentMode = _application.RepaymentMode;
+        application.DisbursalDate = _application.DisbursalDate;
+
+        if (completeStage)
+        {
+            // Never move an application backwards — see CustomerDetails for the same guard.
+            application.CurrentStage = Math.Max(application.CurrentStage, 3);
+        }
+
+        // Security — both asset blocks are written every time, so nothing the officer typed under
+        // the inactive toggle is lost.
+        var security = await db.SecurityDetails.FirstOrDefaultAsync(s => s.ApplicationId == _application.Id);
+        if (security is null)
+        {
+            security = new SecurityDetail { ApplicationId = _application.Id };
+            db.SecurityDetails.Add(security);
+        }
+
+        ApplyToEntity(_security, security);
+
+        // References have no stable identity in the UI, so the whole set is replaced.
+        var existingReferences = await db.References
+            .Where(r => r.ApplicationId == _application.Id)
+            .ToListAsync();
+
+        db.References.RemoveRange(existingReferences);
+
+        foreach (var form in _references.Where(r => r.HasAnyData))
+        {
+            db.References.Add(new Reference
+            {
+                ApplicationId = _application.Id,
+                Name = form.Name,
+                Relationship = form.Relationship,
+                Mobile = form.Mobile,
+                Address = form.Address,
+                KnownSince = form.KnownSince,
+            });
+        }
+
+        var viability = await db.Viabilities.FirstOrDefaultAsync(v => v.ApplicationId == _application.Id);
+        if (viability is null)
+        {
+            viability = new Viability { ApplicationId = _application.Id };
+            db.Viabilities.Add(viability);
+        }
+
+        viability.IncomeFreight = _viability.IncomeFreight;
+        viability.IncomeSalary = _viability.IncomeSalary;
+        viability.IncomeOther = _viability.IncomeOther;
+        viability.ExpenseHousehold = _viability.ExpenseHousehold;
+        viability.ExpenseFuelDriver = _viability.ExpenseFuelDriver;
+        viability.ExpenseExistingEmi = _viability.ExpenseExistingEmi;
+
+        await db.SaveChangesAsync();
+
+        _security.Id = security.Id;
+        _viability.Id = viability.Id;
+    }
+
+    private static SecurityForm ToForm(SecurityDetail entity) => new()
+    {
+        Id = entity.Id,
+        AssetType = string.IsNullOrWhiteSpace(entity.AssetType) ? "Vehicle" : entity.AssetType,
+        MakeModel = entity.MakeModel,
+        MfgYear = entity.MfgYear,
+        RegNo = entity.RegNo,
+        ChassisNo = entity.ChassisNo,
+        EngineNo = entity.EngineNo,
+        InvoiceNo = entity.InvoiceNo,
+        InvoiceDate = entity.InvoiceDate,
+        InvoiceValue = entity.InvoiceValue,
+        InsuranceProvider = entity.InsuranceProvider,
+        PolicyNo = entity.PolicyNo,
+        PolicyExpiry = entity.PolicyExpiry,
+        PropertyType = entity.PropertyType,
+        PropertyAddress = entity.PropertyAddress,
+        Area = entity.Area,
+        OwnershipType = entity.OwnershipType,
+        SaleDeedNo = entity.SaleDeedNo,
+        ValuationRefNo = entity.ValuationRefNo,
+        EncumbranceRef = entity.EncumbranceRef,
+        AssessedValue = entity.AssessedValue,
+        InvoiceFilePath = entity.InvoiceFilePath,
+        InsuranceFilePath = entity.InsuranceFilePath,
+    };
+
+    private static ReferenceForm ToForm(Reference entity) => new()
+    {
+        Name = entity.Name,
+        Relationship = entity.Relationship,
+        Mobile = entity.Mobile,
+        Address = entity.Address,
+        KnownSince = entity.KnownSince,
+    };
+
+    private static void ApplyToEntity(SecurityForm form, SecurityDetail entity)
+    {
+        entity.AssetType = form.AssetType;
+        entity.MakeModel = form.MakeModel;
+        entity.MfgYear = form.MfgYear;
+        entity.RegNo = form.RegNo;
+        entity.ChassisNo = form.ChassisNo;
+        entity.EngineNo = form.EngineNo;
+        entity.InvoiceNo = form.InvoiceNo;
+        entity.InvoiceDate = form.InvoiceDate;
+        entity.InvoiceValue = form.InvoiceValue;
+        entity.InsuranceProvider = form.InsuranceProvider;
+        entity.PolicyNo = form.PolicyNo;
+        entity.PolicyExpiry = form.PolicyExpiry;
+        entity.PropertyType = form.PropertyType;
+        entity.PropertyAddress = form.PropertyAddress;
+        entity.Area = form.Area;
+        entity.OwnershipType = form.OwnershipType;
+        entity.SaleDeedNo = form.SaleDeedNo;
+        entity.ValuationRefNo = form.ValuationRefNo;
+        entity.EncumbranceRef = form.EncumbranceRef;
+        entity.AssessedValue = form.AssessedValue;
+        entity.InvoiceFilePath = form.InvoiceFilePath;
+        entity.InsuranceFilePath = form.InsuranceFilePath;
+    }
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        // Render now, explicitly. ComponentBase renders an async handler exactly twice: when it
+        // first yields, and when it completes. The first yield happens inside the save, before
+        // _toast is set; the second happens after the delay below has already cleared it. Without
+        // this call the toast is assigned and cleared without a single render ever showing it.
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+}

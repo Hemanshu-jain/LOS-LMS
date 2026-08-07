@@ -1,0 +1,95 @@
+.stage-sub-header,
+.stage-sub-header * {
+    box-sizing: border-box;
+}
+
+.stage-sub-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid #d8dbe1;
+    background: #f4f4f4;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.breadcrumb {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #5b6472;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.breadcrumb:hover {
+    color: #1a1f29;
+    text-decoration: underline;
+}
+
+.stage-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.stage-button {
+    height: 28px;
+    border: 1px solid #b9bfc9;
+    background: #ebebeb;
+    border-radius: 0;
+    padding: 0 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #3d3d3d;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.stage-button:hover:not(:disabled) {
+    background: #e0e0e0;
+}
+
+.stage-button.is-primary {
+    border-color: #16304f;
+    background: #1f3a5f;
+    color: #fff;
+}
+
+.stage-button.is-primary:hover:not(:disabled) {
+    background: #16304f;
+}
+
+.stage-button.is-blocked,
+.stage-button.is-primary:disabled {
+    border-color: #b9bfc9;
+    background: #e4e6e9;
+    color: #a7adb5;
+    cursor: not-allowed;
+}
+
+.stage-button.is-reject {
+    border-color: #e6b3b3;
+    background: #fff;
+    color: #8a1f1f;
+}
+
+.stage-button.is-reject:hover:not(:disabled) {
+    background: #f8d7d7;
+}
+
+.rejected-banner {
+    padding: 10px 14px;
+    border-bottom: 1px solid #e6b3b3;
+    background: #f8d7d7;
+    color: #8a1f1f;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+}

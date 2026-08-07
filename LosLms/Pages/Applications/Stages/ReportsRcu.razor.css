@@ -1,0 +1,563 @@
+/* Tokens ported from the Reports (RCU) reference spec's COLORS object. */
+.stage-page,
+.stage-page * {
+    box-sizing: border-box;
+}
+
+.stage-page {
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    font-size: 12px;
+    color: #1a1f29;
+    background: #f4f5f7;
+    min-height: 100vh;
+}
+
+.stage-card {
+    border: 1px solid #d8dbe1;
+    background: #fff;
+}
+
+.stage-page button,
+.stage-page input,
+.stage-page select {
+    font-family: inherit;
+    border-radius: 0;
+}
+
+/* ---------- Loading / not found ---------- */
+.loading-note {
+    margin: 0;
+    padding: 40px 16px;
+    text-align: center;
+    color: #5b6472;
+}
+
+.not-found {
+    margin: 0 auto;
+    max-width: 520px;
+    padding: 48px 20px;
+    text-align: center;
+}
+
+.not-found-title {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.not-found-body {
+    margin: 0 0 18px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #5b6472;
+}
+
+.not-found-action {
+    height: 30px;
+    border: 1px solid #16304f;
+    background: #1f3a5f;
+    color: #fff;
+    padding: 0 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+/* ---------- Shell ---------- */
+.stepper-band {
+    padding: 12px 14px;
+    border-bottom: 1px solid #dcdcdc;
+    background: #fbfbfb;
+}
+
+.stage-body {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.stage-rail {
+    width: 230px;
+    flex: none;
+    padding: 14px;
+    border-right: 1px solid #dcdcdc;
+    background: #f7f7f7;
+}
+
+.stage-main {
+    flex: 1;
+    min-width: 280px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.stage-title {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    border-bottom: 2px solid #1a1f29;
+    padding-bottom: 7px;
+    flex-wrap: wrap;
+}
+
+.stage-title-number {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+.stage-title-text {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.stage-title-of {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #93999a;
+}
+
+/* ---------- Mode toggle ---------- */
+.mode-toggle {
+    display: flex;
+}
+
+.mode-toggle button {
+    padding: 5px 12px;
+    border: 1px solid #c6c6c6;
+    background: #f4f4f4;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #8b8b8b;
+    cursor: pointer;
+}
+
+.mode-toggle button + button {
+    border-left: none;
+}
+
+.mode-toggle button.is-active {
+    border-color: #1f1f1f;
+    background: #2b2b2b;
+    color: #fff;
+}
+
+/* ---------- Initiation ---------- */
+.initiation-layout {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.initiation-fields {
+    flex: 1;
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px 14px;
+    width: 100%;
+}
+
+.field-input {
+    height: 29px;
+    border: 1px solid #d8dbe1;
+    font-size: 12px;
+    background: #fafbfc;
+    padding: 0 8px;
+    width: 100%;
+    color: #1a1f29;
+}
+
+select.field-input {
+    padding: 0 6px;
+}
+
+.field-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+.tat-breach {
+    font-size: 11px;
+    font-weight: 500;
+    color: #8a1f1f;
+}
+
+/* ---------- Overall status card ---------- */
+.status-card {
+    flex: 0 0 220px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.status-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.status-value {
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.status-caption {
+    font-size: 10px;
+    color: #8a8a8a;
+}
+
+.status-breakdown {
+    font-size: 10.5px;
+    margin-top: 2px;
+}
+
+.status-healthy {
+    border: 1px solid #1f5c2a;
+    background: #d9ecd7;
+}
+
+.status-healthy .status-label,
+.status-healthy .status-value,
+.status-healthy .status-breakdown {
+    color: #1f5c2a;
+}
+
+.status-caution {
+    border: 1px solid #7a4b06;
+    background: #fbe8c9;
+}
+
+.status-caution .status-label,
+.status-caution .status-value,
+.status-caution .status-breakdown {
+    color: #7a4b06;
+}
+
+.status-risk {
+    border: 1px solid #8a1f1f;
+    background: #f8d7d7;
+}
+
+.status-risk .status-label,
+.status-risk .status-value,
+.status-risk .status-breakdown {
+    color: #8a1f1f;
+}
+
+/* ---------- Override ---------- */
+.override-panel {
+    border: 1px solid #8a1f1f;
+    background: #f8d7d7;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.override-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #8a1f1f;
+    cursor: pointer;
+}
+
+.override-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.override-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.override-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #8a1f1f;
+}
+
+/* ---------- Outcome + report row ---------- */
+.outcome-report-row {
+    display: flex;
+    gap: 14px;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.outcome-wrap {
+    flex: 1;
+    min-width: 280px;
+}
+
+.report-wrap {
+    flex: 0 0 300px;
+}
+
+.outcome-scroll {
+    overflow-x: auto;
+}
+
+.outcome-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 620px;
+}
+
+.outcome-table th {
+    text-align: left;
+    padding: 7px 8px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    border-bottom: 1px solid #d4d4d4;
+    white-space: nowrap;
+    background: #f7f7f7;
+}
+
+.outcome-table td {
+    padding: 7px 8px;
+    font-size: 11.5px;
+    border-bottom: 1px solid #eceef1;
+}
+
+.outcome-table tbody tr:hover {
+    background: #fafbfc;
+}
+
+.cell-name {
+    color: #1a1f29;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.cell-muted {
+    color: #5b6472;
+    white-space: nowrap;
+}
+
+.is-empty {
+    color: #c2c2c2;
+}
+
+.status-select {
+    height: 27px;
+    border-width: 1.5px;
+    border-style: solid;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0 5px;
+    cursor: pointer;
+}
+
+.status-select-healthy {
+    border-color: #1f5c2a;
+    background: #d9ecd7;
+    color: #1f5c2a;
+}
+
+.status-select-caution {
+    border-color: #7a4b06;
+    background: #fbe8c9;
+    color: #7a4b06;
+}
+
+.status-select-risk {
+    border-color: #8a1f1f;
+    background: #f8d7d7;
+    color: #8a1f1f;
+}
+
+.small-input {
+    height: 26px;
+    border: 1px solid #d8dbe1;
+    font-size: 11px;
+    padding: 0 5px;
+    background: #fafbfc;
+    color: #1a1f29;
+}
+
+.remarks-input {
+    height: 26px;
+    width: 170px;
+    border: 1px solid #d8dbe1;
+    font-size: 11px;
+    padding: 0 6px;
+    background: #fafbfc;
+    color: #1a1f29;
+}
+
+.small-input:focus-visible,
+.remarks-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+}
+
+/* ---------- Report panel ---------- */
+.report-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.report-current {
+    border: 1px solid #e0e0e0;
+    background: #fafafa;
+    padding: 10px;
+}
+
+.report-file {
+    font-size: 11px;
+    font-weight: 500;
+    color: #1f3a5f;
+    word-break: break-all;
+}
+
+.report-date {
+    margin-top: 3px;
+    font-size: 10.5px;
+    color: #5b6472;
+}
+
+.report-view {
+    height: 28px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #3d3d3d;
+    cursor: pointer;
+}
+
+.report-view:hover {
+    background: #e0e0e0;
+}
+
+.report-upload {
+    min-height: 60px;
+    border: 1px dashed #bdbdbd;
+    background: #f7f7f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #9a9a9a;
+    cursor: pointer;
+    text-align: center;
+    padding: 10px;
+}
+
+.report-upload:hover {
+    background: #efefef;
+}
+
+/* InputFile renders its own <input type="file"> inside a child component, so only ::deep reaches
+   it — otherwise the browser's raw "Choose File" button shows through. */
+.visually-hidden,
+.report-upload ::deep input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.report-history {
+    border-top: 1px solid #eceef1;
+    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.history-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+}
+
+.history-entry {
+    font-size: 10.5px;
+    color: #5b6472;
+}
+
+.history-link {
+    font-size: 10.5px;
+    color: #1f3a5f;
+    background: none;
+    border: none;
+    padding: 0;
+    text-decoration: underline;
+    cursor: pointer;
+    word-break: break-all;
+}
+
+.history-awaiting {
+    font-size: 10.5px;
+    color: #7a4b06;
+    font-style: italic;
+}
+
+.history-date {
+    color: #93999a;
+}
+
+.history-note {
+    font-size: 10px;
+    color: #93999a;
+    margin-top: 1px;
+}
+
+/* ---------- Notices ---------- */
+.inline-error {
+    margin: 0;
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 6px 8px;
+}
+
+.toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: #1a1f29;
+    color: #fff;
+    font-size: 12px;
+    padding: 9px 16px;
+    z-index: 80;
+}
