@@ -44,7 +44,7 @@ else
                             OnCompleteStage="CompleteStageAsync" />
 
             <div class="stepper-band">
-                <StageStepper CurrentStep="2" />
+                <StageStepper CurrentStep="2" MaxStep="@_application?.CurrentStage" ApplicationId="@ApplicationId" />
             </div>
 
             <div class="stage-body">
@@ -480,6 +480,11 @@ else
 
         if (_application is not null)
         {
+            if (_application.CurrentStage < 2)
+            {
+                Navigation.NavigateTo($"/applications/{ApplicationId}/customer-details");
+                return;
+            }
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
             _security = security is null ? new SecurityForm() : ToForm(security);

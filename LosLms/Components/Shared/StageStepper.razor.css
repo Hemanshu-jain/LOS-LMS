@@ -20,6 +20,8 @@
     flex-direction: column;
     justify-content: center;
     gap: 2px;
+    text-decoration: none;
+    color: inherit;
 }
 
 .stage-status {
@@ -35,6 +37,11 @@
 .stage-segment.is-done {
     border: 1px solid #b9bfc9;
     background: #eceef1;
+}
+
+.stage-segment.is-done:hover {
+    background: #dfe3ea;
+    cursor: pointer;
 }
 
 .is-done .stage-status {
@@ -62,7 +69,15 @@
 
 .stage-segment.is-locked {
     border: 1px dashed #cbcbcb;
-    background: #fbfbfb;
+    background: #f8f9fa;
+    opacity: 0.65;
+    cursor: not-allowed;
+    user-select: none;
+}
+
+.stage-segment.is-locked:hover {
+    background: #f8f9fa;
+    cursor: not-allowed;
 }
 
 .is-locked .stage-status {

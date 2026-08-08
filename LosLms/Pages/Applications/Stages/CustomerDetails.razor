@@ -49,7 +49,7 @@ else
             <div class="stepper-band">
                 @* Always 1 on this page: this screen is stage 1 regardless of how far the
                    application has progressed. *@
-                <StageStepper CurrentStep="1" />
+                <StageStepper CurrentStep="1" MaxStep="@_application?.CurrentStage" ApplicationId="@ApplicationId" />
             </div>
 
             <div class="stage-body">

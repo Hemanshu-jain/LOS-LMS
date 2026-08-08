@@ -1,5 +1,9 @@
-@* Eight-stage progress strip, shared by screens 02-09. Display only — the segments are
-   deliberately not clickable; stage navigation is governed by the Complete stage button. *@
+@* Eight-stage progress strip, shared by screens 02-09. Each segment is a link so users
+   can jump freely between completed/unlocked stages; locked stages are rendered as non-link divs. *@
+
+@using LosLms.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
 
 <div class="stage-stepper">
     @for (var i = 0; i < StageLabels.Length; i++)
@@ -7,24 +11,26 @@
         var number = i + 1;
         var numberText = number.ToString("00");
         var label = StageLabels[i];
+        var href = $"/applications/{ApplicationId}/{StageRoutes[i]}";
 
-        if (number < CurrentStep)
+        if (number == CurrentStep)
         {
-            <div class="stage-segment is-done">
-                <span class="stage-status">&#10003; @numberText DONE</span>
-                <span class="stage-label">@label</span>
-            </div>
-        }
-        else if (number == CurrentStep)
-        {
-            <div class="stage-segment is-current" aria-current="step">
+            <div class="stage-segment is-current" aria-current="step" title="Current stage: @label">
                 <span class="stage-status">&#9679; @numberText CURRENT</span>
                 <span class="stage-label">@label</span>
             </div>
         }
+        else if (number <= EffectiveMaxStep)
+        {
+            var statusText = number < CurrentStep ? "DONE" : "UNLOCKED";
+            <a class="stage-segment is-done" href="@href" title="Go to @label">
+                <span class="stage-status">&#10003; @numberText @statusText</span>
+                <span class="stage-label">@label</span>
+            </a>
+        }
         else
         {
-            <div class="stage-segment is-locked" aria-disabled="true">
+            <div class="stage-segment is-locked" aria-disabled="true" title="Locked stage: @label">
                 <span class="stage-status">&#9675; @numberText LOCKED</span>
                 <span class="stage-label">@label</span>
             </div>
@@ -33,8 +39,30 @@
 </div>
 
 @code {
-    /// <summary>1-8. Screens 03-09 pass their own stage number.</summary>
+    /// <summary>1-8. Stage screen currently being viewed.</summary>
     [Parameter] public int CurrentStep { get; set; } = 1;
+
+    /// <summary>Highest unlocked stage (1-8). If not provided, fetched from DB or defaults to CurrentStep.</summary>
+    [Parameter] public int? MaxStep { get; set; }
+
+    /// <summary>Route suffix for each stage, parallel to <see cref="StageLabels"/>.</summary>
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+
+    private int _dbMaxStep = 1;
+
+    private int EffectiveMaxStep => Math.Max(CurrentStep, MaxStep ?? _dbMaxStep);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!MaxStep.HasValue && !string.IsNullOrWhiteSpace(ApplicationId))
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _dbMaxStep = await db.Applications.AsNoTracking()
+                .Where(a => a.Id == ApplicationId)
+                .Select(a => (int?)a.CurrentStage)
+                .FirstOrDefaultAsync() ?? CurrentStep;
+        }
+    }
 
     private static readonly string[] StageLabels =
     {
@@ -46,5 +74,17 @@
         "Eligibility",
         "Approvals",
         "Post Sanction",
+    };
+
+    private static readonly string[] StageRoutes =
+    {
+        "customer-details",
+        "loan-security",
+        "bank-financial",
+        "document-checklist",
+        "reports-rcu",
+        "eligibility",
+        "approvals",
+        "post-sanction",
     };
 }
