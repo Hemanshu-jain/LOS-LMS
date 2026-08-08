@@ -14,23 +14,45 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-var connectionString = builder.Configuration.GetConnectionString("LosDb")
-    ?? throw new InvalidOperationException(
-        "Connection string 'LosDb' is not configured. See README.md.");
+// An empty or absent LosDb connection string switches the whole app onto a self-contained SQLite
+// file — this is the portable client-demo build, which needs no MySQL server. Development keeps its
+// real MySQL connection string in appsettings and behaves exactly as before.
+var connectionString = builder.Configuration.GetConnectionString("LosDb");
+var usePortableSqlite = string.IsNullOrWhiteSpace(connectionString);
 
 // A factory, not AddDbContext. In Blazor Server a scoped DbContext lives for the whole SignalR
 // circuit and is shared by every component on it, so two overlapping renders hit the same context
 // and throw. Components create a short-lived context per operation instead.
 //
-// ponytail: the server version is pinned instead of using ServerVersion.AutoDetect(...), which
-// opens a MySQL connection during startup and would take every branch offline whenever the
+// ponytail: the MySQL server version is pinned instead of using ServerVersion.AutoDetect(...),
+// which opens a MySQL connection during startup and would take every branch offline whenever the
 // central database is unreachable. EF opens no connection until the first query this way.
 // Bump the constant to match the central server; move it to configuration only if it ever
 // needs to differ per deployment.
-builder.Services.AddDbContextFactory<LosDbContext>(options =>
-    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 36))));
+if (usePortableSqlite)
+{
+    var dbPath = Path.Combine(builder.Environment.ContentRootPath, "los_lms.db");
+    builder.Services.AddDbContextFactory<LosDbContext>(options =>
+        options.UseSqlite($"Data Source={dbPath}"));
+}
+else
+{
+    builder.Services.AddDbContextFactory<LosDbContext>(options =>
+        options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 36))));
+}
 
 var app = builder.Build();
+
+// The portable SQLite build has no migrations run against it (migrations are MySQL-specific), so
+// build the schema and seed data (the HasData calls in LosDbContext) from the model on first
+// launch. No-op once los_lms.db already exists, so the client's test data survives restarts.
+if (usePortableSqlite)
+{
+    using var scope = app.Services.CreateScope();
+    var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<LosDbContext>>();
+    using var db = contextFactory.CreateDbContext();
+    db.Database.EnsureCreated();
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -40,7 +62,12 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// The portable build serves plain HTTP on localhost only (no cert), so skip the redirect —
+// otherwise Kestrel just logs a "failed to determine https port" warning on every request.
+if (!usePortableSqlite)
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseStaticFiles();
 app.UseAntiforgery();
