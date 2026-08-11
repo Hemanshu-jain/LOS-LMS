@@ -437,7 +437,7 @@ else
         {
             if (_application.CurrentStage < 3)
             {
-                Navigation.NavigateTo($"/applications/{ApplicationId}/{StageRoute(_application.CurrentStage)}");
+                Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
                 return;
             }
             _bank = await db.BankDetails.AsNoTracking()
@@ -855,16 +855,4 @@ else
             // Superseded by a newer toast.
         }
     }
-
-    private static string StageRoute(int stage) => stage switch
-    {
-        1 => "customer-details",
-        2 => "loan-security",
-        3 => "bank-financial",
-        4 => "document-checklist",
-        5 => "reports-rcu",
-        6 => "eligibility",
-        7 => "approvals",
-        _ => "post-sanction",
-    };
 }

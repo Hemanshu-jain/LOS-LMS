@@ -482,7 +482,7 @@ else
         {
             if (_application.CurrentStage < 2)
             {
-                Navigation.NavigateTo($"/applications/{ApplicationId}/customer-details");
+                Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
                 return;
             }
             var security = await db.SecurityDetails.AsNoTracking()

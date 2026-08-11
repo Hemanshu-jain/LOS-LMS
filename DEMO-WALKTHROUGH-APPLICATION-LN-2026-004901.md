@@ -497,7 +497,7 @@ This is the screen that fixes the final loan terms and sanctions the loan. There
 | Status | Positive - Confirmed |
 | Verified by | S. Deshpande |
 | Date | 2026-08-12 |
-| Remarks | Spoke with applicant , emfor 15 minutesployment and business confirmed |
+| Remarks | Spoke with applicant for 15 minutes, employment and business confirmed |
 
 ## 7.3 Approval Note
 

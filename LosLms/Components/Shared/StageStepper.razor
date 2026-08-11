@@ -2,16 +2,14 @@
    can jump freely between completed/unlocked stages; locked stages are rendered as non-link divs. *@
 
 @using LosLms.Data
-@using Microsoft.EntityFrameworkCore
-@inject IDbContextFactory<LosDbContext> DbFactory
 
 <div class="stage-stepper">
-    @for (var i = 0; i < StageLabels.Length; i++)
+    @for (var i = 0; i < LoanStages.Count; i++)
     {
         var number = i + 1;
         var numberText = number.ToString("00");
-        var label = StageLabels[i];
-        var href = $"/applications/{ApplicationId}/{StageRoutes[i]}";
+        var label = LoanStages.Labels[i];
+        var href = LoanStages.Path(ApplicationId, number);
 
         if (number == CurrentStep)
         {
@@ -42,49 +40,16 @@
     /// <summary>1-8. Stage screen currently being viewed.</summary>
     [Parameter] public int CurrentStep { get; set; } = 1;
 
-    /// <summary>Highest unlocked stage (1-8). If not provided, fetched from DB or defaults to CurrentStep.</summary>
+    /// <summary>
+    /// Highest unlocked stage (1-8), i.e. the application's CurrentStage. Every call site passes it,
+    /// so an absent value just means "unlock nothing beyond the screen being viewed" — the stepper
+    /// does not query for it. Locking is cosmetic anyway; each stage screen enforces its own route
+    /// guard on load, which is what actually stops a hand-typed URL.
+    /// </summary>
     [Parameter] public int? MaxStep { get; set; }
 
-    /// <summary>Route suffix for each stage, parallel to <see cref="StageLabels"/>.</summary>
+    /// <summary>Application the segments link to.</summary>
     [Parameter] public string ApplicationId { get; set; } = string.Empty;
 
-    private int _dbMaxStep = 1;
-
-    private int EffectiveMaxStep => Math.Max(CurrentStep, MaxStep ?? _dbMaxStep);
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (!MaxStep.HasValue && !string.IsNullOrWhiteSpace(ApplicationId))
-        {
-            await using var db = await DbFactory.CreateDbContextAsync();
-            _dbMaxStep = await db.Applications.AsNoTracking()
-                .Where(a => a.Id == ApplicationId)
-                .Select(a => (int?)a.CurrentStage)
-                .FirstOrDefaultAsync() ?? CurrentStep;
-        }
-    }
-
-    private static readonly string[] StageLabels =
-    {
-        "Customer Details",
-        "Loan & Security",
-        "Bank & Financial",
-        "Document Checklist",
-        "Reports",
-        "Eligibility",
-        "Approvals",
-        "Post Sanction",
-    };
-
-    private static readonly string[] StageRoutes =
-    {
-        "customer-details",
-        "loan-security",
-        "bank-financial",
-        "document-checklist",
-        "reports-rcu",
-        "eligibility",
-        "approvals",
-        "post-sanction",
-    };
+    private int EffectiveMaxStep => Math.Max(CurrentStep, MaxStep ?? CurrentStep);
 }
