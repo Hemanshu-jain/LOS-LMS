@@ -130,30 +130,54 @@ public static class DemoSeedData
     ///
     /// Mahindra Furio 7 is deliberately LEFT OUT even though LN-2026-005009 uses it, so there is one
     /// real example of an application whose vehicle is not in the catalog.
+    ///
+    /// Most models appear for more than one year with a lower ceiling on the older one, so the
+    /// per-year cap is visible in the data rather than merely possible in the schema. The years
+    /// present cover the manufacturing years the demo applications actually carry, so their stored
+    /// vehicles resolve cleanly against the catalog.
     /// </remarks>
-    private static readonly (string Make, string Model, decimal Cap)[] VehicleCatalog =
+    private static readonly (string Make, string Model, int Year, decimal Cap)[] VehicleCatalog =
     {
-        ("Tata", "Signa 2823.K tipper", 2_500_000m),
-        ("Tata", "Ultra 1918.T", 2_600_000m),
-        ("Tata", "Intra V50", 2_200_000m),
-        ("Tata", "Ace Gold", 1_800_000m),
-        ("Ashok Leyland", "3520 haulage", 3_000_000m),
-        ("Ashok Leyland", "Dost+", 1_900_000m),
-        ("BharatBenz", "1917R", 2_000_000m),
-        ("Eicher", "Pro 6028 tanker", 3_200_000m),
-        ("Eicher", "Pro 2110", 2_400_000m),
-        ("Mahindra", "Bolero Pik-Up", 1_500_000m),
+        ("Tata", "Signa 2823.K tipper", 2026, 2_650_000m),
+        ("Tata", "Signa 2823.K tipper", 2025, 2_500_000m),
+        ("Tata", "Signa 2823.K tipper", 2024, 2_300_000m),
+
+        ("Tata", "Ultra 1918.T", 2025, 2_750_000m),
+        ("Tata", "Ultra 1918.T", 2024, 2_600_000m),
+
+        ("Tata", "Intra V50", 2025, 2_350_000m),
+        ("Tata", "Intra V50", 2024, 2_200_000m),
+
+        ("Tata", "Ace Gold", 2025, 1_800_000m),
+
+        ("Ashok Leyland", "3520 haulage", 2025, 3_150_000m),
+        ("Ashok Leyland", "3520 haulage", 2024, 3_000_000m),
+
+        ("Ashok Leyland", "Dost+", 2025, 2_000_000m),
+        ("Ashok Leyland", "Dost+", 2024, 1_900_000m),
+
+        ("BharatBenz", "1917R", 2025, 2_150_000m),
+        ("BharatBenz", "1917R", 2024, 2_000_000m),
+
+        ("Eicher", "Pro 6028 tanker", 2025, 3_200_000m),
+        ("Eicher", "Pro 6028 tanker", 2024, 3_050_000m),
+
+        ("Eicher", "Pro 2110", 2025, 2_400_000m),
+
+        ("Mahindra", "Bolero Pik-Up", 2026, 1_600_000m),
+        ("Mahindra", "Bolero Pik-Up", 2025, 1_500_000m),
     };
 
     private static void SeedVehicleCatalog(LosDbContext db)
     {
-        foreach (var (make, model, cap) in VehicleCatalog)
+        foreach (var (make, model, year, cap) in VehicleCatalog)
         {
             db.VehicleLoanCaps.Add(new VehicleLoanCap
             {
                 CompanyId = LosDbContext.SeedCompanyId,
                 Make = make,
                 Model = model,
+                Year = year,
                 MaxLoanAmount = cap,
             });
         }

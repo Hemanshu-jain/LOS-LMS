@@ -21,6 +21,8 @@
             <div class="setup-inline-add">
                 <input class="field-input" placeholder="Make" maxlength="80" @bind="_newMake" @bind:event="oninput" />
                 <input class="field-input" placeholder="Model" maxlength="120" @bind="_newModel" @bind:event="oninput" />
+                <input class="field-input" type="number" min="1990" max="2100" step="1" placeholder="Year"
+                       @bind="_newYear" />
                 <input class="field-input" type="number" min="0" step="1" placeholder="Max loan amount"
                        @bind="_newCap" />
                 <button type="button" class="setup-save" disabled="@AddDisabled" @onclick="AddAsync">Add</button>
@@ -35,7 +37,7 @@
         @if (_pendingRemoval is { } pending)
         {
             <div class="setup-warn" role="alert">
-                <strong>@pending.Make @pending.Model</strong> is used on
+                <strong>@pending.Make @pending.Model (@pending.Year)</strong> is used on
                 @UsageFor(pending) existing application(s). Removing it will not change those
                 applications — their recorded vehicle stays — but it will no longer be selectable, and
                 they will read as unrecognised on Loan &amp; Security.
@@ -52,6 +54,7 @@
                     <tr>
                         <th>Make</th>
                         <th>Model</th>
+                        <th class="align-right">Year</th>
                         <th class="align-right">Max loan amount</th>
                         <th class="align-right">In use</th>
                         <th></th>
@@ -64,6 +67,10 @@
                         <tr>
                             <td><input class="cell-input" maxlength="80" @bind="c.Make" @bind:event="oninput" /></td>
                             <td><input class="cell-input" maxlength="120" @bind="c.Model" @bind:event="oninput" /></td>
+                            <td class="align-right">
+                                <input class="cell-input align-right" type="number" min="1990" max="2100" step="1"
+                                       @bind="c.Year" />
+                            </td>
                             <td class="align-right">
                                 <input class="cell-input align-right" type="number" min="0" step="1"
                                        @bind="c.MaxLoanAmount" />
@@ -80,7 +87,7 @@
                     @if (_caps.Count == 0)
                     {
                         <tr>
-                            <td colspan="5" class="empty-row">
+                            <td colspan="6" class="empty-row">
                                 No vehicles configured. Loan &amp; Security will show its empty-catalog message
                                 until at least one is added.
                             </td>
@@ -110,12 +117,14 @@
     private bool _adding;
     private string? _newMake;
     private string? _newModel;
+    private int? _newYear;
     private decimal? _newCap;
     private string? _error;
     private VehicleLoanCap? _pendingRemoval;
 
     private bool AddDisabled =>
-        string.IsNullOrWhiteSpace(_newMake) || string.IsNullOrWhiteSpace(_newModel) || _newCap is not > 0m;
+        string.IsNullOrWhiteSpace(_newMake) || string.IsNullOrWhiteSpace(_newModel)
+        || _newYear is not > 1990 || _newCap is not > 0m;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -123,7 +132,9 @@
     {
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        _caps = await db.VehicleLoanCaps.OrderBy(v => v.Make).ThenBy(v => v.Model).ToListAsync();
+        _caps = await db.VehicleLoanCaps
+            .OrderBy(v => v.Make).ThenBy(v => v.Model).ThenByDescending(v => v.Year)
+            .ToListAsync();
 
         // SecurityDetail stores the composed "Make Model" string, so usage is matched on that.
         _usage = (await db.SecurityDetails.AsNoTracking()
@@ -134,12 +145,16 @@
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
     }
 
+    // Usage is matched on make+model only. SecurityDetail records the year in its own column, and a
+    // count per exact year would read as zero for a vehicle plainly in use — the warning is about
+    // whether this vehicle appears on live files at all.
     private int UsageFor(VehicleLoanCap cap) => _usage.GetValueOrDefault($"{cap.Make} {cap.Model}");
 
     private void StartAdd()
     {
         _adding = true;
         _newMake = _newModel = null;
+        _newYear = null;
         _newCap = null;
         _error = null;
     }
@@ -148,6 +163,7 @@
     {
         _adding = false;
         _newMake = _newModel = null;
+        _newYear = null;
         _newCap = null;
         _error = null;
     }
@@ -157,15 +173,17 @@
         var make = _newMake?.Trim();
         var model = _newModel?.Trim();
 
-        if (string.IsNullOrWhiteSpace(make) || string.IsNullOrWhiteSpace(model) || _newCap is not { } cap)
+        if (string.IsNullOrWhiteSpace(make) || string.IsNullOrWhiteSpace(model)
+            || _newYear is not { } year || _newCap is not { } cap)
         {
             return;
         }
 
         if (_caps.Any(v => string.Equals(v.Make, make, StringComparison.OrdinalIgnoreCase)
-                           && string.Equals(v.Model, model, StringComparison.OrdinalIgnoreCase)))
+                           && string.Equals(v.Model, model, StringComparison.OrdinalIgnoreCase)
+                           && v.Year == year))
         {
-            _error = $"\"{make} {model}\" is already in the catalog.";
+            _error = $"\"{make} {model} ({year})\" is already in the catalog.";
             return;
         }
 
@@ -175,6 +193,7 @@
             CompanyId = CompanyId,
             Make = make,
             Model = model,
+            Year = year,
             MaxLoanAmount = cap,
         });
 
@@ -182,7 +201,7 @@
 
         CancelAdd();
         await LoadAsync();
-        await OnSaved.InvokeAsync($"{make} {model} added to the catalog");
+        await OnSaved.InvokeAsync($"{make} {model} ({year}) added to the catalog");
     }
 
     /// <summary>
@@ -217,7 +236,7 @@
         }
 
         await LoadAsync();
-        await OnSaved.InvokeAsync($"{cap.Make} {cap.Model} removed");
+        await OnSaved.InvokeAsync($"{cap.Make} {cap.Model} ({cap.Year}) removed");
     }
 
     private async Task SaveAsync()
@@ -231,6 +250,7 @@
 
             stored.Make = edited.Make.Trim();
             stored.Model = edited.Model.Trim();
+            stored.Year = edited.Year;
             stored.MaxLoanAmount = edited.MaxLoanAmount;
         }
 

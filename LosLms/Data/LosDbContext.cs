@@ -743,9 +743,11 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
             entity.Property(v => v.MaxLoanAmount).HasPrecision(18, 2);
 
-            // One cap per vehicle per company — the catalog is also the dropdown source, so a
-            // duplicate make/model would render twice and leave the cap ambiguous.
-            entity.HasIndex(v => new { v.CompanyId, v.Make, v.Model }).IsUnique();
+            // One cap per make/model/YEAR per company — the catalog is also the dropdown source, so a
+            // duplicate would render twice and leave the cap ambiguous. Year is in the key because a
+            // model's ceiling drops as it ages; without it one number would have to cover every
+            // model year at once.
+            entity.HasIndex(v => new { v.CompanyId, v.Make, v.Model, v.Year }).IsUnique();
 
             entity.HasOne(v => v.Company)
                 .WithMany()

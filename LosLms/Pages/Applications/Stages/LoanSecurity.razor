@@ -226,6 +226,23 @@ else
                                                         }
                                                     </select>
                                                 </FormField>
+
+                                                @* Third step of the cascade. The catalog prices a model
+                                                   per year, so the year is chosen here and fills the
+                                                   manufacturing year below rather than being typed
+                                                   independently and disagreeing with it. *@
+                                                <FormField Label="Model year" For="sec-catalog-year">
+                                                    <select id="sec-catalog-year" class="field-input"
+                                                            value="@_selectedYear"
+                                                            disabled="@(string.IsNullOrEmpty(_selectedModel))"
+                                                            @onchange="OnYearChanged">
+                                                        <option value="">@BlankOption</option>
+                                                        @foreach (var year in CatalogYearsForSelectedModel)
+                                                        {
+                                                            <option value="@year">@year</option>
+                                                        }
+                                                    </select>
+                                                </FormField>
                                             }
 
                                             @* A value recorded before the catalog existed, or after its
@@ -242,11 +259,26 @@ else
                                                 </FormField>
                                             }
 
+                                            @* Derived from the catalog year above, not typed. Two
+                                               independent year fields could disagree on the same
+                                               vehicle, and the cap is priced against this one. *@
                                             <FormField Label="Manufacturing year" For="sec-year">
-                                                <select id="sec-year" class="field-input" @bind="_security.MfgYear">
-                                                    <option value="">@BlankOption</option>
-                                                    @foreach (var y in MfgYearOptions) { <option value="@y">@y</option> }
-                                                </select>
+                                                @if (_vehicleCatalog.Count > 0)
+                                                {
+                                                    <div id="sec-year" class="resolved-year">
+                                                        @(string.IsNullOrWhiteSpace(_security.MfgYear) ? "—" : _security.MfgYear)
+                                                    </div>
+                                                    <span class="field-caption">Set by the model year above</span>
+                                                }
+                                                else
+                                                {
+                                                    @* No catalog to drive it, so it stays editable rather
+                                                       than becoming an unfillable read-only box. *@
+                                                    <select id="sec-year" class="field-input" @bind="_security.MfgYear">
+                                                        <option value="">@BlankOption</option>
+                                                        @foreach (var y in MfgYearOptions) { <option value="@y">@y</option> }
+                                                    </select>
+                                                }
                                             </FormField>
 
                                             <FormField Label="Registration no." For="sec-reg">
@@ -489,6 +521,7 @@ else
     private List<VehicleLoanCap> _vehicleCatalog = new();
     private string? _selectedMake;
     private string? _selectedModel;
+    private string? _selectedYear;
 
     /// <summary>A stored make/model that no catalog row matches. Displayed, never discarded.</summary>
     private string? _unmatchedMakeModel;
@@ -502,7 +535,20 @@ else
             : _vehicleCatalog
                 .Where(v => string.Equals(v.Make, _selectedMake, StringComparison.OrdinalIgnoreCase))
                 .Select(v => v.Model)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(m => m);
+
+    /// <summary>Years the catalog actually prices for the chosen model, newest first.</summary>
+    private IEnumerable<string> CatalogYearsForSelectedModel =>
+        string.IsNullOrEmpty(_selectedMake) || string.IsNullOrEmpty(_selectedModel)
+            ? Enumerable.Empty<string>()
+            : _vehicleCatalog
+                .Where(v => string.Equals(v.Make, _selectedMake, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(v.Model, _selectedModel, StringComparison.OrdinalIgnoreCase))
+                .Select(v => v.Year)
+                .Distinct()
+                .OrderByDescending(y => y)
+                .Select(y => y.ToString());
 
     /// <summary>
     /// Resolves the stored "Make Model" string back onto the catalog so both selects preselect.
@@ -517,6 +563,7 @@ else
     {
         _selectedMake = null;
         _selectedModel = null;
+        _selectedYear = null;
         _unmatchedMakeModel = null;
 
         var stored = _security.MakeModel?.Trim();
@@ -536,20 +583,41 @@ else
 
         _selectedMake = match.Make;
         _selectedModel = match.Model;
+
+        // The year comes from the application's own manufacturing year, not from the first catalog
+        // row that happens to match — a model priced for three years has three rows and only one of
+        // them is this vehicle. Left blank when the recorded year is not one the catalog prices, so
+        // the officer has to choose rather than being silently reassigned to a different year.
+        var storedYear = _security.MfgYear?.Trim();
+        if (!string.IsNullOrEmpty(storedYear)
+            && CatalogYearsForSelectedModel.Contains(storedYear, StringComparer.OrdinalIgnoreCase))
+        {
+            _selectedYear = storedYear;
+        }
     }
 
     private void OnMakeChanged(ChangeEventArgs e)
     {
         _selectedMake = e.Value?.ToString();
 
-        // A model from the previous make would be a vehicle that does not exist.
+        // A model from the previous make would be a vehicle that does not exist, and its year with it.
         _selectedModel = null;
+        _selectedYear = null;
         ApplyMakeModel();
     }
 
     private void OnModelChanged(ChangeEventArgs e)
     {
         _selectedModel = e.Value?.ToString();
+
+        // Years are priced per model, so the previous model's year does not carry over.
+        _selectedYear = null;
+        ApplyMakeModel();
+    }
+
+    private void OnYearChanged(ChangeEventArgs e)
+    {
+        _selectedYear = e.Value?.ToString();
         ApplyMakeModel();
     }
 
@@ -558,10 +626,14 @@ else
         if (string.IsNullOrEmpty(_selectedMake) || string.IsNullOrEmpty(_selectedModel))
         {
             _security.MakeModel = null;
+            _security.MfgYear = null;
             return;
         }
 
         _security.MakeModel = $"{_selectedMake} {_selectedModel}";
+
+        // The catalog year IS the manufacturing year — one value, not two that can disagree.
+        _security.MfgYear = string.IsNullOrEmpty(_selectedYear) ? null : _selectedYear;
 
         // A catalog pick supersedes whatever unrecognised text was there.
         _unmatchedMakeModel = null;
