@@ -556,6 +556,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             entity.ToTable("EnachMandate");
             entity.HasKey(m => m.Id);
             entity.Property(m => m.Status).HasDefaultValue("Pending");
+            entity.Property(m => m.NameMatchStatus).HasDefaultValue("NotRun");
+            entity.Property(m => m.ConfirmationAccepted).HasDefaultValue(false);
 
             entity.HasIndex(m => m.ApplicationId).IsUnique();
 
@@ -570,6 +572,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             entity.ToTable("SecurityNachMandate");
             entity.HasKey(m => m.Id);
             entity.Property(m => m.Status).HasDefaultValue("Pending");
+            entity.Property(m => m.NameMatchStatus).HasDefaultValue("NotRun");
+            entity.Property(m => m.ConfirmationAccepted).HasDefaultValue(false);
 
             entity.HasIndex(m => m.ApplicationId).IsUnique();
 

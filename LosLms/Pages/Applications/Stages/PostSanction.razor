@@ -261,26 +261,24 @@ else
                                 @if (_activeTab == EnachTab)
                                 {
                                     <Panel Title="E-Nach mandate">
+                                        @* Debit date and the linked-account label belong to this mandate
+                                           alone, so they stay here; the registration flow below is shared
+                                           with Security-Nach. *@
                                         <div class="field-grid">
-                                            <FormField Label="UMRN" For="ps-enach-umrn">
-                                                <input id="ps-enach-umrn" class="field-input" @bind="_enach.Umrn" @bind:event="oninput" />
-                                            </FormField>
-
-                                            <FormField Label="Registration status" For="ps-enach-status">
-                                                <select id="ps-enach-status" class="field-input status-select status-@BandFor(_enach.Status)"
-                                                        @bind="_enach.Status">
-                                                    @foreach (var o in MandateStatuses) { <option value="@o">@o</option> }
-                                                </select>
-                                            </FormField>
-
                                             <FormField Label="Debit date" For="ps-enach-debit">
                                                 <input id="ps-enach-debit" type="date" class="field-input" @bind="_enach.DebitDate" />
                                             </FormField>
 
-                                            <FormField Label="Linked bank account" For="ps-enach-acct">
+                                            <FormField Label="Linked bank account (label)" For="ps-enach-acct">
                                                 <input id="ps-enach-acct" class="field-input" @bind="_enach.LinkedAccount" @bind:event="oninput" />
                                             </FormField>
                                         </div>
+
+                                        <MandateFlow Mandate="_enach"
+                                                     IdPrefix="ps-enach"
+                                                     PartyLabel="the applicant"
+                                                     PartyName="@PartyNameFor(ApplicantPartyType)"
+                                                     OnSubmit="SaveMandatesAsync" />
                                     </Panel>
                                 }
 
@@ -289,21 +287,16 @@ else
                                 {
                                     <Panel Title="Security-Nach mandate">
                                         <div class="field-grid">
-                                            <FormField Label="UMRN" For="ps-snach-umrn">
-                                                <input id="ps-snach-umrn" class="field-input" @bind="_snach.Umrn" @bind:event="oninput" />
-                                            </FormField>
-
-                                            <FormField Label="Registration status" For="ps-snach-status">
-                                                <select id="ps-snach-status" class="field-input status-select status-@BandFor(_snach.Status)"
-                                                        @bind="_snach.Status">
-                                                    @foreach (var o in MandateStatuses) { <option value="@o">@o</option> }
-                                                </select>
-                                            </FormField>
-
                                             <FormField Label="Mandate holder (guarantor)" For="ps-snach-holder">
                                                 <input id="ps-snach-holder" class="field-input" @bind="_snach.MandateHolder" @bind:event="oninput" />
                                             </FormField>
                                         </div>
+
+                                        <MandateFlow Mandate="_snach"
+                                                     IdPrefix="ps-snach"
+                                                     PartyLabel="the guarantor"
+                                                     PartyName="@PartyNameFor(GuarantorPartyType)"
+                                                     OnSubmit="SaveMandatesAsync" />
                                     </Panel>
                                 }
 
@@ -528,6 +521,10 @@ else
 
     private const string DisbursementTab = "Disbursement";
     private const string RepaymentTab = "Repayment";
+    /// <summary>Party type strings. There is no enum — see Party.PartyType.</summary>
+    private const string ApplicantPartyType = "Applicant";
+    private const string GuarantorPartyType = "Guarantor";
+
     private const string EnachTab = "E-Nach";
     private const string SecurityNachTab = "Security-Nach";
     private const string InsuranceTab = "Insurance Upload";
@@ -579,6 +576,7 @@ else
     private Disbursement _disbursement = new();
     private EnachMandate _enach = new();
     private SecurityNachMandate _snach = new();
+    private Dictionary<string, string?> _partyNames = new(StringComparer.Ordinal);
     private DownPaymentRecord _downPayment = new();
     private List<PostSanctionChecklist> _checklist = new();
     private List<Pdd> _pdds = new();
@@ -621,6 +619,11 @@ else
             .Where(u => u.IsActive)
             .OrderBy(u => u.DisplayName)
             .ToListAsync();
+
+        // Names the mandate flow attempts its account-holder match against.
+        _partyNames = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId)
+            .ToDictionaryAsync(p => p.PartyType, p => p.FullName, StringComparer.Ordinal);
 
         _decision = await db.ApprovalDecisions.AsNoTracking()
             .FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
@@ -926,6 +929,7 @@ else
         enach.Status = _enach.Status;
         enach.DebitDate = _enach.DebitDate;
         enach.LinkedAccount = _enach.LinkedAccount;
+        CopyMandateFlow(_enach, enach);
 
         var snach = await db.SecurityNachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
         if (snach is null)
@@ -937,6 +941,7 @@ else
         snach.Umrn = _snach.Umrn;
         snach.Status = _snach.Status;
         snach.MandateHolder = _snach.MandateHolder;
+        CopyMandateFlow(_snach, snach);
 
         var downPayment = await db.DownPaymentRecords.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
         if (downPayment is null)
@@ -992,6 +997,35 @@ else
         "Rejected" => "risk",
         _ => "caution",
     };
+
+    private string? PartyNameFor(string partyType) => _partyNames.GetValueOrDefault(partyType);
+
+    /// <summary>Copies the shared registration-flow fields onto the tracked entity.</summary>
+    private static void CopyMandateFlow(INachMandate from, INachMandate to)
+    {
+        to.AccountNumber = from.AccountNumber;
+        to.Ifsc = from.Ifsc;
+        to.BankName = from.BankName;
+        to.BankBranch = from.BankBranch;
+        to.NameMatchStatus = from.NameMatchStatus;
+        to.NameMatchCheckedAt = from.NameMatchCheckedAt;
+        to.ConfirmationAccepted = from.ConfirmationAccepted;
+        to.MandateType = from.MandateType;
+        to.DigitalMode = from.DigitalMode;
+    }
+
+    /// <summary>
+    /// Commits the mandate tabs. Post Sanction has no Save draft button — its secondary action is
+    /// "Disbursement memo" — so before this the only things that ever committed these rows were a
+    /// file upload and Release funds. A mandate the officer just registered has to persist on its own.
+    /// </summary>
+    private async Task SaveMandatesAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await PersistAsync(db);
+        await db.SaveChangesAsync();
+        await ShowToastAsync("Mandate saved");
+    }
 
     private static string PddBandFor(string status) => status switch
     {

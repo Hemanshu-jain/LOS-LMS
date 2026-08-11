@@ -1,0 +1,327 @@
+@* NACH mandate registration, shared by the E-Nach and Security-Nach tabs on Post Sanction.
+
+   Every external step here is an honest stub, following the same rule the rest of the build follows:
+   no provider is configured, so nothing may report success. A mandate reaches Registered only by the
+   physical route, where an officer has actually collected a signed form and says so. *@
+
+@using LosLms.Models
+@using LosLms.Services
+@inject IHttpClientFactory HttpClientFactory
+@implements IDisposable
+
+<div class="mandate-flow">
+
+    @* ---------- 1. Bank details ---------- *@
+    <div class="mandate-step">
+        <span class="mandate-step-label">1 · Bank details</span>
+        <div class="field-grid">
+            <FormField Label="IFSC" For="@($"{IdPrefix}-ifsc")" Error="@_ifscError">
+                <input id="@($"{IdPrefix}-ifsc")" class="field-input" maxlength="11"
+                       value="@Mandate.Ifsc"
+                       @oninput="e => Mandate.Ifsc = Upper(e.Value)"
+                       @onblur="LookupIfscAsync" />
+                @if (_ifscBusy)
+                {
+                    <span class="field-caption">Looking up…</span>
+                }
+            </FormField>
+
+            <FormField Label="Bank name" For="@($"{IdPrefix}-bank")">
+                @if (!string.IsNullOrWhiteSpace(Mandate.BankName))
+                {
+                    <div id="@($"{IdPrefix}-bank")" class="resolved-bank">@Mandate.BankName</div>
+                    <span class="field-caption">@(_fetchedLive ? "Auto-fetched via IFSC." : "Entered manually")</span>
+                }
+                else
+                {
+                    <input id="@($"{IdPrefix}-bank")" class="field-input" @bind="Mandate.BankName" @bind:event="oninput" />
+                    @if (_ifscNote is not null)
+                    {
+                        <span class="field-caption">@_ifscNote</span>
+                    }
+                }
+            </FormField>
+
+            @if (!string.IsNullOrWhiteSpace(Mandate.BankBranch))
+            {
+                <FormField Label="Branch" For="@($"{IdPrefix}-branch")">
+                    <div id="@($"{IdPrefix}-branch")" class="resolved-bank">@Mandate.BankBranch</div>
+                    <span class="field-caption">Auto-fetched via IFSC.</span>
+                </FormField>
+            }
+        </div>
+    </div>
+
+    @* ---------- 2. Account number, entered twice ---------- *@
+    <div class="mandate-step">
+        <span class="mandate-step-label">2 · Account number</span>
+        <div class="field-grid">
+            <FormField Label="Account number" For="@($"{IdPrefix}-acct")">
+                <input id="@($"{IdPrefix}-acct")" class="field-input" maxlength="18"
+                       @bind="Mandate.AccountNumber" @bind:event="oninput" />
+            </FormField>
+
+            <FormField Label="Re-enter account number" For="@($"{IdPrefix}-acct2")" Error="@AccountMismatchError">
+                <input id="@($"{IdPrefix}-acct2")" class="field-input" maxlength="18"
+                       @bind="_accountConfirm" @bind:event="oninput" />
+            </FormField>
+        </div>
+    </div>
+
+    @* ---------- 3. Account holder name match ---------- *@
+    <div class="mandate-step">
+        <span class="mandate-step-label">3 · Account holder verification</span>
+        <div class="mandate-verify">
+            <span class="mandate-verify-name">
+                Checking against @PartyLabel:
+                <strong>@(string.IsNullOrWhiteSpace(PartyName) ? "no name recorded" : PartyName)</strong>
+            </span>
+            <button type="button" class="verify-button" @onclick="RunNameMatch">Verify</button>
+        </div>
+        @if (Mandate.NameMatchStatus == "Unavailable")
+        {
+            <p class="inline-error" role="alert">@NameMatchUnavailable</p>
+        }
+    </div>
+
+    @* ---------- 4. Officer confirmation ---------- *@
+    <div class="mandate-step">
+        <span class="mandate-step-label">4 · Confirmation</span>
+        <label class="mandate-confirm">
+            <input type="checkbox" @bind="Mandate.ConfirmationAccepted" />
+            <span>
+                I hereby confirm the customer's name is available in the database and verified, and I
+                take responsibility for forwarding this case for further processing.
+            </span>
+        </label>
+    </div>
+
+    @* ---------- 5. Mandate type ---------- *@
+    <div class="mandate-step">
+        <span class="mandate-step-label">5 · Mandate type</span>
+        <div class="field-grid">
+            <FormField Label="Select Mandate Type" For="@($"{IdPrefix}-type")">
+                <select id="@($"{IdPrefix}-type")" class="field-input" @bind="Mandate.MandateType">
+                    <option value="">— Select —</option>
+                    <option value="Digital">Digital Mandate Registration</option>
+                    <option value="Physical">Physical Mandate</option>
+                </select>
+            </FormField>
+        </div>
+
+        @if (Mandate.MandateType == "Digital")
+        {
+            <fieldset class="mandate-modes">
+                <legend class="mandate-step-label">Digital Mandate Mode</legend>
+                <label class="mandate-mode">
+                    <input type="radio" name="@($"{IdPrefix}-mode")" value="NetBanking"
+                           checked="@(Mandate.DigitalMode == "NetBanking")"
+                           @onchange="@(() => Mandate.DigitalMode = "NetBanking")" />
+                    <span>Net Banking</span>
+                </label>
+                <label class="mandate-mode">
+                    <input type="radio" name="@($"{IdPrefix}-mode")" value="DebitCard"
+                           checked="@(Mandate.DigitalMode == "DebitCard")"
+                           @onchange="@(() => Mandate.DigitalMode = "DebitCard")" />
+                    <span>Debit Card</span>
+                </label>
+            </fieldset>
+        }
+        else if (Mandate.MandateType == "Physical")
+        {
+            @* The only path with no external dependency: the officer has the signed form in hand,
+               so they are the system of record and may set the status directly. *@
+            <div class="field-grid">
+                <FormField Label="Registration status" For="@($"{IdPrefix}-status")">
+                    <select id="@($"{IdPrefix}-status")" class="field-input status-select status-@BandFor(Mandate.Status)"
+                            @bind="Mandate.Status">
+                        @foreach (var o in MandateStatuses) { <option value="@o">@o</option> }
+                    </select>
+                </FormField>
+
+                <FormField Label="UMRN (from the signed form)" For="@($"{IdPrefix}-umrn")">
+                    <input id="@($"{IdPrefix}-umrn")" class="field-input" maxlength="40"
+                           @bind="Mandate.Umrn" @bind:event="oninput" />
+                </FormField>
+            </div>
+        }
+    </div>
+
+    @* ---------- 6. Submit ---------- *@
+    <div class="mandate-submit-row">
+        <button type="button" class="mandate-submit" disabled="@(!CanSubmit)" @onclick="SubmitAsync">
+            @(Mandate.MandateType == "Physical" ? "Record mandate" : "Register mandate")
+        </button>
+        @if (!CanSubmit && BlockedReason is { } reason)
+        {
+            <span class="mandate-blocked">@reason</span>
+        }
+    </div>
+
+    @if (_submitNotice is not null)
+    {
+        <p class="inline-error" role="alert">@_submitNotice</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public INachMandate Mandate { get; set; } = default!;
+
+    /// <summary>Disambiguates element ids between the two instances on the same page.</summary>
+    [Parameter, EditorRequired] public string IdPrefix { get; set; } = string.Empty;
+
+    /// <summary>"the applicant" / "the guarantor" — whose account this mandate debits.</summary>
+    [Parameter] public string PartyLabel { get; set; } = "the applicant";
+
+    /// <summary>Name recorded for that party on Stage 1, used for the name-match attempt.</summary>
+    [Parameter] public string? PartyName { get; set; }
+
+    /// <summary>Persists the mandate. The parent owns the DbContext, so saving is its job.</summary>
+    [Parameter] public EventCallback OnSubmit { get; set; }
+
+    private static readonly string[] MandateStatuses = { "Pending", "Registered", "Rejected" };
+
+    private const string NameMatchUnavailable =
+        "Name-match verification unavailable — provider not configured.";
+
+    private const string DigitalUnavailable =
+        "Digital mandate registration unavailable — provider not configured.";
+
+    private string? _accountConfirm;
+    private string? _ifscError;
+    private string? _ifscNote;
+    private string? _submitNotice;
+    private bool _ifscBusy;
+    private bool _fetchedLive;
+    private CancellationTokenSource? _ifscCts;
+
+    protected override void OnParametersSet()
+    {
+        // A saved account number is already confirmed; asking the officer to retype it on every visit
+        // would be noise, not a control.
+        _accountConfirm ??= Mandate.AccountNumber;
+
+        _fetchedLive = _fetchedLive || !string.IsNullOrWhiteSpace(Mandate.BankBranch);
+    }
+
+    public void Dispose()
+    {
+        _ifscCts?.Cancel();
+        _ifscCts?.Dispose();
+    }
+
+    private bool AccountsMatch =>
+        !string.IsNullOrWhiteSpace(Mandate.AccountNumber)
+        && string.Equals(Mandate.AccountNumber?.Trim(), _accountConfirm?.Trim(), StringComparison.Ordinal);
+
+    private string? AccountMismatchError =>
+        string.IsNullOrWhiteSpace(_accountConfirm) || AccountsMatch
+            ? null
+            : "The two account numbers do not match.";
+
+    private bool CanSubmit =>
+        AccountsMatch
+        && Mandate.ConfirmationAccepted
+        && !string.IsNullOrWhiteSpace(Mandate.MandateType)
+        && (Mandate.MandateType != "Digital" || !string.IsNullOrWhiteSpace(Mandate.DigitalMode));
+
+    /// <summary>The first unmet requirement, so the officer is told what to fix rather than left guessing.</summary>
+    private string? BlockedReason
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Mandate.AccountNumber)) { return "Enter the account number."; }
+            if (!AccountsMatch) { return "Re-enter the account number to confirm it."; }
+            if (!Mandate.ConfirmationAccepted) { return "Tick the confirmation to continue."; }
+            if (string.IsNullOrWhiteSpace(Mandate.MandateType)) { return "Select a mandate type."; }
+            if (Mandate.MandateType == "Digital" && string.IsNullOrWhiteSpace(Mandate.DigitalMode))
+            {
+                return "Choose Net Banking or Debit Card.";
+            }
+            return null;
+        }
+    }
+
+    private async Task LookupIfscAsync()
+    {
+        _submitNotice = null;
+        var ifsc = Mandate.Ifsc;
+
+        if (string.IsNullOrWhiteSpace(ifsc))
+        {
+            _ifscError = null;
+            _ifscNote = null;
+            return;
+        }
+
+        if (!IfscLookup.IsWellFormed(ifsc))
+        {
+            _ifscError = "IFSC must be 4 letters, 0, then 6 letters or digits.";
+            return;
+        }
+
+        _ifscError = null;
+        _ifscCts?.Cancel();
+        _ifscCts?.Dispose();
+        _ifscCts = new CancellationTokenSource();
+
+        _ifscBusy = true;
+        _ifscNote = null;
+
+        var details = await IfscLookup.FetchAsync(ifsc, HttpClientFactory, _ifscCts.Token);
+
+        _ifscBusy = false;
+
+        if (details is null)
+        {
+            // Never a blocker. The officer types the bank in and carries on.
+            _ifscNote = "Auto-fetch unavailable — enter manually.";
+            _fetchedLive = false;
+            Mandate.BankBranch = null;
+            return;
+        }
+
+        _fetchedLive = true;
+        Mandate.BankName = details.BankName;
+        Mandate.BankBranch = details.Branch;
+    }
+
+    /// <remarks>
+    /// Attempts the check, then reports honestly that no provider answers it. It must never set
+    /// Matched: a fabricated account-holder match on a mandate that moves money is worse than no
+    /// check at all. Same rule as the penny drop on Bank &amp; Financial.
+    /// </remarks>
+    private void RunNameMatch()
+    {
+        Mandate.NameMatchStatus = "Unavailable";
+        Mandate.NameMatchCheckedAt = DateTime.UtcNow;
+    }
+
+    /// <remarks>
+    /// The digital route has no NPCI or sponsor-bank integration behind it, so submitting says so and
+    /// changes nothing: the status stays Pending, and no UMRN or Verified badge is ever invented. The
+    /// physical route has no external dependency at all — it is paperwork tracking — so whatever the
+    /// officer set stands.
+    /// </remarks>
+    private async Task SubmitAsync()
+    {
+        _submitNotice = Mandate.MandateType == "Digital" ? DigitalUnavailable : null;
+
+        if (Mandate.MandateType == "Digital")
+        {
+            Mandate.Status = "Pending";
+            Mandate.Umrn = null;
+        }
+
+        await OnSubmit.InvokeAsync();
+    }
+
+    private static string BandFor(string status) => status switch
+    {
+        "Registered" => "healthy",
+        "Rejected" => "risk",
+        _ => "caution",
+    };
+
+    private static string? Upper(object? value) => value?.ToString()?.ToUpperInvariant();
+}

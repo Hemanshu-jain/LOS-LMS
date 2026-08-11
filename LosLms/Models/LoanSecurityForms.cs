@@ -85,6 +85,18 @@ public sealed class ReferenceForm
     public string? Address { get; set; }
     public string? KnownSince { get; set; }
 
+    /// <summary>
+    /// True for the row derived from the application's Co-Applicant. Its name is read-only and it can
+    /// never be removed — it is not something the officer typed, so it is not theirs to edit or delete.
+    /// Relationship, mobile, address and known-since stay editable: only the name is already known to
+    /// be correct.
+    /// </summary>
+    /// <remarks>
+    /// A view-model flag, not a column. The row is re-derived from Parties on every load, which is
+    /// consistent with the save replacing every reference row rather than diffing them.
+    /// </remarks>
+    public bool IsDerived { get; set; }
+
     /// <summary>A reference counts towards the required two once it has a name and a mobile.</summary>
     public bool IsComplete =>
         !string.IsNullOrWhiteSpace(Name) && !string.IsNullOrWhiteSpace(Mobile);

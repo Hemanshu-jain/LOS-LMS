@@ -12,6 +12,7 @@
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
 @inject IJSRuntime JS
+@inject IHttpClientFactory HttpClientFactory
 
 <PageTitle>Bank &amp; Financial · @ApplicationId</PageTitle>
 
@@ -81,9 +82,9 @@ else
                                         <FormField Label="Bank name" For="bf-bankname">
                                             @if (ResolvedBankName is { } resolved)
                                             {
-                                                @* Read-only once the IFSC prefix resolves — nothing to pick. *@
+                                                @* Read-only once resolved — derived data, nothing to pick. *@
                                                 <div id="bf-bankname" class="resolved-bank">@resolved</div>
-                                                <span class="field-caption">Auto-detected from IFSC</span>
+                                                <span class="field-caption">@BankSourceCaption</span>
                                             }
                                             else
                                             {
@@ -91,6 +92,10 @@ else
                                                     <option value="">@BlankOption</option>
                                                     @foreach (var o in BankOptions) { <option value="@o">@o</option> }
                                                 </select>
+                                                @if (_ifscLookupNote is not null)
+                                                {
+                                                    <span class="field-caption">@_ifscLookupNote</span>
+                                                }
                                             }
                                         </FormField>
 
@@ -100,12 +105,33 @@ else
                                         </FormField>
 
                                         <FormField Label="IFSC" For="bf-ifsc" Error="@ErrorFor("ifsc")">
-                                            @* oninput so the bank-name resolution happens as it is typed. *@
+                                            @* oninput keeps the offline prefix resolution live as it is typed; the live
+                                               directory lookup waits for blur so it fires once per code, not per keystroke. *@
                                             <input id="bf-ifsc" type="text" class="field-input" maxlength="11"
                                                    value="@_bank.Ifsc"
                                                    @oninput="e => _bank.Ifsc = Upper(e.Value)"
-                                                   @onblur='() => Validate("ifsc")' />
+                                                   @onblur="OnIfscBlurAsync" />
+                                            @if (_ifscLookupBusy)
+                                            {
+                                                <span class="field-caption">Looking up…</span>
+                                            }
                                         </FormField>
+
+                                        @if (_bank.BankBranch is { Length: > 0 } branch)
+                                        {
+                                            <FormField Label="Branch" For="bf-branch">
+                                                <div id="bf-branch" class="resolved-bank">@branch</div>
+                                                <span class="field-caption">Auto-fetched via IFSC.</span>
+                                            </FormField>
+                                        }
+
+                                        @if (_bank.BankAddress is { Length: > 0 } bankAddress)
+                                        {
+                                            <FormField Label="Branch address" For="bf-bankaddress">
+                                                <div id="bf-bankaddress" class="resolved-bank is-multiline">@bankAddress</div>
+                                                <span class="field-caption">Auto-fetched via IFSC.</span>
+                                            </FormField>
+                                        }
 
                                         <FormField Label="Account type" For="bf-acctype">
                                             <select id="bf-acctype" class="field-input" @bind="_bank.AccountType">
@@ -132,7 +158,7 @@ else
 
                                     @if (_bank.PennyDropStatus == "Unavailable")
                                     {
-                                        <span class="pennydrop-value is-unavailable">Unavailable — banking verification provider not configured</span>
+                                        <span class="pennydrop-value is-unavailable">@PennyDropUnavailable</span>
                                         <span class="pennydrop-note is-muted">Compared against KYC name from Stage 1</span>
                                     }
                                     else
@@ -408,6 +434,15 @@ else
     private CamCostBreakdown _cam = new();
     private Dictionary<string, string> _ifscLookup = new(StringComparer.OrdinalIgnoreCase);
 
+    // Live IFSC directory result. The code is kept alongside the name so an unchanged field on blur
+    // does not re-request, and so a re-typed code invalidates the previous branch and address rather
+    // than leaving one bank's branch sitting under another bank's name.
+    private string? _liveIfscCode;
+    private string? _liveIfscBankName;
+    private bool _ifscLookupBusy;
+    private string? _ifscLookupNote;
+    private CancellationTokenSource? _ifscLookupCts;
+
     private bool _showAddStatement;
     private string? _newPeriod;
     private string? _newFilePath;
@@ -444,6 +479,15 @@ else
                 .FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId)
                 ?? new BankDetail { ApplicationId = ApplicationId };
 
+            // A stored branch can only have come from the live directory, so restore that state
+            // rather than re-requesting it. Without this the caption would revert to the offline
+            // wording, and blurring the untouched field would fire a needless request.
+            if (!string.IsNullOrWhiteSpace(_bank.BankBranch))
+            {
+                _liveIfscCode = _bank.Ifsc;
+                _liveIfscBankName = _bank.BankName;
+            }
+
             _statements = await db.BankStatements.AsNoTracking()
                 .Where(s => s.ApplicationId == ApplicationId)
                 .OrderBy(s => s.Id)
@@ -464,17 +508,32 @@ else
     {
         _toastCts?.Cancel();
         _toastCts?.Dispose();
+        _ifscLookupCts?.Cancel();
+        _ifscLookupCts?.Dispose();
     }
 
     // ---------------------------------------------------------------------
     // Derived values
     // ---------------------------------------------------------------------
 
-    /// <summary>Bank name resolved from the IFSC prefix, or null when the prefix is unknown.</summary>
+    /// <summary>
+    /// Bank name to display read-only, or null when nothing has resolved and the officer should pick
+    /// from the dropdown instead.
+    /// </summary>
+    /// <remarks>
+    /// Three sources, in the order the officer experiences them: the live directory result once it
+    /// has arrived, then the offline prefix table which resolves on the fourth character typed, then
+    /// nothing.
+    /// </remarks>
     private string? ResolvedBankName
     {
         get
         {
+            if (_liveIfscBankName is { Length: > 0 })
+            {
+                return _liveIfscBankName;
+            }
+
             var ifsc = _bank.Ifsc;
             if (string.IsNullOrWhiteSpace(ifsc) || ifsc.Length < 4)
             {
@@ -484,6 +543,9 @@ else
             return _ifscLookup.GetValueOrDefault(ifsc[..4]);
         }
     }
+
+    private string BankSourceCaption =>
+        _liveIfscBankName is { Length: > 0 } ? "Auto-fetched via IFSC." : "Auto-detected from IFSC";
 
     // Applied, never Draft — editing a draft must not move any computed figure until Recalculate.
     private decimal OnRoadCost =>
@@ -562,6 +624,73 @@ else
     // ---------------------------------------------------------------------
     // Penny drop
     // ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Resolves the IFSC against the live directory when the field loses focus.
+    /// </summary>
+    /// <remarks>
+    /// Blur rather than keystroke: one request per code the officer finishes typing, not one per
+    /// character. A miss is never an error — the offline prefix table still supplies a bank name for
+    /// the twelve codes it knows, and the manual dropdown is always there. Nothing about this can
+    /// stop a save.
+    /// </remarks>
+    private async Task OnIfscBlurAsync()
+    {
+        Validate("ifsc");
+
+        var ifsc = _bank.Ifsc;
+
+        // A half-typed code is not a failed lookup, so say nothing about it.
+        if (!IfscLookup.IsWellFormed(ifsc))
+        {
+            ClearLiveIfscResult();
+            _ifscLookupNote = null;
+            return;
+        }
+
+        // Already resolved this exact code — no reason to ask again.
+        if (string.Equals(_liveIfscCode, ifsc, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        ClearLiveIfscResult();
+
+        _ifscLookupCts?.Cancel();
+        _ifscLookupCts?.Dispose();
+        _ifscLookupCts = new CancellationTokenSource();
+
+        _ifscLookupBusy = true;
+        _ifscLookupNote = null;
+
+        var details = await IfscLookup.FetchAsync(ifsc, HttpClientFactory, _ifscLookupCts.Token);
+
+        _ifscLookupBusy = false;
+
+        if (details is null)
+        {
+            // The offline table may still know the bank even when the directory is unreachable, and
+            // in that case there is nothing for the officer to do, so there is nothing to say.
+            _ifscLookupNote = ResolvedBankName is null
+                ? "Auto-fetch unavailable — enter manually."
+                : null;
+            return;
+        }
+
+        _liveIfscCode = ifsc;
+        _liveIfscBankName = details.BankName;
+        _bank.BankName = details.BankName;
+        _bank.BankBranch = details.Branch;
+        _bank.BankAddress = details.Address;
+    }
+
+    private void ClearLiveIfscResult()
+    {
+        _liveIfscCode = null;
+        _liveIfscBankName = null;
+        _bank.BankBranch = null;
+        _bank.BankAddress = null;
+    }
 
     /// <remarks>
     /// No provider is configured, so this reports unavailable and nothing else. It must never set
@@ -766,9 +895,14 @@ else
             db.BankDetails.Add(bank);
         }
 
-        // Whichever control is on screen is what gets stored: the IFSC-resolved name when the
-        // prefix is known, otherwise the officer's manual pick.
+        // Whichever control is on screen is what gets stored: the resolved name when the live
+        // directory or the offline prefix table produced one, otherwise the officer's manual pick.
         bank.BankName = ResolvedBankName ?? _bank.BankName;
+
+        // Only ever set by a live lookup, so they are null whenever the bank was picked by hand.
+        bank.BankBranch = _bank.BankBranch;
+        bank.BankAddress = _bank.BankAddress;
+
         bank.AccountNumber = _bank.AccountNumber;
         bank.Ifsc = _bank.Ifsc;
         bank.AccountType = _bank.AccountType;

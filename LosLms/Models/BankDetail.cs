@@ -18,9 +18,21 @@ public class BankDetail
     [MaxLength(20)]
     public string ApplicationId { get; set; } = string.Empty;
 
-    /// <summary>Resolved from the IFSC prefix where possible, otherwise picked manually.</summary>
+    /// <summary>
+    /// Auto-fetched from the live IFSC directory where possible, else resolved from the offline
+    /// prefix table, else picked manually.
+    /// </summary>
     [MaxLength(120)]
     public string? BankName { get; set; }
+
+    /// <summary>
+    /// Branch and address only ever come from the live IFSC lookup — the offline prefix table is
+    /// keyed on the four-character bank code and knows nothing below bank level. Both stay null when
+    /// the officer picked the bank from the dropdown instead.
+    /// </summary>
+    [MaxLength(150)] public string? BankBranch { get; set; }
+
+    [MaxLength(300)] public string? BankAddress { get; set; }
 
     [MaxLength(18)] public string? AccountNumber { get; set; }
     [MaxLength(11)] public string? Ifsc { get; set; }

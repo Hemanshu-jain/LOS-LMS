@@ -352,7 +352,21 @@ else
 
                                                 <tr>
                                                     <td class="row-number">@(index + 1)</td>
-                                                    <td><input class="reference-input" @bind="reference.Name" /></td>
+                                                    <td>
+                                                        @if (reference.IsDerived)
+                                                        {
+                                                            @* Derived from the Co-Applicant on Stage 1 — read-only, not an input,
+                                                               so there is nothing to type into and nothing to disable. *@
+                                                            <div class="reference-derived" title="From the Co-Applicant recorded on Customer Details">
+                                                                @reference.Name
+                                                            </div>
+                                                            <span class="reference-derived-note">Co-Applicant · from Stage 1</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <input class="reference-input" @bind="reference.Name" />
+                                                        }
+                                                    </td>
                                                     <td><input class="reference-input" @bind="reference.Relationship" /></td>
                                                     <td>
                                                         <input class="reference-input" maxlength="10" placeholder="10-digit mobile"
@@ -366,8 +380,10 @@ else
                                                     <td><input class="reference-input" @bind="reference.Address" /></td>
                                                     <td><input class="reference-input" @bind="reference.KnownSince" /></td>
                                                     <td class="remove-cell">
-                                                        @* Only offered above the two-row minimum. *@
-                                                        @if (_references.Count > MinimumReferences)
+                                                        @* Only offered above the two-row minimum, and never for the derived
+                                                           Co-Applicant row — that one is not the officer's to delete, however
+                                                           many rows are added beyond the minimum. *@
+                                                        @if (_references.Count > MinimumReferences && !reference.IsDerived)
                                                         {
                                                             <button type="button" class="remove-reference"
                                                                     aria-label="@($"Remove reference {index + 1}")"
@@ -410,6 +426,9 @@ else
 
     private const string BlankOption = "— Select —";
     private const int MinimumReferences = 2;
+
+    /// <summary>Party type string for the co-applicant. There is no enum — see Party.PartyType.</summary>
+    private const string CoApplicantPartyType = "CoApplicant";
     private const long MaxUploadBytes = 5 * 1024 * 1024;
 
     private const string LoanTab = "Loan Details";
@@ -505,6 +524,8 @@ else
             {
                 _references.Add(new ReferenceForm());
             }
+
+            await ApplyCoApplicantReferenceAsync(db);
 
             _viability = await db.Viabilities.AsNoTracking()
                 .FirstOrDefaultAsync(v => v.ApplicationId == ApplicationId)
@@ -607,9 +628,57 @@ else
 
     private void AddReference() => _references.Add(new ReferenceForm());
 
+    /// <summary>
+    /// Pre-fills one reference row from the application's Co-Applicant, when there is one.
+    /// </summary>
+    /// <remarks>
+    /// Re-derived on every load rather than stored with a flag column: the save replaces the whole
+    /// reference set anyway, so a column would be a second source of truth for something already
+    /// known from Parties. Editing the Co-Applicant's name on Stage 1 therefore corrects this row too.
+    ///
+    /// Reuses the existing row that already carries the name where possible, so an officer who has
+    /// filled in mobile and address does not lose that work on the next visit.
+    ///
+    /// No Co-Applicant, or a blank name, and this does nothing at all — Reference Details then
+    /// behaves exactly as it always has.
+    /// </remarks>
+    private async Task ApplyCoApplicantReferenceAsync(LosDbContext db)
+    {
+        var coApplicantName = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId && p.PartyType == CoApplicantPartyType)
+            .Select(p => p.FullName)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(coApplicantName))
+        {
+            return;
+        }
+
+        var derived = _references.FirstOrDefault(r =>
+                          string.Equals(r.Name?.Trim(), coApplicantName.Trim(), StringComparison.OrdinalIgnoreCase))
+                      ?? _references.FirstOrDefault(r => !r.HasAnyData)
+                      ?? _references[0];
+
+        derived.Name = coApplicantName;
+        derived.IsDerived = true;
+
+        // Only stamped when blank, so an officer who recorded a more precise relationship
+        // ("Co-Applicant · brother") keeps it.
+        if (string.IsNullOrWhiteSpace(derived.Relationship))
+        {
+            derived.Relationship = "Co-Applicant";
+        }
+
+        // The derived row leads: it is the one reference the system vouches for.
+        _references.Remove(derived);
+        _references.Insert(0, derived);
+    }
+
     private void RemoveReference(int index)
     {
-        if (_references.Count <= MinimumReferences)
+        // Belt and braces: the button is not rendered for a derived row, but a stale index from a
+        // racing re-render must not delete one either.
+        if (_references.Count <= MinimumReferences || _references[index].IsDerived)
         {
             return;
         }

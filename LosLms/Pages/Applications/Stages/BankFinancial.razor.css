@@ -656,3 +656,13 @@ select.field-input {
     padding: 9px 16px;
     z-index: 80;
 }
+
+/* Branch address is a full postal address, so it needs to wrap rather than sit on the fixed
+   input-height line the single-value derived fields use. */
+.resolved-bank.is-multiline {
+    height: auto;
+    min-height: 29px;
+    display: block;
+    padding: 6px 8px;
+    line-height: 1.4;
+}
