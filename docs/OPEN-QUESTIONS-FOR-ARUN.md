@@ -14,6 +14,39 @@ nobody has confirmed.
 
 ---
 
+## Where this stands — 12 Aug 2026
+
+Four things below have been **resolved since this document was written**, and are marked ✅ in place
+rather than deleted, so the reasoning stays readable:
+
+| Was open | Now |
+|---|---|
+| §1.2 No authentication anywhere | **Resolved.** Identity, three roles, company-scoped tenancy by EF global query filter. `/files` requires auth and resolves through the tenant-filtered context. |
+| §0.1 Eligibility uses invented policy | **Half resolved.** The numbers are no longer hardcoded — they are per-company settings in Company Setup. The seeded *values* are still the invented ones and still need confirming. |
+| §4.3 Officers exist twice | **Resolved.** Officers became real users; historical actions stayed attributable. |
+| Bureau check | **Gate built, check still a stub.** Nothing advances without a CIBIL pass or a logged admin bypass, but the check itself reports "not configured" and never invents a score. |
+
+**Still genuinely blocking, in the order they bite:**
+
+1. **§0 — the two undefined Post Sanction checklist items.** Still the last thing between this build
+   and released money. Unchanged and unanswerable without the client.
+2. **§1.1 — QuestPDF licence tier.** Legal, not technical. Answer before shipping anywhere.
+3. **§2 — every threshold is still an invented number**, now merely editable rather than hardcoded.
+   Editable wrong numbers are still wrong numbers.
+4. **§1.3 — dedupe leaves one side of a match stale.** A real compliance gap, untouched.
+
+**Not in this document, added since:** the Admin Inbox's real-time delivery is in-process and
+assumes a single server instance. More than one needs a SignalR backplane; without one it does not
+error, it silently stops updating. The app logs this at startup.
+
+**Where the integrations actually stand.** Every one of these reports "not configured" and none
+fabricate a result — that is the pattern to preserve when they get built: PAN and Aadhaar OCR,
+mobile OTP, video KYC, penny-drop name match, bank statement parsing, CIBIL, and the RCU vendor
+hand-off. The screens, the gates and the audit trail around each already exist and are enforced;
+what is missing is the provider behind them.
+
+---
+
 ## 0. Two undefined checklist items are the only thing standing between this build and released money — **read this first**
 
 Stage 8's *Release funds* button is the last control before disbursement. It unlocks when every row
@@ -34,7 +67,22 @@ items?** Until they are named, Stage 8 must not go anywhere near production mone
 
 ---
 
-## 0.1 The eligible amount is computed from invented policy
+## 0.1 The eligible amount is computed from invented policy — ⚠️ still true, but now editable
+
+> **Half resolved.** The constants shown below no longer exist in code. All thirteen are per-company
+> columns, editable by an Admin in Company Setup → Policy Thresholds, and read live on every
+> calculation (deliberately uncached, so an edit takes effect without a restart — verified: FOIR
+> 50→40 moved an eligible amount from ₹15,24,651 to ₹11,08,722 with no restart).
+>
+> **The seeded values are still exactly the invented numbers below.** Relocating them changed who
+> can fix them, not whether they are right. An editable wrong threshold is still a wrong threshold,
+> and this section stays open until the client confirms each one.
+>
+> One thing the relocation made visible and did not fix: **the risk bands sit outside the hard
+> caps.** `FoirRiskDangerPct` is 60 while `FoirCapPct` is 50; `LtvRiskDangerPct` is 90 while
+> `LtvCapPct` is 85. So a file at 57% FOIR shows amber on Stage 2, then Stage 6 collapses the
+> eligible amount. A file exactly at the cap never reads green. Left as-is on purpose rather than
+> silently "corrected", because which of the two numbers is wrong is the client's call.
 
 Stage 6 now calculates how much the customer may borrow, and blocks the file when that figure comes
 in below what was requested. The arithmetic is real. **The policy behind it is not.**
@@ -77,7 +125,23 @@ QuestPDF.Settings.License = LicenseType.Community;   // Program.cs
 If the client is above that threshold this needs a paid Professional or Enterprise licence.
 **Question:** what is the client's revenue tier, and who purchases the licence if one is needed?
 
-### 1.2 There is no authentication anywhere — and documents are now reachable by URL
+### 1.2 There is no authentication anywhere — and documents are now reachable by URL ✅ RESOLVED
+> **Resolved.** Kept in full because the reasoning below is why the current design looks the way it
+> does. What shipped: ASP.NET Core Identity with `Staff` / `Admin` / `SuperAdmin`; company scoping
+> enforced by EF Core **global query filters**, not per-query conditions, so a forgotten `Where`
+> cannot leak another company's rows; `[Authorize(Roles = ...)]` on Company Setup and the Admin
+> Inbox, verified by signing in as Staff and being refused.
+>
+> The `/files` endpoint asked for below now has all of it: `RequireAuthorization()`, and it resolves
+> the application through the **tenant-filtered** context before serving anything — so a user at
+> company A holding company B's URL gets a 404, and a 404 rather than a 403 so the response does not
+> confirm the application exists. Path traversal is blocked by canonical-path comparison. Verified
+> live: both an unauthenticated request and a `../` traversal are refused.
+>
+> Still open from this section: **per-branch visibility**. Access is scoped by company, not by
+> branch. If an officer at Nashik West should not see Pune Camp's files, that rule does not exist yet.
+> Also unanswered: whether accounts should be local (what shipped) or AD/LDAP/SSO.
+
 Every screen is reachable by anyone who can reach the server. There is no login, no session, no
 role, and no per-branch access control. The "Credit Officer · Nashik West" label in the top bar is a
 hardcoded placeholder, and "logged-in officer's branch" on new applications is likewise a constant.
@@ -300,7 +364,13 @@ whole file, while outcomes are recorded per party. If the vendor returns a separ
 there is nowhere to put them — the second upload replaces the first.
 **Question:** does the vendor deliver one consolidated report or one per party verified?
 
-### 4.14 Officers now exist twice
+### 4.14 Officers now exist twice ✅ RESOLVED
+> **Resolved.** The third representation this section warned about never happened. `Officers` was
+> folded into `AspNetUsers` — the login identity and the RCU foreign key are the same row — and
+> `Applications.AssignedOfficerId` is now a real foreign key beside the retained name string, so
+> historical records stay attributable to people who have since been deactivated. Deactivation sets
+> `IsActive = false` and never deletes, for exactly that reason.
+
 Stage 5 introduced an `Officers` table (R. Kulkarni, S. Deshpande, A. Rao) because RCU outcomes and
 the override approval need a real foreign key. But `Applications.AssignedOfficer` still stores a
 plain **name string** from the earlier screens. The same people are now modelled two different ways,
