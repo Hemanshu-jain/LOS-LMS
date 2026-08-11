@@ -272,16 +272,22 @@ Each screen keeps its own logic beside its markup in a single `.razor` file. Onl
 
 ## What's intentionally not implemented
 
-Every screen is reachable by anyone who can reach the server. **There is no authentication, no session, no role, no per-branch access control.** The "Credit Officer · Nashik West" label in the top bar is a hardcoded placeholder. Document files served from `/files/{applicationId}/{folder}/{name}` are PII (Aadhaar, PAN, bank statements); without auth, anyone with a URL has the document.
+Authentication, roles (`Staff` / `Admin` / `SuperAdmin`) and company-scoped multi-tenancy **are** implemented. Tenancy is enforced by EF Core global query filters rather than per-query conditions, so a forgotten `Where` cannot leak another company's rows. Company Setup and the Admin Inbox carry real `[Authorize(Roles = ...)]` attributes, not hidden nav links.
 
-Other things explicitly out of scope of this build, with reasoning in [`OPEN-QUESTIONS-FOR-ARUN.md`](./docs/OPEN-QUESTIONS-FOR-ARUN.md):
+Still open, and important:
 
-- Real FOIR / LTV policy thresholds (the screen ships 50% / 85% placeholders)
+- **Document files at `/files/{applicationId}/{folder}/{name}` are PII** (Aadhaar, PAN, bank statements). Confirm this endpoint enforces the same authorization and company scoping as the screens before any real data goes near it.
+- **Admin Inbox real-time delivery is in-process and assumes one server instance.** More than one needs a SignalR backplane (Redis or Azure SignalR); without one it does not error, it just silently stops updating. The app logs this assumption at startup.
+
+Other things explicitly out of scope, with reasoning in [`OPEN-QUESTIONS-FOR-ARUN.md`](./docs/OPEN-QUESTIONS-FOR-ARUN.md):
+
 - Real OCR / verification integrations (PAN, Aadhaar, mobile OTP, video KYC all report "not configured")
+- Real CIBIL / bureau pull — the gate and the admin-bypass workflow exist and are enforced, but the check itself reports "Unavailable — provider not configured" and never fabricates a score
 - Real RCU vendor hand-off (Stage 5 is fully manual)
 - Real banking integrations (penny-drop, statement parsing both report "not configured")
-- Real CIBIL / bureau pull
 - The two undefined Post Sanction checklist items (header reads "7 of 9 flags cleared (2 items pending definition)")
+
+FOIR / LTV thresholds are no longer hardcoded — they, and eleven other policy values, are per-company settings editable in Company Setup. The seeded numbers are still the original placeholders and need confirming with the client.
 
 Read that document before treating this as a production-ready system.
 

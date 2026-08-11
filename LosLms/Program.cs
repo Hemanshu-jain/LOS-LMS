@@ -150,6 +150,15 @@ if (app.Configuration.GetValue<bool>("Seed:IsolationFixture"))
     await IdentitySeeder.SeedIsolationFixtureAsync(app.Services, app.Logger);
 }
 
+// Said out loud at startup, not just in a code comment. The failure mode this warns about is silent:
+// on two or more instances the Admin Inbox keeps working and simply stops updating for anyone whose
+// circuit is on a different instance from the one that raised the request. Nothing errors, so the
+// only way anyone learns is by noticing stale data. A deployer scaling out needs to read this and
+// add a backplane (Redis or Azure SignalR) before they do.
+app.Logger.LogInformation(
+    "Admin Inbox real-time delivery is in-process and assumes a SINGLE server instance. " +
+    "Running more than one instance needs a SignalR backplane, or admins will silently see stale data.");
+
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
