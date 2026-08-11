@@ -12,18 +12,16 @@ This repository contains the working Blazor Server application, all reference sp
 
 | Path | What it is |
 |---|---|
-| `LosLms/` | The Blazor Server app — Components, Pages, Models, Data, Migrations |
+| `LosLms/` | The Blazor Server app — Components, Pages, Models, Data, Services, Migrations |
 | `LosLms.sln` | Solution file |
-| `ApplicationsDashboard.spec.v2.jsx` | Reference spec for the dashboard |
-| `CustomerDetails.spec.jsx` | Reference spec for Stage 1 |
-| `DocumentChecklist.spec.v2.jsx` | Reference spec for Stage 4 |
-| `Eligibility.spec.v2.jsx` | Reference spec for Stage 6 |
-| `ReportsRCU.spec.v2.jsx` | Reference spec for Stage 5 |
-| `OPEN-QUESTIONS-FOR-ARUN.md` | All unconfirmed assumptions the build rests on — read first |
-| `WALKTHROUGH-STAGES-1-TO-5.md` | Original walkthrough (Sunil Wagh sample, application `LN-2026-004875`) |
-| `DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md` | **Demo 1** — Hemant Bhalerao, CV, three parties, exercises RCU override |
-| `DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md` | **Demo 2** — Priya Deshpande, LAP, single party, exercises deviation approver note |
-| `Wireframe nine-screen flow_1.zip` | Original 9-screen wireframe archive |
+| `deploy/` | Portable-demo config and launcher, copied in by `publish-portable.bat` |
+| `publish-portable.bat` | Builds the zero-install client demo → `publish/LOS-LMS-Demo.zip` |
+| `docs/OPEN-QUESTIONS-FOR-ARUN.md` | All unconfirmed assumptions the build rests on — read first |
+| `docs/WALKTHROUGH-STAGES-1-TO-5.md` | Original walkthrough (Sunil Wagh sample, application `LN-2026-004875`) |
+| `docs/DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md` | **Demo 1** — Hemant Bhalerao, CV, three parties, exercises RCU override |
+| `docs/DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md` | **Demo 2** — Priya Deshpande, LAP, single party, exercises deviation approver note |
+| `docs/wireframes/*.jsx` | Reference React specs, one per screen |
+| `docs/wireframes/Wireframe nine-screen flow_1.zip` | Original 9-screen wireframe archive |
 
 ---
 
@@ -32,7 +30,7 @@ This repository contains the working Blazor Server application, all reference sp
 | Layer | Choice |
 |---|---|
 | Runtime | .NET 8.0 (LTS) |
-| UI | Blazor Server — every component `InteractiveServer` (SignalR circuit) |
+| UI | Blazor Server — `InteractiveServer` (SignalR circuit) everywhere except `/account/*`, which renders statically so sign-in can write cookies |
 | ORM | Entity Framework Core 8.0.29 |
 | Database | MySQL 8.0 via `Pomelo.EntityFrameworkCore.MySql` 8.0.3 |
 | PDF generation | QuestPDF (Community licence — see OPEN-QUESTIONS §1.1) |
@@ -130,7 +128,9 @@ cd LosLms
 dotnet ef database update
 ```
 
-This creates all 14 tables and seeds 128 sample applications. **You only run this once per fresh database.** Re-running it is safe but a no-op.
+This creates the schema. Roles, the initial users and 15 fully worked-through demo applications are seeded by the app itself on first start, not by the migration — so run the app once after this. **You only need `database update` per fresh database.** Re-running it is safe but a no-op.
+
+The seeded users' temporary passwords are printed to the console on that first start, once. They are not stored anywhere else and every one of them forces a password change at first sign-in.
 
 If `dotnet ef` complains the tool is missing, see the Prerequisites section.
 
@@ -162,8 +162,8 @@ If Chrome refuses to load CSS / shows an unstyled page after a code change, **ha
 
 Two guides walk a brand-new application all the way from creation through disbursement:
 
-- **Demo 1:** [`DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md`](./DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md) — Hemant Bhalerao, Commercial Vehicle, 3 parties (Applicant + Co-Applicant + Guarantor). Exercises the **RCU override gate** (one party returns Not recommended).
-- **Demo 2:** [`DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md`](./DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md) — Priya Deshpande, Loan Against Property, 1 party (Applicant only). Exercises the **Eligibility deviation approver note** gate.
+- **Demo 1:** [`DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md`](./docs/DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md) — Hemant Bhalerao, Commercial Vehicle, 3 parties (Applicant + Co-Applicant + Guarantor). Exercises the **RCU override gate** (one party returns Not recommended).
+- **Demo 2:** [`DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md`](./docs/DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md) — Priya Deshpande, Loan Against Property, 1 party (Applicant only). Exercises the **Eligibility deviation approver note** gate.
 
 Both end at the same terminal state (`Status = Sanctioned`, `Disbursed = true`). Run them in either order.
 
@@ -190,50 +190,69 @@ dotnet run --launch-profile https
 LOS-LMS/
 ├── LosLms.sln
 ├── README.md                           ← this file
-├── OPEN-QUESTIONS-FOR-ARUN.md          ← all unconfirmed assumptions
-├── WALKTHROUGH-STAGES-1-TO-5.md        ← original walkthrough (Sunil Wagh)
-├── DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md   ← Demo 1
-├── DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md   ← Demo 2
-├── *.spec.v2.jsx                       ← reference React specs (one per screen)
-├── Wireframe nine-screen flow_1.zip    ← original 9-screen wireframe archive
+├── publish-portable.bat                ← builds the client demo zip
+├── deploy/                             ← portable-demo config + launcher
+├── docs/
+│   ├── OPEN-QUESTIONS-FOR-ARUN.md      ← all unconfirmed assumptions
+│   ├── WALKTHROUGH-STAGES-1-TO-5.md    ← original walkthrough (Sunil Wagh)
+│   ├── DEMO-WALKTHROUGH-APPLICATION-LN-2026-004900.md   ← Demo 1
+│   ├── DEMO-WALKTHROUGH-APPLICATION-LN-2026-004901.md   ← Demo 2
+│   └── wireframes/                     ← reference React specs + wireframe archive
 └── LosLms/
     ├── LosLms.csproj
     ├── Program.cs                      ← startup, DI, /files endpoint
     ├── appsettings.json                ← placeholder connection string
     ├── appsettings.Development.json
     ├── Components/
-    │   ├── App.razor                   ← root document
+    │   ├── App.razor                   ← root document, per-request render mode
     │   ├── Routes.razor                ← router
-    │   ├── Layout/                     ← MainLayout
-    │   └── Shared/                     ← 8-stage stepper, summary card
+    │   ├── Layout/                     ← MainLayout + app bar
+    │   └── Shared/                     ← stepper, sub-header, dialogs, form primitives
     ├── Pages/
     │   ├── Home.razor
     │   ├── Error.razor
-    │   ├── ApplicationsDashboard/      ← Stage 0 — entry list
-    │   ├── CustomerDetails/            ← Stage 1
-    │   ├── LoanAndSecurity/            ← Stage 2
-    │   ├── BankAndFinancial/           ← Stage 3
-    │   ├── DocumentChecklist/          ← Stage 4
-    │   ├── ReportsRcu/                 ← Stage 5
-    │   ├── Eligibility/                ← Stage 6
-    │   ├── Approvals/                  ← Stage 7
-    │   └── PostSanction/               ← Stage 8
+    │   ├── Account/                    ← sign in / out, change password, access denied
+    │   ├── Admin/                      ← admin inbox
+    │   ├── CompanySetup/               ← profile, policy, branches, vehicle caps, users
+    │   └── Applications/
+    │       ├── ApplicationsDashboard.razor   ← entry list + quick-view drawer
+    │       └── Stages/                 ← the eight stage screens, one file each
     ├── Data/
-    │   ├── LosDbContext.cs
-    │   └── ApplicationSeedData.cs      ← 128 seeded applications
-    ├── Models/                         ← entity classes
-    ├── Migrations/                     ← EF Core migrations
+    │   ├── LosDbContext.cs             ← DbSets, tenancy query filters
+    │   ├── LoanStages.cs               ← stage numbers, labels and routes, one source
+    │   ├── IdentitySeeder.cs           ← roles + initial users
+    │   └── DemoSeedData.cs             ← 15 worked-through demo applications
+    ├── Models/                         ← entity classes, grouped by domain
+    │   ├── Tenancy/                    ← Company, Branch, ApplicationUser, VehicleLoanCap
+    │   ├── Origination/                ← Application, AdminRequest, RejectionLog, SendBackLog
+    │   ├── Parties/                    ← Party, Business, Partner, Reference, Classification
+    │   ├── Security/                   ← SecurityDetail, Viability, Loan & Security forms
+    │   ├── Banking/                    ← BankDetail, statements, existing loans, IFSC
+    │   ├── Documents/                  ← checklist, remarks, PDDs, post-sanction checklist
+    │   ├── Rcu/                        ← RCU initiation, outcomes, reports, TVR
+    │   ├── Credit/                     ← eligibility, approvals, charges, CAM costs
+    │   └── Disbursal/                  ← disbursement, down payment, NACH mandates
     ├── Services/
+    │   ├── Tenancy/                    ← TenantContext, scoped factory, company policy
+    │   ├── Gates/                      ← CIBIL gate, vehicle cap, rejections, notifier
+    │   ├── Underwriting/               ← eligibility, loan maths, party + RCU rules
+    │   └── Integrations/               ← IFSC lookup, CAM PDF
+    ├── Migrations/                     ← EF Core migrations (MySQL is the target)
     ├── Properties/
+    ├── wwwroot/                        ← app.css, js
     ├── App_Data/                       ← upload destination (gitignored)
     ├── _Imports.razor
     ├── bin/                            ← build output (gitignored)
     └── obj/                            ← build output (gitignored)
 ```
 
-Screen folders are PascalCase without numeric prefixes: a leading digit is not a valid namespace segment. Stage order belongs in the stepper component, not in folder names.
+`Models/` and `Services/` subfolders are organisation only — every file keeps its
+original `LosLms.Models` / `LosLms.Services` namespace, so no `using` anywhere
+changes and the folders can be regrouped later without touching code.
 
-Each screen keeps its own logic beside its markup in a single `.razor` file. Only genuinely shared chrome (stepper, summary card) lives in `Components/Shared/`.
+Screen folders are PascalCase without numeric prefixes: a leading digit is not a valid namespace segment. Stage order belongs in `LoanStages`, not in folder names.
+
+Each screen keeps its own logic beside its markup in a single `.razor` file. Only genuinely shared chrome (stepper, sub-header, dialogs) lives in `Components/Shared/`.
 
 ---
 
@@ -255,7 +274,7 @@ Each screen keeps its own logic beside its markup in a single `.razor` file. Onl
 
 Every screen is reachable by anyone who can reach the server. **There is no authentication, no session, no role, no per-branch access control.** The "Credit Officer · Nashik West" label in the top bar is a hardcoded placeholder. Document files served from `/files/{applicationId}/{folder}/{name}` are PII (Aadhaar, PAN, bank statements); without auth, anyone with a URL has the document.
 
-Other things explicitly out of scope of this build, with reasoning in [`OPEN-QUESTIONS-FOR-ARUN.md`](./OPEN-QUESTIONS-FOR-ARUN.md):
+Other things explicitly out of scope of this build, with reasoning in [`OPEN-QUESTIONS-FOR-ARUN.md`](./docs/OPEN-QUESTIONS-FOR-ARUN.md):
 
 - Real FOIR / LTV policy thresholds (the screen ships 50% / 85% placeholders)
 - Real OCR / verification integrations (PAN, Aadhaar, mobile OTP, video KYC all report "not configured")
