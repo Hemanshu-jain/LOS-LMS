@@ -97,9 +97,9 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        _officerName = await db.Officers.AsNoTracking()
-            .Where(o => o.Id == officerId)
-            .Select(o => o.Name)
+        _officerName = await db.Users.AsNoTracking()
+            .Where(u => u.Id == officerId)
+            .Select(u => u.DisplayName)
             .FirstOrDefaultAsync() ?? "Unassigned";
     }
 

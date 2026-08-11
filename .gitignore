@@ -487,3 +487,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Portable demo SQLite database - created at runtime by EnsureCreated, never source.
+LosLms/los_lms.db
+LosLms/los_lms.db-shm
+LosLms/los_lms.db-wal

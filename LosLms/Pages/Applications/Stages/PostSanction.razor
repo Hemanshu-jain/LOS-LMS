@@ -498,7 +498,7 @@ else
                                                     <select class="cell-select" aria-label="@("Waiver approver for " + row.Item)"
                                                             @bind="row.WaivedByOfficerId">
                                                         <option value="">@BlankOption</option>
-                                                        @foreach (var o in _officers) { <option value="@o.Id">@o.Name</option> }
+                                                        @foreach (var o in _officers) { <option value="@o.Id">@o.DisplayName</option> }
                                                     </select>
                                                 }
                                                 else
@@ -582,7 +582,7 @@ else
     private DownPaymentRecord _downPayment = new();
     private List<PostSanctionChecklist> _checklist = new();
     private List<Pdd> _pdds = new();
-    private List<Officer> _officers = new();
+    private List<ApplicationUser> _officers = new();
 
     private string? _uploadError;
     private string? _toast;
@@ -617,7 +617,10 @@ else
 
     private async Task LoadAsync(LosDbContext db)
     {
-        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+        _officers = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.DisplayName)
+            .ToListAsync();
 
         _decision = await db.ApprovalDecisions.AsNoTracking()
             .FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);

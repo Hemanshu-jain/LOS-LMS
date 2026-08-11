@@ -100,7 +100,7 @@ else
                                 <FormField Label="Sourcing branch" For="ls-branch">
                                     <select id="ls-branch" class="field-input" @bind="_application.Branch">
                                         <option value="">@BlankOption</option>
-                                        @foreach (var o in BranchOptions) { <option value="@o">@o</option> }
+                                        @foreach (var o in _branchOptions) { <option value="@o">@o</option> }
                                     </select>
                                 </FormField>
 
@@ -424,8 +424,9 @@ else
     private static readonly string[] ChannelOptions =
         { "DSA — Patil Motors", "DSA — Shree Associates", "Branch walk-in", "Digital" };
 
-    private static readonly string[] BranchOptions =
-        { "Nashik West", "Nashik East", "Pune Camp", "Aurangabad", "Jalgaon" };
+    // Real rows from the Branches table, scoped to the signed-in user's company by the global query
+    // filter. Loaded in OnParametersSetAsync alongside everything else this screen needs.
+    private List<string> _branchOptions = new();
 
     private static readonly string[] SchemeOptions = { "CV-STD-2026", "CV-PRIME-2026", "LAP-STD-2026" };
 
@@ -485,6 +486,11 @@ else
                 Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
                 return;
             }
+            _branchOptions = await db.Branches.AsNoTracking()
+                .OrderBy(b => b.Name)
+                .Select(b => b.Name)
+                .ToListAsync();
+
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
             _security = security is null ? new SecurityForm() : ToForm(security);

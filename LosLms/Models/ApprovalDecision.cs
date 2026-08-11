@@ -14,10 +14,11 @@ namespace LosLms.Models;
 /// Send Back clears it deliberately — an application that goes back for rework must be re-confirmed
 /// against whatever the evidence looks like when it returns.
 ///
-/// Signatories are stored as plain names rather than foreign keys into <see cref="Officer"/>, which
-/// the screen populates its dropdowns from. That mirrors the existing
-/// <c>Applications.AssignedOfficer</c> inconsistency rather than fixing it — see
-/// OPEN-QUESTIONS-FOR-ARUN.md.
+/// Signatories are real foreign keys into <see cref="ApplicationUser"/>. They used to be plain name
+/// strings, which meant a sanction could name a signatory who did not exist and a renamed officer
+/// silently detached from every decision they had signed. The role columns stay as text: they record
+/// the authority the signatory held at the time of signing, which must not move when the person's
+/// current role does.
 /// </remarks>
 public class ApprovalDecision
 {
@@ -29,14 +30,12 @@ public class ApprovalDecision
     [MaxLength(4000)]
     public string ApprovalNote { get; set; } = string.Empty;
 
-    [MaxLength(120)]
-    public string? RecommenderName { get; set; }
+    public string? RecommenderUserId { get; set; }
 
     [MaxLength(60)]
     public string? RecommenderRole { get; set; }
 
-    [MaxLength(120)]
-    public string? ApproverName { get; set; }
+    public string? ApproverUserId { get; set; }
 
     [MaxLength(60)]
     public string? ApproverRole { get; set; }
@@ -62,4 +61,6 @@ public class ApprovalDecision
     public DateTime UpdatedAt { get; set; }
 
     public Application? Application { get; set; }
+    public ApplicationUser? Recommender { get; set; }
+    public ApplicationUser? Approver { get; set; }
 }

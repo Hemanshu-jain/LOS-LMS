@@ -28,14 +28,10 @@
     <div class="dashboard-card">
 
         @* ---------- Top bar ---------- *@
+        @* The signed-in user and the sign-out action moved to the global app bar in MainLayout,
+           where every screen can reach them. What is left here is the card's own section label. *@
         <div class="top-bar">
             <span class="system-label">LOS/LMS · Applications</span>
-            <div class="user-context">
-                <span class="user-name">Credit Officer · Nashik West</span>
-                <div class="avatar" role="img" aria-label="Logged-in user avatar">
-                    <Icon Name="user" Size="14" />
-                </div>
-            </div>
         </div>
 
         @* ---------- Toolbar ---------- *@
@@ -104,7 +100,7 @@
                                  Value="@_draft.Product"
                                  ValueChanged="@(v => _draft = _draft with { Product = v })" />
 
-                    <FilterField Label="Branch" Options="BranchOptions"
+                    <FilterField Label="Branch" Options="_branchOptions"
                                  Value="@_draft.Branch"
                                  ValueChanged="@(v => _draft = _draft with { Branch = v })" />
 
@@ -412,12 +408,12 @@
                         <span class="drawer-assign-label">Assigned officer</span>
                         <div class="drawer-assign-control">
                             <select class="drawer-assign-select" aria-label="Assigned officer"
-                                    value="@(drawerApp.AssignedOfficerId?.ToString() ?? string.Empty)"
+                                    value="@(drawerApp.AssignedOfficerId ?? string.Empty)"
                                     @onchange="AssignOfficerAsync">
                                 <option value="">— Unassigned —</option>
                                 @foreach (var officer in _officers)
                                 {
-                                    <option value="@officer.Id">@officer.Name</option>
+                                    <option value="@officer.Id">@officer.DisplayName</option>
                                 }
                             </select>
                             @if (_officerSavedMessage is not null)
@@ -484,8 +480,9 @@
     private static readonly string[] ProductOptions =
         { AllProductsOption, "Commercial vehicle", "Loan against property" };
 
-    private static readonly string[] BranchOptions =
-        { AllBranchesOption, "Nashik West", "Nashik East", "Pune Camp", "Aurangabad", "Jalgaon" };
+    // Loaded from the Branches table, scoped to the signed-in user's company by the global query
+    // filter. The sentinel is prepended in LoadAsync so it always heads the list.
+    private string[] _branchOptions = { AllBranchesOption };
 
     private static readonly string[] StageOptions =
         { AllStagesOption, "New", "In progress", "Sanctioned", "Rejected" };
@@ -592,7 +589,7 @@
     private List<Application> _allRows = new();
     private Dictionary<string, List<string>> _pansByApplication = new(StringComparer.Ordinal);
 
-    private List<Officer> _officers = new();
+    private List<ApplicationUser> _officers = new();
     private IReadOnlyList<string> _officerOptions = new[] { AllOfficersOption };
 
     // Latest rejection reason + date per application, for the drawer banner. Few rows, loaded whole.
@@ -625,10 +622,17 @@
 
         _allRows = await db.Applications.AsNoTracking().ToListAsync();
 
-        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+        _officers = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.DisplayName)
+            .ToListAsync();
         _officerOptions = new[] { AllOfficersOption }
-            .Concat(_officers.Select(o => o.Name))
+            .Concat(_officers.Select(o => o.DisplayName))
             .ToList();
+
+        _branchOptions = new[] { AllBranchesOption }
+            .Concat(await db.Branches.AsNoTracking().OrderBy(b => b.Name).Select(b => b.Name).ToListAsync())
+            .ToArray();
 
         _latestRejections = (await db.RejectionLogs.AsNoTracking().ToListAsync())
             .GroupBy(r => r.ApplicationId, StringComparer.Ordinal)
@@ -713,7 +717,7 @@
             {
                 // Filter on the real FK, resolving the chosen name to its officer id (names are
                 // unique in the Officers table). This is the column the drawer now writes.
-                var officerId = _officers.FirstOrDefault(o => o.Name == _applied.Officer)?.Id;
+                var officerId = _officers.FirstOrDefault(o => o.DisplayName == _applied.Officer)?.Id;
                 rows = rows.Where(row => row.AssignedOfficerId == officerId);
             }
 
@@ -796,21 +800,23 @@
     // Creating and opening applications
     // ---------------------------------------------------------------------
 
-    /// <summary>Branch placeholder until authentication exists and a real officer is known.</summary>
-    private const string OfficerBranch = "Nashik West";
-
     private async Task CreateApplicationAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
 
         var id = await NextApplicationIdAsync(db);
 
+        // Branch is left unset. It used to be stamped with a hardcoded "Nashik West", which was
+        // wrong the moment a second company existed and had branches of its own. The officer picks
+        // the real one from the company's branch list on Loan & Security, which is stage 2.
+        //
+        // CompanyId is not set here either — LosDbContext stamps it from the signed-in user's claims
+        // on insert, so it can never be chosen by anything the browser sends.
         db.Applications.Add(new Application
         {
             Id = id,
             Status = "New",
             CurrentStage = 1,
-            Branch = OfficerBranch,
         });
 
         await db.SaveChangesAsync();
@@ -1006,13 +1012,14 @@
             return;
         }
 
-        int? officerId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        var selected = e.Value?.ToString();
+        var officerId = string.IsNullOrWhiteSpace(selected) ? null : selected;
 
         await using var db = await DbFactory.CreateDbContextAsync();
         var application = await db.Applications.FirstAsync(a => a.Id == app.Id);
         application.AssignedOfficerId = officerId;
         application.AssignedOfficer = officerId is { } oid
-            ? _officers.FirstOrDefault(o => o.Id == oid)?.Name
+            ? _officers.FirstOrDefault(o => o.Id == oid)?.DisplayName
             : null;
         await db.SaveChangesAsync();
 

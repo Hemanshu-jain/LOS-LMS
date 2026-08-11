@@ -10,14 +10,36 @@
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="LosLms.styles.css" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="@RenderModeForRequest" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="@RenderModeForRequest" />
     <script src="_framework/blazor.web.js"></script>
     <script src="js/download.js"></script>
     <script src="js/shortcuts.js"></script>
 </body>
 
 </html>
+
+@code {
+    // App.razor is always rendered statically, so ASP.NET Core cascades the live HttpContext into it.
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    /// <summary>
+    /// Interactive everywhere except the /account pages, which must render statically.
+    /// </summary>
+    /// <remarks>
+    /// SignInManager writes the authentication cookie through the response, and inside a SignalR
+    /// circuit there is no response left to write to — the headers went out long ago. Sign-in,
+    /// sign-out and change-password therefore have to be plain server-rendered form posts.
+    ///
+    /// .NET 9 has [ExcludeFromInteractiveRouting] and HttpContext.AcceptsInteractiveRouting() for
+    /// exactly this; on .NET 8 the path check is the equivalent. Every other route keeps the global
+    /// interactive mode it has always had, so none of the nine existing screens change behaviour.
+    /// </remarks>
+    private IComponentRenderMode? RenderModeForRequest =>
+        HttpContext?.Request.Path.StartsWithSegments("/account") == true
+            ? null
+            : InteractiveServer;
+}

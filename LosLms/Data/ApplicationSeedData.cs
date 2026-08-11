@@ -90,6 +90,7 @@ public static class ApplicationSeedData
             rows.Add(new Application
             {
                 Id = $"LN-2026-{idNumber:D6}",
+                CompanyId = LosDbContext.SeedCompanyId,
                 CustomerType = CustomerTypeFor(product),
                 Branch = branch,
                 LoanProduct = product,
@@ -136,6 +137,7 @@ public static class ApplicationSeedData
             yield return new Application
             {
                 Id = r.Id,
+                CompanyId = LosDbContext.SeedCompanyId,
                 CustomerType = CustomerTypeFor(r.Product),
                 Branch = r.Branch,
                 LoanProduct = r.Product,

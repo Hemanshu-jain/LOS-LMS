@@ -37,12 +37,13 @@ public class Pdd
     [MaxLength(20)]
     public string Status { get; set; } = "Open";
 
-    public int? WaivedByOfficerId { get; set; }
+    /// <summary>Foreign key into <see cref="ApplicationUser"/> — the officer who waived the item.</summary>
+    public string? WaivedByOfficerId { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public Officer? WaivedBy { get; set; }
+    public ApplicationUser? WaivedBy { get; set; }
 
     public Application? Application { get; set; }
 }

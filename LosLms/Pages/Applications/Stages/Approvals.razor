@@ -301,10 +301,10 @@ else
                                     <div class="signature-block">
                                         <span class="sub-block-label">Recommender</span>
                                         <select class="field-input" aria-label="Recommender name"
-                                                value="@(_decision.RecommenderName ?? string.Empty)"
+                                                value="@(_decision.RecommenderUserId ?? string.Empty)"
                                                 @onchange="e => SetSignatory(recommender: true, (string?)e.Value)">
                                             <option value="">@BlankOption</option>
-                                            @foreach (var o in _officers) { <option value="@o.Name">@o.Name</option> }
+                                            @foreach (var o in _officers) { <option value="@o.Id">@o.DisplayName</option> }
                                         </select>
                                         <select class="field-input" aria-label="Recommender role" @bind="_decision.RecommenderRole">
                                             <option value="">@BlankOption</option>
@@ -320,10 +320,10 @@ else
                                     <div class="signature-block">
                                         <span class="sub-block-label">Approver</span>
                                         <select class="field-input" aria-label="Approver name"
-                                                value="@(_decision.ApproverName ?? string.Empty)"
+                                                value="@(_decision.ApproverUserId ?? string.Empty)"
                                                 @onchange="e => SetSignatory(recommender: false, (string?)e.Value)">
                                             <option value="">@BlankOption</option>
-                                            @foreach (var o in _officers) { <option value="@o.Name">@o.Name</option> }
+                                            @foreach (var o in _officers) { <option value="@o.Id">@o.DisplayName</option> }
                                         </select>
                                         <select class="field-input" aria-label="Approver role" @bind="_decision.ApproverRole">
                                             <option value="">@BlankOption</option>
@@ -623,7 +623,7 @@ else
     private ApprovalDecision _decision = new();
     private List<Partner> _partners = new();
     private List<Charge> _charges = new();
-    private List<Officer> _officers = new();
+    private List<ApplicationUser> _officers = new();
 
     private EligibilityResult _eligibility = new(false, 0m, 0m, 0m, 0m, 0m, 0m, null);
     private string _rcuStatus = RcuOutcomes.Pending;
@@ -664,7 +664,10 @@ else
 
     private async Task LoadAsync(LosDbContext db)
     {
-        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+        _officers = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.DisplayName)
+            .ToListAsync();
 
         // Live, not snapshotted — both come from the same shared services the owning screens use.
         _eligibility = await EligibilityCalculation.ComputeAsync(db, ApplicationId);
@@ -782,15 +785,18 @@ else
 
     private bool NoteComplete => !string.IsNullOrWhiteSpace(_decision.ApprovalNote);
 
-    /// <summary>Segregation of duties: one person cannot both recommend and approve.</summary>
+    /// <summary>
+    /// Segregation of duties: one person cannot both recommend and approve. Compares user ids rather
+    /// than the typed names it used to, so renaming somebody can no longer defeat the check.
+    /// </summary>
     private bool SameSignatory =>
-        !string.IsNullOrWhiteSpace(_decision.RecommenderName)
-        && !string.IsNullOrWhiteSpace(_decision.ApproverName)
-        && string.Equals(_decision.RecommenderName, _decision.ApproverName, StringComparison.Ordinal);
+        !string.IsNullOrWhiteSpace(_decision.RecommenderUserId)
+        && !string.IsNullOrWhiteSpace(_decision.ApproverUserId)
+        && string.Equals(_decision.RecommenderUserId, _decision.ApproverUserId, StringComparison.Ordinal);
 
     private bool SignOffComplete =>
-        !string.IsNullOrWhiteSpace(_decision.RecommenderName)
-        && !string.IsNullOrWhiteSpace(_decision.ApproverName)
+        !string.IsNullOrWhiteSpace(_decision.RecommenderUserId)
+        && !string.IsNullOrWhiteSpace(_decision.ApproverUserId)
         && !SameSignatory;
 
     private IEnumerable<(string Tab, bool Complete)> TabState =>
@@ -859,22 +865,22 @@ else
     private void AddPartner() => _partners.Add(new Partner { ApplicationId = ApplicationId });
 
     /// <summary>
-    /// Selecting a signatory stamps today's server date against them; clearing the name clears it
-    /// again, so a date never outlives the signature it belongs to.
+    /// Selecting a signatory stamps today's server date against them; clearing the selection clears
+    /// it again, so a date never outlives the signature it belongs to.
     /// </summary>
-    private void SetSignatory(bool recommender, string? name)
+    private void SetSignatory(bool recommender, string? userId)
     {
-        var chosen = string.IsNullOrWhiteSpace(name) ? null : name;
+        var chosen = string.IsNullOrWhiteSpace(userId) ? null : userId;
         var signedOn = chosen is null ? (DateOnly?)null : DateOnly.FromDateTime(DateTime.Now);
 
         if (recommender)
         {
-            _decision.RecommenderName = chosen;
+            _decision.RecommenderUserId = chosen;
             _decision.RecommenderDate = signedOn;
         }
         else
         {
-            _decision.ApproverName = chosen;
+            _decision.ApproverUserId = chosen;
             _decision.ApproverDate = signedOn;
         }
     }
@@ -1030,10 +1036,10 @@ else
         }
 
         decision.ApprovalNote = _decision.ApprovalNote;
-        decision.RecommenderName = _decision.RecommenderName;
+        decision.RecommenderUserId = _decision.RecommenderUserId;
         decision.RecommenderRole = _decision.RecommenderRole;
         decision.RecommenderDate = _decision.RecommenderDate;
-        decision.ApproverName = _decision.ApproverName;
+        decision.ApproverUserId = _decision.ApproverUserId;
         decision.ApproverRole = _decision.ApproverRole;
         decision.ApproverDate = _decision.ApproverDate;
         decision.Authority = _decision.Authority;

@@ -115,9 +115,16 @@ public static class EligibilityCalculation
         var cam = await db.CamCostBreakdowns.AsNoTracking()
             .FirstOrDefaultAsync(c => c.ApplicationId == applicationId);
 
-        var existingEmiSum = await db.ExistingLoans.AsNoTracking()
+        // Summed in memory, not in SQL. SQLite has no decimal type and refuses to translate SUM over
+        // one, which took Eligibility and Approvals down with a 500 in the portable demo build — the
+        // exact build the client runs. MySQL handles it either way, so this costs nothing there.
+        // An application has a handful of existing loans, so the rows are free to fetch.
+        var existingEmis = await db.ExistingLoans.AsNoTracking()
             .Where(l => l.ApplicationId == applicationId)
-            .SumAsync(l => (decimal?)l.Emi) ?? 0m;
+            .Select(l => l.Emi)
+            .ToListAsync();
+
+        var existingEmiSum = existingEmis.Sum();
 
         return Compute(new EligibilityInputs(
             TotalIncome: viability is null

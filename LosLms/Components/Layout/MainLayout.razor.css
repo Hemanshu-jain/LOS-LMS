@@ -1,3 +1,83 @@
+/* Global app bar. Deliberately thinner and quieter than the card headers below it: it is chrome,
+   not content, and must not compete with the stage sub-header for attention. */
+.app-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 34px;
+    padding: 0 16px;
+    background: #1a1f29;
+    color: #e8e9ec;
+}
+
+.app-brand {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: #e8e9ec;
+    text-decoration: none;
+}
+
+.app-brand:hover {
+    color: #fff;
+}
+
+.app-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.app-user-name {
+    font-size: 12px;
+    color: #e8e9ec;
+}
+
+/* The role is the secondary fact, so it reads as a chip rather than as more sentence. */
+.app-user-role {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #c3c7cf;
+    border: 1px solid #444b58;
+    padding: 1px 6px;
+}
+
+.app-avatar {
+    width: 22px;
+    height: 22px;
+    border: 1px solid #444b58;
+    background: #262c38;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c3c7cf;
+}
+
+.app-signout {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #c3c7cf;
+    text-decoration: none;
+    border: 1px solid #444b58;
+    padding: 3px 9px;
+}
+
+.app-signout:hover {
+    color: #fff;
+    border-color: #8d94a1;
+}
+
+.app-signout:focus-visible {
+    outline: 2px solid #8ab4f8;
+    outline-offset: 1px;
+}
+
 #blazor-error-ui {
     background: lightyellow;
     bottom: 0;

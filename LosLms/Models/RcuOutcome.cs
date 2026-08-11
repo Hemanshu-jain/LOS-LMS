@@ -29,7 +29,8 @@ public class RcuOutcome
 
     public DateOnly? VerifiedOn { get; set; }
 
-    public int? VerifiedByOfficerId { get; set; }
+    /// <summary>Foreign key into <see cref="ApplicationUser"/> — the officer who verified.</summary>
+    public string? VerifiedByOfficerId { get; set; }
 
     [MaxLength(500)]
     public string? Remarks { get; set; }
@@ -38,5 +39,5 @@ public class RcuOutcome
     public DateTime UpdatedAt { get; set; }
 
     public Application? Application { get; set; }
-    public Officer? VerifiedBy { get; set; }
+    public ApplicationUser? VerifiedBy { get; set; }
 }

@@ -1,5 +1,9 @@
 using LosLms.Components;
 using LosLms.Data;
+using LosLms.Models;
+using LosLms.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 // UNVERIFIED LICENCE DECLARATION — see OPEN-QUESTIONS-FOR-ARUN.md, item 1.
@@ -13,6 +17,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// Flows the signed-in user down to every component, which is what <AuthorizeView> in the top bar and
+// <AuthorizeRouteView> in Routes.razor both read.
+builder.Services.AddCascadingAuthenticationState();
 
 // PIN-code -> city/state autofill on Customer Details hits an anonymous India Post endpoint.
 // Default factory, no keys, no base address — each call site passes its own URL.
@@ -45,6 +53,63 @@ else
         options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 36))));
 }
 
+// ---- Tenancy ----
+//
+// TenantContext is scoped, so in Blazor Server there is one per circuit. The factory registration
+// below deliberately REPLACES the singleton IDbContextFactory that AddDbContextFactory just
+// registered — a singleton cannot see scoped services, and the later registration wins. That is what
+// lets every existing `await DbFactory.CreateDbContextAsync()` call site stay exactly as it was and
+// still get a company-scoped context.
+// Needed by TenantContext for the non-circuit paths — the /files endpoint and the statically
+// rendered /account pages, neither of which can use the Blazor authentication state provider.
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<TenantContext>();
+builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFactory>();
+
+// Identity's UserStore and RoleStore resolve LosDbContext directly rather than through the factory,
+// so hand them one built the same way.
+builder.Services.AddScoped(sp =>
+    sp.GetRequiredService<IDbContextFactory<LosDbContext>>().CreateDbContext());
+
+// Nothing set here may affect the MODEL — only behaviour. Identity reads Stores.MaxLengthForKeys
+// (and ProtectPersonalData) while building the model, from the application service provider, which
+// the design-time factory has no way to supply. Setting either one would make `dotnet ef migrations`
+// scaffold different column types from the ones the app actually runs against. Pomelo's default
+// varchar(255) indexes fine under InnoDB's 3072-byte limit, so there is nothing to gain by pinning it.
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    options.User.RequireUniqueEmail = true;
+    options.SignIn.RequireConfirmedAccount = false;
+
+    options.Password.RequiredLength = 10;
+    options.Password.RequireNonAlphanumeric = true;
+
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+})
+    .AddEntityFrameworkStores<LosDbContext>()
+    .AddClaimsPrincipalFactory<AppUserClaimsPrincipalFactory>()
+    .AddDefaultTokenProviders();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/account/login";
+    options.LogoutPath = "/account/logout";
+    options.AccessDeniedPath = "/account/login";
+    options.ExpireTimeSpan = TimeSpan.FromHours(8);
+    options.SlidingExpiration = true;
+});
+
+builder.Services.AddAuthorization(options =>
+{
+    // Fail closed. Every endpoint requires a signed-in user unless it says [AllowAnonymous] out loud,
+    // so a page added later is protected by default rather than by whoever remembers to protect it.
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
 var app = builder.Build();
 
 // The portable SQLite build has no migrations run against it (migrations are MySQL-specific), so
@@ -52,10 +117,24 @@ var app = builder.Build();
 // launch. No-op once los_lms.db already exists, so the client's test data survives restarts.
 if (usePortableSqlite)
 {
-    using var scope = app.Services.CreateScope();
-    var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<LosDbContext>>();
-    using var db = contextFactory.CreateDbContext();
-    db.Database.EnsureCreated();
+    // Built directly rather than resolved from DI: startup is outside any request, so there is no
+    // signed-in user for a tenant-scoped context to read, and the seeding tenant has to see
+    // everything to be able to create it.
+    await using var db = new LosDbContext(
+        app.Services.GetRequiredService<DbContextOptions<LosDbContext>>(),
+        TenantContext.ForSeeding());
+
+    await db.Database.EnsureCreatedAsync();
+}
+
+// Roles, the initial users and their temporary passwords. Idempotent, so it is safe on every start
+// and it has to be — the SQLite path never runs a migration.
+await IdentitySeeder.SeedAsync(app.Services, app.Logger);
+
+// A throwaway second company, only for proving tenant isolation. Never on by default.
+if (app.Configuration.GetValue<bool>("Seed:IsolationFixture"))
+{
+    await IdentitySeeder.SeedIsolationFixtureAsync(app.Services, app.Logger);
 }
 
 // Configure the HTTP request pipeline.
@@ -74,6 +153,8 @@ if (!usePortableSqlite)
 }
 
 app.UseStaticFiles();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseAntiforgery();
 
 // Streams an uploaded document back to the browser so the Document Checklist can preview it.
@@ -81,15 +162,24 @@ app.UseAntiforgery();
 // Uploads live outside wwwroot on purpose — they are PII (Aadhaar, PAN, bank statements) and
 // anything under wwwroot is downloadable by anyone who guesses the URL. Stored filenames are
 // server-generated GUIDs, so these URLs cannot be enumerated.
-//
-// THERE IS STILL NO AUTHENTICATION IN THIS BUILD, so possession of a URL is possession of the
-// document. See OPEN-QUESTIONS-FOR-ARUN.md, items 1.2 and 4.2.
-app.MapGet("/files/{applicationId}/{folder}/{name}", (
+app.MapGet("/files/{applicationId}/{folder}/{name}", async (
     string applicationId,
     string folder,
     string name,
-    IWebHostEnvironment environment) =>
+    IWebHostEnvironment environment,
+    IDbContextFactory<LosDbContext> dbFactory) =>
 {
+    // Requiring a signed-in user is not enough on its own. Without this check a user at company A
+    // could read company B's Aadhaar and bank PDFs simply by holding a URL. Resolving the
+    // application through the tenant-filtered context first means the file is only ever served to
+    // somebody who can already see the application it belongs to — and a miss is a 404, not a 403,
+    // so the response does not confirm that the application exists.
+    await using var db = await dbFactory.CreateDbContextAsync();
+    if (!await db.Applications.AnyAsync(a => a.Id == applicationId))
+    {
+        return Results.NotFound();
+    }
+
     var root = Path.GetFullPath(Path.Combine(environment.ContentRootPath, "App_Data", "uploads"));
     var candidate = Path.GetFullPath(Path.Combine(root, applicationId, folder, name));
 
@@ -100,7 +190,7 @@ app.MapGet("/files/{applicationId}/{folder}/{name}", (
     return isInsideRoot && File.Exists(candidate)
         ? Results.File(candidate, ContentTypeFor(Path.GetExtension(candidate)))
         : Results.NotFound();
-});
+}).RequireAuthorization();
 
 // Served without a download filename so PDFs render inline in an iframe; the UI's Download link
 // carries the `download` attribute when a file should be saved instead.

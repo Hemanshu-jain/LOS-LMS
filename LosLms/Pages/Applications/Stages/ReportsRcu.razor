@@ -80,7 +80,7 @@ else
                                         <FormField Label="Branch name" For="rcu-branch">
                                             <select id="rcu-branch" class="field-input" @bind="_initiation.Branch">
                                                 <option value="">@BlankOption</option>
-                                                @foreach (var o in BranchOptions) { <option value="@o">@o</option> }
+                                                @foreach (var o in _branchOptions) { <option value="@o">@o</option> }
                                             </select>
                                         </FormField>
 
@@ -153,7 +153,7 @@ else
                                             <option value="">@BlankOption</option>
                                             @foreach (var officer in _officers)
                                             {
-                                                <option value="@officer.Id">@officer.Name</option>
+                                                <option value="@officer.Id">@officer.DisplayName</option>
                                             }
                                         </select>
                                     </div>
@@ -226,7 +226,7 @@ else
                                                                 <option value="">@BlankOption</option>
                                                                 @foreach (var officer in _officers)
                                                                 {
-                                                                    <option value="@officer.Id">@officer.Name</option>
+                                                                    <option value="@officer.Id">@officer.DisplayName</option>
                                                                 }
                                                             </select>
                                                         }
@@ -350,8 +350,9 @@ else
     private static readonly string[] Statuses = { "Pending", "Recommended", "NotRecommended" };
     private static readonly string[] AllParties = { "Applicant", "CoApplicant", "Guarantor" };
 
-    private static readonly string[] BranchOptions =
-        { "Nashik West", "Nashik East", "Pune Camp", "Aurangabad", "Jalgaon" };
+    // Real rows from the Branches table, scoped to the signed-in user's company by the global query
+    // filter. Loaded in OnParametersSetAsync alongside everything else this screen needs.
+    private List<string> _branchOptions = new();
 
     private static readonly string[] VendorOptions =
     {
@@ -371,7 +372,7 @@ else
     private Dictionary<string, RcuOutcome> _outcomes = new(StringComparer.Ordinal);
     private RcuInitiation _initiation = new();
     private List<RcuReport> _reports = new();
-    private List<Officer> _officers = new();
+    private List<ApplicationUser> _officers = new();
 
     private bool _showResubmitConfirm;
     private (string Url, string FileName, DateTime? UploadedOn)? _preview;
@@ -408,6 +409,11 @@ else
                 Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
                 return;
             }
+            _branchOptions = await db.Branches.AsNoTracking()
+                .OrderBy(b => b.Name)
+                .Select(b => b.Name)
+                .ToListAsync();
+
             await EnsureRowsAsync(db);
             await LoadAsync(db);
         }
@@ -503,7 +509,10 @@ else
             .Where(r => r.ApplicationId == ApplicationId)
             .ToListAsync();
 
-        _officers = await db.Officers.AsNoTracking().OrderBy(o => o.Id).ToListAsync();
+        _officers = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.DisplayName)
+            .ToListAsync();
     }
 
     public void Dispose()

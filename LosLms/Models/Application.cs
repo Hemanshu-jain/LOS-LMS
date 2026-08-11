@@ -20,6 +20,15 @@ public class Application
     [MaxLength(20)]
     public string Id { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Owning tenant. Stamped from the signed-in user's claims on insert and never accepted from the
+    /// client — see <c>LosDbContext.StampTenant</c>. A global query filter keys off this column, so
+    /// every child table is isolated too: a child row can only be reached via its application.
+    /// </summary>
+    public int CompanyId { get; set; }
+
+    public Company? Company { get; set; }
+
     [MaxLength(100)]
     public string? CustomerType { get; set; }
 
@@ -78,14 +87,14 @@ public class Application
     public string? AssignedOfficer { get; set; }
 
     /// <summary>
-    /// The assigned officer as a real foreign key, the source of truth for the dashboard's officer
-    /// filter and the Summary Rail. <see cref="AssignedOfficer"/> above is the older name-string
-    /// representation, kept in sync on write and now otherwise redundant — see
-    /// OPEN-QUESTIONS-FOR-ARUN.md.
+    /// The assigned officer as a real foreign key into <see cref="ApplicationUser"/>, the source of
+    /// truth for the dashboard's officer filter and the Summary Rail. <see cref="AssignedOfficer"/>
+    /// above is the older name-string representation, kept in sync on write and now otherwise
+    /// redundant — see OPEN-QUESTIONS-FOR-ARUN.md.
     /// </summary>
-    public int? AssignedOfficerId { get; set; }
+    public string? AssignedOfficerId { get; set; }
 
-    public Officer? AssignedOfficerNavigation { get; set; }
+    public ApplicationUser? AssignedOfficerNavigation { get; set; }
 
     /// <summary>Doubles as the dashboard's queue date.</summary>
     public DateTime CreatedAt { get; set; }

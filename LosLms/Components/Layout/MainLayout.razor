@@ -1,4 +1,24 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+
+@* The app bar is the only chrome this layout owns. It replaces the hardcoded
+   "Credit Officer · Nashik West" chip that used to live inside the Applications Dashboard and
+   appeared nowhere else — so signing out was impossible from any of the eight stage screens. *@
+<AuthorizeView>
+    <Authorized>
+        <header class="app-bar">
+            <a class="app-brand" href="/applications">LOS/LMS</a>
+            <div class="app-user">
+                <span class="app-user-name">@_displayName</span>
+                <span class="app-user-role">@_role</span>
+                <div class="app-avatar" role="img" aria-label="Signed-in user">
+                    <Icon Name="user" Size="14" />
+                </div>
+                <a class="app-signout" href="/account/logout">Sign out</a>
+            </div>
+        </header>
+    </Authorized>
+</AuthorizeView>
 
 @Body
 
@@ -7,3 +27,43 @@
     <a href="" class="reload">Reload</a>
     <a class="dismiss">🗙</a>
 </div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private string _displayName = string.Empty;
+    private string _role = string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthenticationState is null)
+        {
+            return;
+        }
+
+        var user = (await AuthenticationState).User;
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        _displayName = user.FindFirst(TenantContext.DisplayNameClaim)?.Value
+            ?? user.Identity.Name
+            ?? string.Empty;
+
+        // Most specific role wins — a SuperAdmin who also holds Staff should read as SuperAdmin.
+        _role = user.IsInRole(TenantContext.SuperAdminRole) ? "SuperAdmin"
+            : user.IsInRole(TenantContext.AdminRole) ? "Admin"
+            : user.IsInRole(TenantContext.StaffRole) ? "Staff"
+            : "No role";
+
+        // Backstop for the temporary-password rule. Login redirects there already; this catches
+        // somebody who signs in and then types a URL to get around it. The /account pages are
+        // exempt or it would redirect to itself forever.
+        if (user.HasClaim(TenantContext.MustChangePasswordClaim, "true")
+            && !Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("account/", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo("/account/change-password", forceLoad: true);
+        }
+    }
+}

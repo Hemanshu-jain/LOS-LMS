@@ -1,6 +1,28 @@
-﻿<Router AppAssembly="typeof(Program).Assembly">
+@using LosLms.Components.Shared
+
+<Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        @* AuthorizeRouteView is what enforces the authenticated-by-default policy inside the Blazor
+           router. Anonymous visitors are bounced to the sign-in page with a return URL. *@
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated != true)
+                {
+                    <RedirectToLogin />
+                }
+                else
+                {
+                    <div class="stage-page">
+                        <div class="stage-card">
+                            <p class="not-authorised">You do not have access to this page.</p>
+                        </div>
+                    </div>
+                }
+            </NotAuthorized>
+            <Authorizing>
+                <p class="loading-note">Checking your sign-in…</p>
+            </Authorizing>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>

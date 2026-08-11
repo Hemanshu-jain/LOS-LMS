@@ -47,11 +47,12 @@ public class RcuInitiation
     [MaxLength(500)]
     public string? OverrideReason { get; set; }
 
-    public int? OverrideApproverOfficerId { get; set; }
+    /// <summary>Foreign key into <see cref="ApplicationUser"/> — the officer who approved the override.</summary>
+    public string? OverrideApproverOfficerId { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
     public Application? Application { get; set; }
-    public Officer? OverrideApprover { get; set; }
+    public ApplicationUser? OverrideApprover { get; set; }
 }

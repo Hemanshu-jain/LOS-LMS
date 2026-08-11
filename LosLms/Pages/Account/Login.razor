@@ -1,0 +1,125 @@
+@page "/account/login"
+@using LosLms.Models
+@using Microsoft.AspNetCore.Identity
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in · LOS/LMS</PageTitle>
+
+@* Statically rendered — see App.razor. That is what gives this page a live HttpContext for the
+   authentication cookie, and what makes <EditForm method="post"> a real form post with automatic
+   antiforgery protection from the existing UseAntiforgery middleware. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Sign in</h1>
+            <p class="auth-sub">Loan Origination &amp; Management System</p>
+        </div>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="SignInAsync" FormName="login">
+            <DataAnnotationsValidator />
+
+            @if (_error is not null)
+            {
+                <p class="inline-error" role="alert">@_error</p>
+            }
+
+            <div class="auth-field">
+                <label class="auth-label" for="login-email">Email</label>
+                <InputText id="login-email" class="field-input" @bind-Value="Input.Email"
+                           autocomplete="username" />
+                <ValidationMessage For="() => Input.Email" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="login-password">Password</label>
+                <InputText id="login-password" type="password" class="field-input"
+                           @bind-Value="Input.Password" autocomplete="current-password" />
+                <ValidationMessage For="() => Input.Password" class="auth-validation" />
+            </div>
+
+            <label class="auth-remember">
+                <InputCheckbox @bind-Value="Input.RememberMe" />
+                <span>Remember me on this device</span>
+            </label>
+
+            <button type="submit" class="auth-submit">Sign in</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromForm] private LoginInput Input { get; set; } = new();
+
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    private string? _error;
+
+    /// <summary>
+    /// One message for every failure mode. A wrong password and an email that was never registered
+    /// must be indistinguishable, otherwise the form becomes a way to enumerate who has an account.
+    /// </summary>
+    private const string FailureMessage = "Those details are not correct. Check your email and password and try again.";
+
+    private async Task SignInAsync()
+    {
+        var result = await SignInManager.PasswordSignInAsync(
+            Input.Email,
+            Input.Password,
+            Input.RememberMe,
+            lockoutOnFailure: true);
+
+        if (result.IsLockedOut)
+        {
+            _error = "This account is locked for a short while after too many failed attempts. Try again later.";
+            return;
+        }
+
+        if (!result.Succeeded)
+        {
+            _error = FailureMessage;
+            return;
+        }
+
+        // A deactivated account is refused after the password check, not before, so the response is
+        // identical either way and reveals nothing about which accounts exist.
+        var user = await UserManager.FindByEmailAsync(Input.Email);
+        if (user is null || !user.IsActive)
+        {
+            await SignInManager.SignOutAsync();
+            _error = FailureMessage;
+            return;
+        }
+
+        if (user.MustChangePassword)
+        {
+            Navigation.NavigateTo("/account/change-password", forceLoad: true);
+            return;
+        }
+
+        // Only relative paths are honoured. An absolute one would turn the sign-in form into an open
+        // redirect that could bounce a freshly authenticated user to somebody else's site.
+        var destination = !string.IsNullOrWhiteSpace(ReturnUrl)
+            && Uri.IsWellFormedUriString(ReturnUrl, UriKind.Relative)
+                ? ReturnUrl
+                : "/applications";
+
+        Navigation.NavigateTo(destination, forceLoad: true);
+    }
+
+    private sealed class LoginInput
+    {
+        [Required(ErrorMessage = "Enter your email address.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your password.")]
+        public string Password { get; set; } = string.Empty;
+
+        public bool RememberMe { get; set; }
+    }
+}

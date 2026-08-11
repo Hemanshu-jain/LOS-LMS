@@ -1,0 +1,16 @@
+@* Sends an unauthenticated visitor to the sign-in page, remembering where they were headed. *@
+
+@inject NavigationManager Navigation
+
+@code {
+    protected override void OnInitialized()
+    {
+        var returnUrl = Navigation.ToBaseRelativePath(Navigation.Uri);
+
+        // forceLoad, because the destination is a statically rendered page and the current circuit
+        // cannot route to it. Without this the browser stays put and the user sees a blank screen.
+        Navigation.NavigateTo(
+            $"/account/login?returnUrl={Uri.EscapeDataString("/" + returnUrl)}",
+            forceLoad: true);
+    }
+}

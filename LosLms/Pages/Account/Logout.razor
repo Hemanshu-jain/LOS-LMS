@@ -1,0 +1,47 @@
+@page "/account/logout"
+@using LosLms.Models
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Sign out · LOS/LMS</PageTitle>
+
+@* A form post, not a link. Signing out over GET means any page on the internet can log the user out
+   with an <img> tag; a posted form carries an antiforgery token and cannot be triggered from
+   elsewhere. Statically rendered, like the rest of /account, so the cookie can actually be cleared. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Sign out</h1>
+            <p class="auth-sub">You are signed in as @DisplayName.</p>
+        </div>
+
+        <EditForm Model="this" method="post" OnValidSubmit="SignOutAsync" FormName="logout">
+            <button type="submit" class="auth-submit">Sign out</button>
+        </EditForm>
+
+        <a class="auth-secondary" href="/applications">Stay signed in</a>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+
+    private string DisplayName { get; set; } = "this device";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationState;
+        DisplayName = state.User.FindFirst(TenantContext.DisplayNameClaim)?.Value
+            ?? state.User.Identity?.Name
+            ?? "this device";
+    }
+
+    private async Task SignOutAsync()
+    {
+        await SignInManager.SignOutAsync();
+        Navigation.NavigateTo("/account/login", forceLoad: true);
+    }
+}

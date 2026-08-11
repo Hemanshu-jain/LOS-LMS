@@ -1,17 +1,43 @@
 using LosLms.Models;
+using LosLms.Services;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace LosLms.Data;
 
 /// <summary>
-/// Entity Framework Core context for the central LOS/LMS MySQL database.
+/// Entity Framework Core context for the central LOS/LMS MySQL database, and the Identity store.
 /// </summary>
 /// <remarks>
 /// PROVISIONAL SCHEMA — the two entities here exist to make the Applications Dashboard and
 /// Customer Details screens functional. The full schema is designed once all nine screens exist.
+///
+/// TENANT ISOLATION IS STRUCTURAL. The three global query filters at the top of
+/// <see cref="OnModelCreating"/> are the whole mechanism — no screen has to remember a
+/// <c>Where(x =&gt; x.CompanyId == ...)</c>, and forgetting one cannot leak another company's data.
+/// The tenant is snapshotted into plain fields at construction rather than read through a property
+/// chain, because EF parameterises a captured context field cleanly and a chain is fragile.
 /// </remarks>
-public class LosDbContext(DbContextOptions<LosDbContext> options) : DbContext(options)
+public class LosDbContext : IdentityDbContext<ApplicationUser>
 {
+    private readonly int? _companyId;
+    private readonly bool _isSuperAdmin;
+    private readonly bool _hasUser;
+
+    public LosDbContext(DbContextOptions<LosDbContext> options, TenantContext tenant)
+        : base(options)
+    {
+        _companyId = tenant.CompanyId;
+        _isSuperAdmin = tenant.IsSuperAdmin;
+        _hasUser = tenant.HasUser;
+    }
+
+    public DbSet<Company> Companies => Set<Company>();
+
+    public DbSet<Branch> Branches => Set<Branch>();
+
     public DbSet<Application> Applications => Set<Application>();
 
     public DbSet<Party> Parties => Set<Party>();
@@ -33,8 +59,6 @@ public class LosDbContext(DbContextOptions<LosDbContext> options) : DbContext(op
     public DbSet<ChecklistDocument> ChecklistDocuments => Set<ChecklistDocument>();
 
     public DbSet<DocumentRemark> DocumentRemarks => Set<DocumentRemark>();
-
-    public DbSet<Officer> Officers => Set<Officer>();
 
     public DbSet<RcuInitiation> RcuInitiations => Set<RcuInitiation>();
 
@@ -76,9 +100,23 @@ public class LosDbContext(DbContextOptions<LosDbContext> options) : DbContext(op
 
     public DbSet<RejectionLog> RejectionLogs => Set<RejectionLog>();
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+
+        // Every child table has a required navigation to Application, which IS query-filtered, and EF
+        // warns that a required principal can be filtered away. Here that is the entire point: a child
+        // row belonging to another company must vanish along with the application that owns it.
+        // Configured here rather than at each registration so the design-time factory gets it too.
+        optionsBuilder.ConfigureWarnings(warnings => warnings.Ignore(
+            CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        ConfigureTenancy(modelBuilder);
 
         modelBuilder.Entity<Application>(entity =>
         {
@@ -100,6 +138,15 @@ public class LosDbContext(DbContextOptions<LosDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(a => a.AssignedOfficerId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            // Restrict, not cascade: deleting a company must be a deliberate act, never something
+            // that silently takes every loan file it owns with it.
+            entity.HasOne(a => a.Company)
+                .WithMany()
+                .HasForeignKey(a => a.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(a => a.CompanyId);
 
             entity.HasData(ApplicationSeedData.Build());
         });
@@ -252,16 +299,6 @@ public class LosDbContext(DbContextOptions<LosDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(r => r.DocumentId)
                 .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<Officer>(entity =>
-        {
-            entity.HasKey(o => o.Id);
-
-            entity.HasData(
-                new Officer { Id = 1, Name = "R. Kulkarni" },
-                new Officer { Id = 2, Name = "S. Deshpande" },
-                new Officer { Id = 3, Name = "A. Rao" });
         });
 
         modelBuilder.Entity<RcuInitiation>(entity =>
@@ -442,6 +479,17 @@ public class LosDbContext(DbContextOptions<LosDbContext> options) : DbContext(op
                 .WithOne()
                 .HasForeignKey<ApprovalDecision>(d => d.ApplicationId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, not cascade: removing a user must never quietly unsign a sanction.
+            entity.HasOne(d => d.Recommender)
+                .WithMany()
+                .HasForeignKey(d => d.RecommenderUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Approver)
+                .WithMany()
+                .HasForeignKey(d => d.ApproverUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<Charge>(entity =>
@@ -602,16 +650,146 @@ public class LosDbContext(DbContextOptions<LosDbContext> options) : DbContext(op
         });
     }
 
+    /// <summary>
+    /// Companies, branches, and the three global query filters that make tenant isolation structural.
+    /// </summary>
+    /// <remarks>
+    /// Only three entities carry a filter. Everything else — Parties, Documents, Viability, RcuOutcomes
+    /// and the rest — is reachable only through an <see cref="Application"/> that has already been
+    /// filtered, so it inherits the isolation instead of repeating it. That inheritance is real but it
+    /// is a property of how the screens query: each stage page loads its application first and bails
+    /// out when the lookup returns null. Any future code that reaches a child table WITHOUT first
+    /// resolving its application would bypass this and must scope itself explicitly.
+    ///
+    /// <see cref="IfscBankLookup"/> is deliberately unfiltered: it is global reference data, not
+    /// anybody's property.
+    /// </remarks>
+    private void ConfigureTenancy(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Company>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+
+            // No query filter. A company row is only ever fetched by the id in the caller's own claim,
+            // and a SuperAdmin has to be able to enumerate every one of them.
+
+            // The tenant every pre-existing row belongs to. Seeded here rather than at runtime because
+            // it has to exist before the 128 seeded applications that reference it. CreatedAt is a
+            // fixed date, not DateTime.UtcNow — a moving value would make every migration regenerate.
+            entity.HasData(new Company
+            {
+                Id = SeedCompanyId,
+                Name = "Default Company — rename in Company Setup",
+                CreatedAt = new DateTime(2026, 8, 11, 0, 0, 0, DateTimeKind.Utc),
+            });
+        });
+
+        modelBuilder.Entity<Branch>(entity =>
+        {
+            entity.HasKey(b => b.Id);
+
+            entity.HasIndex(b => b.CompanyId);
+
+            entity.HasOne(b => b.Company)
+                .WithMany()
+                .HasForeignKey(b => b.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasData(
+                new Branch { Id = 1, CompanyId = SeedCompanyId, Name = "Nashik West" },
+                new Branch { Id = 2, CompanyId = SeedCompanyId, Name = "Nashik East" },
+                new Branch { Id = 3, CompanyId = SeedCompanyId, Name = "Pune Camp" },
+                new Branch { Id = 4, CompanyId = SeedCompanyId, Name = "Aurangabad" },
+                new Branch { Id = 5, CompanyId = SeedCompanyId, Name = "Jalgaon" });
+        });
+
+        modelBuilder.Entity<ApplicationUser>(entity =>
+        {
+            entity.HasIndex(u => u.CompanyId);
+
+            entity.HasOne(u => u.Company)
+                .WithMany()
+                .HasForeignKey(u => u.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ---- The filters ----
+        //
+        // Anonymous requests get a null _companyId. Application.CompanyId is non-nullable, so the
+        // comparison is never true and an unauthenticated query returns nothing at all. Failing
+        // closed is the point: a bug in the auth wiring shows up as an empty dashboard, not as a
+        // cross-tenant leak.
+        modelBuilder.Entity<Application>()
+            .HasQueryFilter(a => _isSuperAdmin || a.CompanyId == _companyId);
+
+        modelBuilder.Entity<Branch>()
+            .HasQueryFilter(b => _isSuperAdmin || b.CompanyId == _companyId);
+
+        // The one deliberate exception, and it is narrow: when nobody is signed in the user filter is
+        // open, because Identity's own sign-in path calls FindByEmailAsync on this very context before
+        // a company can possibly be known. Email is a global identifier, so that lookup has to see
+        // every company. Nothing else is reachable while anonymous — the authorization fallback policy
+        // requires an authenticated user for every endpoint except the /account pages.
+        modelBuilder.Entity<ApplicationUser>()
+            .HasQueryFilter(u => !_hasUser || _isSuperAdmin || u.CompanyId == _companyId);
+    }
+
+    /// <summary>Id of the single company created by <c>HasData</c> and owned by every seeded row.</summary>
+    public const int SeedCompanyId = 1;
+
     public override int SaveChanges()
     {
         StampTimestamps();
+        StampTenant();
         return base.SaveChanges();
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         StampTimestamps();
+        StampTenant();
         return base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Stamps the owning company onto every newly inserted tenant-scoped row, from the signed-in
+    /// user's claims.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than at each call site so it cannot be forgotten, and it overwrites whatever the
+    /// caller set — CompanyId is never accepted as input, from a form, a URL or anywhere else.
+    ///
+    /// A SuperAdmin has no company of their own, so rows they create keep whatever CompanyId was
+    /// assigned explicitly; that is the only path allowed to choose, and it exists so cross-company
+    /// administration is possible at all.
+    /// </remarks>
+    private void StampTenant()
+    {
+        if (_companyId is not { } companyId)
+        {
+            return;
+        }
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State != EntityState.Added)
+            {
+                continue;
+            }
+
+            switch (entry.Entity)
+            {
+                case Application application:
+                    application.CompanyId = companyId;
+                    break;
+                case Branch branch:
+                    branch.CompanyId = companyId;
+                    break;
+                case ApplicationUser user:
+                    user.CompanyId = companyId;
+                    break;
+            }
+        }
     }
 
     /// <summary>
