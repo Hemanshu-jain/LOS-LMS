@@ -148,7 +148,9 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
             entity.HasIndex(a => a.CompanyId);
 
-            entity.HasData(ApplicationSeedData.Build());
+            // No HasData here. Applications and all their child rows come from DemoSeedData at
+            // startup instead: they need Identity user ids that do not exist at migration time, and
+            // queue dates relative to today so the dashboard's ageing stays honest.
         });
 
         modelBuilder.Entity<Party>(entity =>

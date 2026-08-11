@@ -131,6 +131,13 @@ if (usePortableSqlite)
 // and it has to be — the SQLite path never runs a migration.
 await IdentitySeeder.SeedAsync(app.Services, app.Logger);
 
+// Fifteen worked-through applications spread across the eight stages, so every screen has real data
+// to open. Only ever runs against an empty Applications table.
+if (app.Configuration.GetValue("Seed:DemoApplications", true))
+{
+    await DemoSeedData.SeedAsync(app.Services, app.Logger, app.Environment.ContentRootPath);
+}
+
 // A throwaway second company, only for proving tenant isolation. Never on by default.
 if (app.Configuration.GetValue<bool>("Seed:IsolationFixture"))
 {

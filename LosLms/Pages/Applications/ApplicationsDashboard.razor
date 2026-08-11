@@ -788,8 +788,10 @@
         _pansByApplication.TryGetValue(applicationId, out var pans)
         && pans.Any(pan => pan.Contains(term, StringComparison.OrdinalIgnoreCase));
 
+    // Measured against the server date. This used to run off a fixed anchor baked into the old seed
+    // data, which meant every queue age drifted by a day for every day that passed.
     private static int DaysQueued(DateOnly queueDate) =>
-        ApplicationSeedData.ReferenceToday.DayNumber - queueDate.DayNumber;
+        DateOnly.FromDateTime(DateTime.Today).DayNumber - queueDate.DayNumber;
 
     private static string FormatInr(decimal amount) => "₹" + amount.ToString("N0", IndianCulture);
 
