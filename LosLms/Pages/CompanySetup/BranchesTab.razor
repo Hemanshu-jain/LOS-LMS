@@ -1,0 +1,185 @@
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+
+<Panel Title="Branches">
+    <Right>
+        <button type="button" class="add-row-button" @onclick="StartAdd">+ Add branch</button>
+    </Right>
+    <ChildContent>
+        <p class="setup-note">
+            Branches are deactivated, never deleted. A closed branch stops being offered on new work but
+            stays visible on every application it already sourced.
+        </p>
+
+        @if (_adding)
+        {
+            <div class="setup-inline-add">
+                <input class="field-input" placeholder="Branch name" maxlength="100"
+                       @bind="_newName" @bind:event="oninput" />
+                <button type="button" class="setup-save" disabled="@string.IsNullOrWhiteSpace(_newName)"
+                        @onclick="AddAsync">Add</button>
+                <button type="button" class="setup-cancel" @onclick="CancelAdd">Cancel</button>
+            </div>
+            @if (_error is not null)
+            {
+                <p class="inline-error" role="alert">@_error</p>
+            }
+        }
+
+        <div class="table-scroll">
+            <table class="row-table">
+                <thead>
+                    <tr>
+                        <th>Branch</th>
+                        <th>Status</th>
+                        <th>Applications</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var branch in _branches)
+                    {
+                        var b = branch;
+                        <tr>
+                            <td>
+                                <input class="cell-input" maxlength="100" @bind="b.Name" @bind:event="oninput" />
+                            </td>
+                            <td>
+                                <span class="status-pill @(b.IsActive ? "is-active" : "is-inactive")">
+                                    @(b.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td class="align-right">@UsageFor(b.Name)</td>
+                            <td class="align-right">
+                                <button type="button" class="row-action" @onclick="() => ToggleAsync(b)">
+                                    @(b.IsActive ? "Deactivate" : "Reactivate")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+
+                    @if (_branches.Count == 0)
+                    {
+                        <tr><td colspan="4" class="empty-row">No branches yet.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="setup-actions">
+            <button type="button" class="setup-save" @onclick="SaveNamesAsync">Save branch names</button>
+        </div>
+    </ChildContent>
+</Panel>
+
+@code {
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+
+    /// <summary>Raised with a message for the parent's toast, so there is one toast on the page.</summary>
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private List<Branch> _branches = new();
+
+    /// <summary>How many applications name each branch. Drives the usage column and nothing else —
+    /// the count is informational, because deactivating is always allowed.</summary>
+    private Dictionary<string, int> _usage = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _adding;
+    private string? _newName;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _branches = await db.Branches.OrderBy(b => b.Name).ToListAsync();
+
+        // Branch is stored on the application as a name string, not a foreign key, so usage is a
+        // name match rather than a join. That denormalisation is also why deactivating cannot orphan
+        // anything: the historical value lives on the application itself.
+        _usage = (await db.Applications.AsNoTracking()
+                .Where(a => a.Branch != null)
+                .Select(a => a.Branch!)
+                .ToListAsync())
+            .GroupBy(b => b, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private int UsageFor(string name) => _usage.GetValueOrDefault(name);
+
+    private void StartAdd()
+    {
+        _adding = true;
+        _newName = null;
+        _error = null;
+    }
+
+    private void CancelAdd()
+    {
+        _adding = false;
+        _newName = null;
+        _error = null;
+    }
+
+    private async Task AddAsync()
+    {
+        var name = _newName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) { return; }
+
+        if (_branches.Any(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = $"\"{name}\" already exists.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // CompanyId is stamped from the signed-in user's claims on insert by LosDbContext, never
+        // taken from anything the browser sent.
+        db.Branches.Add(new Branch { CompanyId = CompanyId, Name = name, IsActive = true });
+        await db.SaveChangesAsync();
+
+        CancelAdd();
+        await LoadAsync();
+        await OnSaved.InvokeAsync($"Branch \"{name}\" added");
+    }
+
+    private async Task ToggleAsync(Branch branch)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.Branches.FirstAsync(b => b.Id == branch.Id);
+        stored.IsActive = !stored.IsActive;
+        await db.SaveChangesAsync();
+
+        await LoadAsync();
+        await OnSaved.InvokeAsync(
+            $"\"{stored.Name}\" {(stored.IsActive ? "reactivated" : "deactivated")}");
+    }
+
+    private async Task SaveNamesAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        foreach (var edited in _branches)
+        {
+            var stored = await db.Branches.FirstOrDefaultAsync(b => b.Id == edited.Id);
+            if (stored is not null)
+            {
+                stored.Name = edited.Name;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        await LoadAsync();
+
+        // Renaming does NOT rewrite the name already stored on historical applications. That is
+        // deliberate — those record which branch sourced the file at the time, not what it is called
+        // today. Flagged here so it is a known behaviour rather than a surprise.
+        await OnSaved.InvokeAsync("Branch names saved — existing applications keep their recorded branch");
+    }
+}

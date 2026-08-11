@@ -36,6 +36,12 @@ public sealed class TenantContext
     public const string AdminRole = "Admin";
     public const string StaffRole = "Staff";
 
+    /// <summary>
+    /// The two roles allowed to administer a company. A const because <c>[Authorize(Roles = …)]</c>
+    /// needs a compile-time constant, and spelling the pair out at each page is how they drift apart.
+    /// </summary>
+    public const string AdminRoles = AdminRole + "," + SuperAdminRole;
+
     private readonly AuthenticationStateProvider? _authProvider;
     private readonly IHttpContextAccessor? _httpContextAccessor;
     private bool _loaded;

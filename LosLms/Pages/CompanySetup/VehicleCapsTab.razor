@@ -1,0 +1,241 @@
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+
+<Panel Title="Vehicle loan caps">
+    <Right>
+        <button type="button" class="add-row-button" @onclick="StartAdd">+ Add vehicle</button>
+    </Right>
+    <ChildContent>
+        <p class="setup-note">
+            This catalog is both the Make and Model dropdown on Loan &amp; Security and the ceiling on what
+            may be lent against each vehicle. A vehicle missing from here cannot be selected on an
+            application.
+        </p>
+
+        @if (_adding)
+        {
+            <div class="setup-inline-add">
+                <input class="field-input" placeholder="Make" maxlength="80" @bind="_newMake" @bind:event="oninput" />
+                <input class="field-input" placeholder="Model" maxlength="120" @bind="_newModel" @bind:event="oninput" />
+                <input class="field-input" type="number" min="0" step="1" placeholder="Max loan amount"
+                       @bind="_newCap" />
+                <button type="button" class="setup-save" disabled="@AddDisabled" @onclick="AddAsync">Add</button>
+                <button type="button" class="setup-cancel" @onclick="CancelAdd">Cancel</button>
+            </div>
+            @if (_error is not null)
+            {
+                <p class="inline-error" role="alert">@_error</p>
+            }
+        }
+
+        @if (_pendingRemoval is { } pending)
+        {
+            <div class="setup-warn" role="alert">
+                <strong>@pending.Make @pending.Model</strong> is used on
+                @UsageFor(pending) existing application(s). Removing it will not change those
+                applications — their recorded vehicle stays — but it will no longer be selectable, and
+                they will read as unrecognised on Loan &amp; Security.
+                <div class="setup-warn-actions">
+                    <button type="button" class="setup-danger" @onclick="ConfirmRemoveAsync">Remove anyway</button>
+                    <button type="button" class="setup-cancel" @onclick="() => _pendingRemoval = null">Keep it</button>
+                </div>
+            </div>
+        }
+
+        <div class="table-scroll">
+            <table class="row-table">
+                <thead>
+                    <tr>
+                        <th>Make</th>
+                        <th>Model</th>
+                        <th class="align-right">Max loan amount</th>
+                        <th class="align-right">In use</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var cap in _caps)
+                    {
+                        var c = cap;
+                        <tr>
+                            <td><input class="cell-input" maxlength="80" @bind="c.Make" @bind:event="oninput" /></td>
+                            <td><input class="cell-input" maxlength="120" @bind="c.Model" @bind:event="oninput" /></td>
+                            <td class="align-right">
+                                <input class="cell-input align-right" type="number" min="0" step="1"
+                                       @bind="c.MaxLoanAmount" />
+                            </td>
+                            <td class="align-right">@UsageFor(c)</td>
+                            <td class="align-right">
+                                <button type="button" class="row-action is-danger" @onclick="() => RequestRemove(c)">
+                                    Remove
+                                </button>
+                            </td>
+                        </tr>
+                    }
+
+                    @if (_caps.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="5" class="empty-row">
+                                No vehicles configured. Loan &amp; Security will show its empty-catalog message
+                                until at least one is added.
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="setup-actions">
+            <button type="button" class="setup-save" @onclick="SaveAsync">Save catalog</button>
+        </div>
+    </ChildContent>
+</Panel>
+
+@code {
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private List<VehicleLoanCap> _caps = new();
+
+    /// <summary>How many SecurityDetails name each "Make Model". Informational — removal is the
+    /// Admin's call, so this warns rather than blocks.</summary>
+    private Dictionary<string, int> _usage = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _adding;
+    private string? _newMake;
+    private string? _newModel;
+    private decimal? _newCap;
+    private string? _error;
+    private VehicleLoanCap? _pendingRemoval;
+
+    private bool AddDisabled =>
+        string.IsNullOrWhiteSpace(_newMake) || string.IsNullOrWhiteSpace(_newModel) || _newCap is not > 0m;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        _caps = await db.VehicleLoanCaps.OrderBy(v => v.Make).ThenBy(v => v.Model).ToListAsync();
+
+        // SecurityDetail stores the composed "Make Model" string, so usage is matched on that.
+        _usage = (await db.SecurityDetails.AsNoTracking()
+                .Where(s => s.MakeModel != null)
+                .Select(s => s.MakeModel!)
+                .ToListAsync())
+            .GroupBy(m => m, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private int UsageFor(VehicleLoanCap cap) => _usage.GetValueOrDefault($"{cap.Make} {cap.Model}");
+
+    private void StartAdd()
+    {
+        _adding = true;
+        _newMake = _newModel = null;
+        _newCap = null;
+        _error = null;
+    }
+
+    private void CancelAdd()
+    {
+        _adding = false;
+        _newMake = _newModel = null;
+        _newCap = null;
+        _error = null;
+    }
+
+    private async Task AddAsync()
+    {
+        var make = _newMake?.Trim();
+        var model = _newModel?.Trim();
+
+        if (string.IsNullOrWhiteSpace(make) || string.IsNullOrWhiteSpace(model) || _newCap is not { } cap)
+        {
+            return;
+        }
+
+        if (_caps.Any(v => string.Equals(v.Make, make, StringComparison.OrdinalIgnoreCase)
+                           && string.Equals(v.Model, model, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = $"\"{make} {model}\" is already in the catalog.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.VehicleLoanCaps.Add(new VehicleLoanCap
+        {
+            CompanyId = CompanyId,
+            Make = make,
+            Model = model,
+            MaxLoanAmount = cap,
+        });
+
+        await db.SaveChangesAsync();
+
+        CancelAdd();
+        await LoadAsync();
+        await OnSaved.InvokeAsync($"{make} {model} added to the catalog");
+    }
+
+    /// <summary>
+    /// Removal warns when the vehicle is in use but never refuses. Whether a discontinued model should
+    /// stay selectable is a lending decision, not something the schema should settle.
+    /// </summary>
+    private void RequestRemove(VehicleLoanCap cap)
+    {
+        if (UsageFor(cap) == 0)
+        {
+            _pendingRemoval = cap;
+            _ = ConfirmRemoveAsync();
+            return;
+        }
+
+        _pendingRemoval = cap;
+    }
+
+    private async Task ConfirmRemoveAsync()
+    {
+        if (_pendingRemoval is not { } cap) { return; }
+
+        _pendingRemoval = null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.VehicleLoanCaps.FirstOrDefaultAsync(v => v.Id == cap.Id);
+
+        if (stored is not null)
+        {
+            db.VehicleLoanCaps.Remove(stored);
+            await db.SaveChangesAsync();
+        }
+
+        await LoadAsync();
+        await OnSaved.InvokeAsync($"{cap.Make} {cap.Model} removed");
+    }
+
+    private async Task SaveAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        foreach (var edited in _caps)
+        {
+            var stored = await db.VehicleLoanCaps.FirstOrDefaultAsync(v => v.Id == edited.Id);
+            if (stored is null) { continue; }
+
+            stored.Make = edited.Make.Trim();
+            stored.Model = edited.Model.Trim();
+            stored.MaxLoanAmount = edited.MaxLoanAmount;
+        }
+
+        await db.SaveChangesAsync();
+        await LoadAsync();
+        await OnSaved.InvokeAsync("Vehicle catalog saved");
+    }
+}

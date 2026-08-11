@@ -105,10 +105,11 @@
     /// <summary>Computed by the page from the current Loan Details terms.</summary>
     [Parameter] public decimal ProposedEmi { get; set; }
 
-    // PLACEHOLDER industry norms, not confirmed client policy — verify the real risk cutoffs with
-    // Arun/the client before this drives any decision.
-    private const decimal FoirHealthyMax = 40m;
-    private const decimal FoirCautionMax = 60m;
+    /// <summary>
+    /// The owning page's company policy, supplying the FOIR colour cutoffs. Was two hardcoded
+    /// constants here; they now live on the company and are editable in Company Setup.
+    /// </summary>
+    [Parameter] public CompanyPolicy Policy { get; set; } = CompanyPolicy.Fallback;
 
     private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
 
@@ -122,8 +123,13 @@
     private decimal Foir =>
         TotalIncome <= 0 ? 0m : ((Model.ExpenseExistingEmi + ProposedEmi) / TotalIncome) * 100m;
 
+    // Note the known inconsistency this preserves: the danger cutoff sits above the eligibility FOIR
+    // cap, so a file can read amber here while Stage 6 is already capping it. Carried over verbatim
+    // rather than silently corrected — see Company.FoirRiskCautionPct.
     private string Band =>
-        Foir <= FoirHealthyMax ? "healthy" : Foir <= FoirCautionMax ? "caution" : "risk";
+        Foir <= Policy.FoirRiskCautionPct ? "healthy"
+        : Foir <= Policy.FoirRiskDangerPct ? "caution"
+        : "risk";
 
     private static string FormatInr(decimal amount) =>
         "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", IndianCulture);

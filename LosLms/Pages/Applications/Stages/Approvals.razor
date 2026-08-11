@@ -570,6 +570,12 @@ else
 }
 
 @code {
+
+    /// <summary>
+    /// This application's company policy. Was hardcoded constants on this page; now editable in
+    /// Company Setup and re-read on every load so an edit takes effect immediately.
+    /// </summary>
+    private CompanyPolicy _policy = CompanyPolicy.Fallback;
     [Parameter] public string ApplicationId { get; set; } = string.Empty;
 
     private const string BusinessTab = "Business Details";
@@ -584,7 +590,7 @@ else
     // PLACEHOLDER tax rate — 18% is the common Indian GST slab for financial services, but nobody
     // has confirmed it applies to every head here, or that it will not change. It seeds the
     // Processing fee row only; every other row's GST is typed by the officer.
-    private const decimal GstRate = 0.18m;
+    // Was a hardcoded 0.18; now Company.GstPct, exposed as a multiplier by CompanyPolicy.GstRate.
 
     private static readonly string[] ConstitutionOptions =
         { "Proprietorship", "Partnership firm", "Private limited company", "HUF" };
@@ -651,6 +657,11 @@ else
 
         if (_application is not null)
         {
+            // The APPLICATION's company sets policy, not the viewer's — a SuperAdmin opening
+            // another company's file must see it on that company's terms. Re-read per load, never
+            // cached, so an edit in Company Setup takes effect immediately.
+            _policy = await CompanyPolicyReader.ForApplicationAsync(db, ApplicationId);
+
             if (_application.CurrentStage < 7)
             {
                 Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
@@ -726,15 +737,22 @@ else
             Head = "Processing fee",
             Basis = "Pulled from Loan & Security",
             Amount = processingFee,
-            Gst = Math.Round(processingFee * GstRate, MidpointRounding.AwayFromZero),
+            Gst = Gst(processingFee),
             DeductedFrom = "Disbursement",
             Locked = true,
         };
 
-        yield return NewCharge("Documentation charge", "Flat", 2500m, 450m);
+        // GST is derived, not typed. These three rows used to carry 450 and 540 as literals — which
+        // is 18% baked in a second time — so changing the company's rate moved the processing fee and
+        // left the other three at the old rate forever. Stamp duty stays exempt.
+        yield return NewCharge("Documentation charge", "Flat", 2500m, Gst(2500m));
         yield return NewCharge("Stamp duty", "As per state rate", 5000m, 0m);
-        yield return NewCharge("Valuation fee", "Flat", 3000m, 540m);
+        yield return NewCharge("Valuation fee", "Flat", 3000m, Gst(3000m));
     }
+
+    /// <summary>GST on an amount at this company's configured rate.</summary>
+    private decimal Gst(decimal amount) =>
+        Math.Round(amount * _policy.GstRate, MidpointRounding.AwayFromZero);
 
     private Charge NewCharge(string head, string basis, decimal amount, decimal gst) => new()
     {

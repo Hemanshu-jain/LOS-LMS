@@ -96,7 +96,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/account/login";
     options.LogoutPath = "/account/logout";
-    options.AccessDeniedPath = "/account/login";
+    // A signed-in user who fails a role check is NOT sent to the sign-in form. They are already
+    // signed in; a login page would read as "your session expired" rather than "you lack the role".
+    options.AccessDeniedPath = "/account/denied";
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
 });

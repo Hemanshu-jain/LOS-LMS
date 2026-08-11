@@ -44,16 +44,19 @@ public sealed record EligibilityResult(
 /// </remarks>
 public static class EligibilityCalculation
 {
-    // PLACEHOLDER underwriting policy — invented so the screen has something real to compute, and
-    // flagged as such by the reference spec itself. These two numbers drive a hard completion gate,
-    // so they are the first thing to confirm with Arun/the client.
-    public const decimal FoirCapPct = 50m;
-    public const decimal LtvCapPct = 85m;
-
     private static readonly EligibilityResult NotReady =
         new(false, 0m, 0m, 0m, 0m, 0m, 0m, null);
 
-    public static EligibilityResult Compute(EligibilityInputs inputs)
+    /// <summary>
+    /// The eligible amount for these inputs under this company's caps.
+    /// </summary>
+    /// <remarks>
+    /// The two caps used to be <c>public const</c> here, which meant the compiler inlined them into
+    /// every call site and no company could ever differ. They are now passed in from
+    /// <see cref="CompanyPolicy"/>. Still pure, so the Eligibility screen can keep calling it on every
+    /// render while the officer types.
+    /// </remarks>
+    public static EligibilityResult Compute(EligibilityInputs inputs, CompanyPolicy policy)
     {
         // The readiness rule is part of the formula, not the screen. Returning early here is what
         // keeps the DeviationPct division below safe on an application whose loan amount is zero —
@@ -73,10 +76,10 @@ public static class EligibilityCalculation
         var roi = inputs.Roi!.Value;
         var tenure = inputs.Tenure!.Value;
 
-        var maxNewEmi = Math.Max(0m, inputs.TotalIncome * FoirCapPct / 100m - inputs.ExistingEmiSum);
+        var maxNewEmi = Math.Max(0m, inputs.TotalIncome * policy.FoirCapPct / 100m - inputs.ExistingEmiSum);
 
         var foirCapAmount = LoanMath.InverseEmi(maxNewEmi, roi, tenure);
-        var ltvCapAmount = onRoadCost * LtvCapPct / 100m;
+        var ltvCapAmount = onRoadCost * policy.LtvCapPct / 100m;
 
         var eligible = Math.Min(Math.Min(foirCapAmount, ltvCapAmount), inputs.LoanAmount);
 
@@ -126,6 +129,10 @@ public static class EligibilityCalculation
 
         var existingEmiSum = existingEmis.Sum();
 
+        // The application's own company sets the caps, not the viewer's — a SuperAdmin looking at
+        // another company's file must see it underwritten on that company's terms.
+        var policy = await CompanyPolicyReader.ForApplicationAsync(db, applicationId);
+
         return Compute(new EligibilityInputs(
             TotalIncome: viability is null
                 ? 0m
@@ -134,7 +141,7 @@ public static class EligibilityCalculation
             LoanAmount: application.LoanAmount,
             Roi: application.Roi,
             Tenure: application.Tenure,
-            ExistingEmiSum: existingEmiSum));
+            ExistingEmiSum: existingEmiSum), policy);
     }
 
     /// <summary>

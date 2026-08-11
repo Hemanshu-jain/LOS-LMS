@@ -24,5 +24,17 @@ public class Branch
     [MaxLength(100)]
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Cleared instead of deleting a branch. A closed branch disappears from the dropdowns on new
+    /// work but must never vanish from the applications it already sourced.
+    /// </summary>
+    /// <remarks>
+    /// Those historical applications are safe either way: <see cref="Application.Branch"/> and
+    /// <see cref="RcuInitiation.Branch"/> store the branch as a name string rather than a foreign
+    /// key, so a deactivated — or even deleted — branch still renders on the files that used it.
+    /// That is the one upside of the denormalisation noted below.
+    /// </remarks>
+    public bool IsActive { get; set; } = true;
+
     public Company? Company { get; set; }
 }

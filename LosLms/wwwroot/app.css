@@ -192,3 +192,352 @@ h1:focus {
     font-size: 12px;
     color: #5b6472;
 }
+
+/* ============================================================
+   Company Setup
+   ------------------------------------------------------------
+   Global rather than scoped: one shell page plus three tab
+   components share these, and scoped CSS would mean four copies.
+   Same dense, flat, hard-edged treatment as the stage screens.
+   ============================================================ */
+.setup-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #d8dbe1;
+}
+
+.setup-eyebrow {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+}
+
+.setup-title {
+    margin: 4px 0 0;
+    font-size: 19px;
+    font-weight: 600;
+    color: #1a1f29;
+}
+
+.setup-back { font-size: 11px; color: #5b6472; text-decoration: none; }
+.setup-back:hover { color: #1a1f29; }
+
+.setup-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 12px 16px 0;
+    flex-wrap: wrap;
+}
+
+.setup-tab {
+    border: 1px solid #d8dbe1;
+    border-bottom: none;
+    background: #f4f5f7;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: #5b6472;
+    padding: 7px 14px;
+    cursor: pointer;
+}
+
+.setup-tab:hover { background: #eceef1; }
+
+.setup-tab.is-active {
+    background: #fff;
+    color: #1a1f29;
+    font-weight: 600;
+    border-top: 2px solid #1f3a5f;
+}
+
+.setup-note {
+    margin: 0 0 14px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #5b6472;
+}
+
+.setup-wide-field { margin-top: 12px; max-width: 620px; }
+
+.field-input.is-area { height: auto; padding: 7px 8px; line-height: 1.4; resize: vertical; }
+
+/* Grouped so the caps read as a different class of setting from the colour bands they are
+   frequently confused with. */
+.policy-group { margin-bottom: 20px; }
+
+.policy-group-title {
+    display: block;
+    margin-bottom: 9px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #eceef1;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+}
+
+.setup-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #eceef1;
+}
+
+.setup-save {
+    height: 30px;
+    border: 1px solid #1f3a5f;
+    background: #1f3a5f;
+    color: #fff;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 0 16px;
+    cursor: pointer;
+}
+
+.setup-save:hover:not(:disabled) { background: #172c48; }
+.setup-save:disabled { border-color: #c9ccd2; background: #e4e6ea; color: #9aa0aa; cursor: not-allowed; }
+
+.setup-cancel {
+    height: 30px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #3d3d3d;
+    padding: 0 14px;
+    cursor: pointer;
+}
+
+.setup-danger {
+    height: 30px;
+    border: 1px solid #8a1f1f;
+    background: #8a1f1f;
+    color: #fff;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 0 14px;
+    cursor: pointer;
+}
+
+.setup-inline-add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid #d8dbe1;
+    background: #fafbfc;
+}
+
+.setup-inline-add .field-input { width: auto; min-width: 160px; }
+.setup-inline-label { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #5b6472; }
+
+/* Amber, not red — an in-use vehicle being removed is a judgement call, not an error. */
+.setup-warn {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid #7a4b06;
+    background: #fbe8c9;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: #7a4b06;
+}
+
+.setup-warn-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* A live credential on screen. Deliberately loud — it is shown once and cannot be recovered. */
+.setup-credential {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 7px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border: 1px solid #1f5c2a;
+    background: #d9ecd7;
+}
+
+.setup-credential-title { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #1f5c2a; }
+.setup-credential-value { font-family: ui-monospace, Consolas, monospace; font-size: 15px; font-weight: 600; color: #1a1f29; background: #fff; border: 1px solid #1f5c2a; padding: 4px 10px; }
+.setup-credential-note { font-size: 10.5px; line-height: 1.45; color: #1f5c2a; max-width: 520px; }
+
+.status-pill {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    background: #eceef1;
+    color: #5b6472;
+}
+
+.status-pill.is-active { background: #d9ecd7; color: #1f5c2a; }
+.status-pill.is-inactive { background: #f8d7d7; color: #8a1f1f; }
+.status-pill.is-pending { background: #fbe8c9; color: #7a4b06; margin-left: 5px; }
+
+.row-action {
+    border: 1px solid #d8dbe1;
+    background: #fff;
+    font-family: inherit;
+    font-size: 10px;
+    color: #3d3d3d;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+
+.row-action:hover { background: #f4f5f7; }
+.row-action.is-danger { color: #8a1f1f; }
+.row-action.is-danger:hover { border-color: #8a1f1f; }
+
+.empty-row { padding: 16px 8px; text-align: center; font-size: 11.5px; color: #8d8d8d; }
+
+.app-nav-link {
+    /* margin-right:auto keeps it beside the brand; the app bar is space-between, so without this a
+       third child would float to the middle. */
+    margin-left: 18px;
+    margin-right: auto;
+    font-size: 11px;
+    font-weight: 500;
+    color: #c3c7cf;
+    text-decoration: none;
+}
+
+.app-nav-link:hover { color: #fff; }
+
+/* Company Setup page chrome + the field/table primitives.
+   The stage screens define .stage-page, .field-grid, .row-table and friends in SCOPED css, so none
+   of them reach this page. Rather than copy four stylesheets, the page opts into its own global
+   namespace and inherits the same visual language. */
+.company-setup {
+    background: #eceef1;
+    min-height: calc(100vh - 34px);
+    padding: 16px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.company-setup-card {
+    background: #fff;
+    border: 1px solid #d8dbe1;
+    padding-bottom: 20px;
+}
+
+.company-setup .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px 18px;
+    align-items: start;
+}
+
+.company-setup .field-input {
+    height: 29px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d8dbe1;
+    background: #fafbfc;
+    font-size: 12px;
+    font-family: inherit;
+    padding: 0 8px;
+    color: #1a1f29;
+}
+
+.company-setup .field-input:focus-visible { outline: 2px solid #1f3a5f; outline-offset: -2px; }
+
+.company-setup .field-caption {
+    display: block;
+    margin-top: 3px;
+    font-size: 9.5px;
+    line-height: 1.4;
+    color: #93999a;
+    font-style: italic;
+}
+
+.company-setup .table-scroll { overflow-x: auto; }
+
+.company-setup .row-table { width: 100%; border-collapse: collapse; min-width: 560px; }
+
+.company-setup .row-table th {
+    text-align: left;
+    padding: 7px 8px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    border-bottom: 1px solid #d4d4d4;
+    white-space: nowrap;
+}
+
+.company-setup .row-table tbody tr { border-bottom: 1px solid #eceef1; }
+.company-setup .row-table td { padding: 5px 8px; vertical-align: middle; font-size: 11.5px; color: #1a1f29; }
+.company-setup .row-table .align-right { text-align: right; }
+
+.company-setup .cell-input {
+    height: 26px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d8dbe1;
+    background: #fff;
+    font-size: 11.5px;
+    font-family: inherit;
+    padding: 0 6px;
+    color: #1a1f29;
+}
+
+.company-setup .cell-input.align-right { text-align: right; }
+
+.company-setup .add-row-button {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: #3d3d3d;
+    background: #ebebeb;
+    border: 1px solid #9e9e9e;
+    font-family: inherit;
+    padding: 4px 9px;
+    cursor: pointer;
+}
+
+.company-setup .add-row-button:hover { background: #e0e0e0; }
+
+.company-setup .inline-error {
+    margin: 0 0 12px;
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 7px 9px;
+}
+
+.company-setup .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: #1a1f29;
+    color: #fff;
+    font-size: 12px;
+    padding: 9px 16px;
+    z-index: 80;
+}
+
+.company-setup .loading-note,
+.company-setup .not-authorised { padding: 20px 16px; font-size: 12px; color: #5b6472; }

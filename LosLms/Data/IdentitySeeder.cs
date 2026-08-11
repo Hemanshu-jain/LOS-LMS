@@ -225,7 +225,9 @@ public static class IdentitySeeder
     /// A random password that satisfies the configured policy. Deliberately not a constant: a
     /// hardcoded seed password is a permanent credential the moment it reaches source control.
     /// </summary>
-    private static string GenerateTemporaryPassword()
+    /// <remarks>internal so Company Setup's invite flow issues credentials the same way the
+    /// seeder does, rather than growing a second, weaker generator.</remarks>
+    internal static string GenerateTemporaryPassword()
     {
         const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
         const string lower = "abcdefghijkmnopqrstuvwxyz";

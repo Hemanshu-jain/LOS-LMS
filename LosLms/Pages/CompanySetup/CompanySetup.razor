@@ -1,0 +1,368 @@
+@page "/company-setup"
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = TenantContext.AdminRoles)]
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject TenantContext Tenant
+
+@* Server-side enforcement, not a hidden nav link. AuthorizeRouteView refuses to instantiate this
+   component for Staff and renders the access-denied card in Routes.razor instead — none of the code
+   below ever runs for them, so there is nothing to bypass by typing the URL. *@
+
+<PageTitle>Company Setup · LOS/LMS</PageTitle>
+
+<div class="company-setup">
+    <div class="company-setup-card">
+
+        <div class="setup-header">
+            <div>
+                <span class="setup-eyebrow">Company Setup</span>
+                <h1 class="setup-title">@(_company?.Name ?? "Loading…")</h1>
+            </div>
+            <a class="setup-back" href="/applications">← Applications</a>
+        </div>
+
+        @if (_loading)
+        {
+            <p class="loading-note">Loading company…</p>
+        }
+        else if (_company is null)
+        {
+            <p class="not-authorised">
+                No company is associated with your account, so there is nothing to configure.
+                A SuperAdmin belongs to no single company by design.
+            </p>
+        }
+        else
+        {
+            <div class="setup-tabs" role="tablist" aria-label="Company setup sections">
+                @foreach (var tab in Tabs)
+                {
+                    <button type="button" role="tab"
+                            class="setup-tab @(_activeTab == tab ? "is-active" : null)"
+                            aria-selected="@(_activeTab == tab)"
+                            @onclick="() => _activeTab = tab">@tab</button>
+                }
+            </div>
+
+            @if (_toast is not null)
+            {
+                <div class="toast" role="status">@_toast</div>
+            }
+
+            @* ---------- Tab 1: Company profile ---------- *@
+            @if (_activeTab == ProfileTab)
+            {
+                <Panel Title="Company profile">
+                    <div class="field-grid">
+                        <FormField Label="Company name" For="cs-name">
+                            <input id="cs-name" class="field-input" maxlength="200" @bind="_company.Name" />
+                        </FormField>
+
+                        <FormField Label="Contact email" For="cs-email">
+                            <input id="cs-email" type="email" class="field-input" maxlength="200"
+                                   @bind="_company.ContactEmail" />
+                        </FormField>
+
+                        <FormField Label="Contact phone" For="cs-phone">
+                            <input id="cs-phone" class="field-input" maxlength="20" @bind="_company.ContactPhone" />
+                        </FormField>
+                    </div>
+
+                    <div class="setup-wide-field">
+                        <FormField Label="Registered address" For="cs-address">
+                            <textarea id="cs-address" class="field-input is-area" rows="3" maxlength="400"
+                                      @bind="_company.Address"></textarea>
+                        </FormField>
+                    </div>
+
+                    <div class="setup-actions">
+                        <button type="button" class="setup-save" @onclick="SaveProfileAsync">Save profile</button>
+                    </div>
+                </Panel>
+            }
+
+            @* ---------- Tab 2: Branches ---------- *@
+            @if (_activeTab == BranchesTab)
+            {
+                <BranchesTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
+            }
+
+            @* ---------- Tab 3: Policy thresholds ---------- *@
+            @if (_activeTab == PolicyTab)
+            {
+                <Panel Title="Policy thresholds">
+                    @* Each of these was a hardcoded constant carrying a comment admitting it had been
+                       invented and needed confirming with the client. This screen is where that
+                       finally gets resolved into a real setting. *@
+
+                    <p class="setup-note">
+                        Every value here was previously hardcoded in the application with a note saying it
+                        was a placeholder awaiting confirmation. Changing one takes effect immediately —
+                        nothing is cached.
+                    </p>
+
+                    <div class="policy-group">
+                        <span class="policy-group-title">Queue</span>
+                        <div class="field-grid">
+                            <FormField Label="SLA overdue (days)" For="cs-sla">
+                                <input id="cs-sla" type="number" min="1" step="1" class="field-input"
+                                       @bind="_company.SlaOverdueDays" />
+                                <span class="field-caption">
+                                    Days an application may sit queued before the dashboard flags it overdue.
+                                    The original five-day window came from the reference spec, not the client.
+                                </span>
+                            </FormField>
+                        </div>
+                    </div>
+
+                    <div class="policy-group">
+                        <span class="policy-group-title">Eligibility caps — these refuse business</span>
+                        <div class="field-grid">
+                            <FormField Label="FOIR cap %" For="cs-foircap">
+                                <input id="cs-foircap" type="number" min="0" max="100" step="0.01" class="field-input"
+                                       @bind="_company.FoirCapPct" />
+                                <span class="field-caption">
+                                    Share of income total EMI may reach. Caps the eligible loan amount.
+                                    Confirm this reflects real underwriting policy.
+                                </span>
+                            </FormField>
+
+                            <FormField Label="LTV cap %" For="cs-ltvcap">
+                                <input id="cs-ltvcap" type="number" min="0" max="100" step="0.01" class="field-input"
+                                       @bind="_company.LtvCapPct" />
+                                <span class="field-caption">
+                                    Share of on-road cost the loan may reach. Also caps the eligible amount.
+                                </span>
+                            </FormField>
+                        </div>
+                    </div>
+
+                    <div class="policy-group">
+                        <span class="policy-group-title">Risk bands — colour only, no gate</span>
+
+                        @if (BandsExceedCaps)
+                        {
+                            <p class="inline-error" role="alert">
+                                A caution band is set above its own hard cap. Files between the two read amber —
+                                "elevated but permissible" — while the eligibility calculation is already refusing
+                                the amount. A file sitting exactly at a cap also never reads healthy.
+                                This was inherited from the original hardcoded values and is left for you to
+                                decide, not silently corrected.
+                            </p>
+                        }
+
+                        <div class="field-grid">
+                            <FormField Label="FOIR caution from %" For="cs-foircaution">
+                                <input id="cs-foircaution" type="number" min="0" max="100" step="0.01" class="field-input"
+                                       @bind="_company.FoirRiskCautionPct" />
+                                <span class="field-caption">At or below this reads healthy on Loan &amp; Security.</span>
+                            </FormField>
+
+                            <FormField Label="FOIR danger from %" For="cs-foirdanger">
+                                <input id="cs-foirdanger" type="number" min="0" max="100" step="0.01" class="field-input"
+                                       @bind="_company.FoirRiskDangerPct" />
+                                <span class="field-caption">Above this reads risk.</span>
+                            </FormField>
+
+                            <FormField Label="LTV caution from %" For="cs-ltvcaution">
+                                <input id="cs-ltvcaution" type="number" min="0" max="100" step="0.01" class="field-input"
+                                       @bind="_company.LtvRiskCautionPct" />
+                                <span class="field-caption">At or below this reads healthy on Bank &amp; Financial's CAM.</span>
+                            </FormField>
+
+                            <FormField Label="LTV danger from %" For="cs-ltvdanger">
+                                <input id="cs-ltvdanger" type="number" min="0" max="100" step="0.01" class="field-input"
+                                       @bind="_company.LtvRiskDangerPct" />
+                                <span class="field-caption">Above this reads risk.</span>
+                            </FormField>
+                        </div>
+                    </div>
+
+                    <div class="policy-group">
+                        <span class="policy-group-title">Charges and documents</span>
+                        <div class="field-grid">
+                            <FormField Label="GST %" For="cs-gst">
+                                <input id="cs-gst" type="number" min="0" max="100" step="0.01" class="field-input"
+                                       @bind="_company.GstPct" />
+                                <span class="field-caption">
+                                    Applied to fee heads on Approvals. 18% was assumed as the common Indian slab for
+                                    financial services; nobody confirmed it applies to every head.
+                                </span>
+                            </FormField>
+
+                            <FormField Label="Address proof validity (days)" For="cs-addrdays">
+                                <input id="cs-addrdays" type="number" min="1" step="1" class="field-input"
+                                       @bind="_company.AddressValidityDays" />
+                                <span class="field-caption">How long an address proof stays current before the checklist marks it stale.</span>
+                            </FormField>
+
+                            <FormField Label="Minimum references" For="cs-minrefs">
+                                <input id="cs-minrefs" type="number" min="0" step="1" class="field-input"
+                                       @bind="_company.MinimumReferences" />
+                                <span class="field-caption">Reference contacts required before Loan &amp; Security counts as complete.</span>
+                            </FormField>
+
+                            <FormField Label="Approver note tolerance %" For="cs-notetol">
+                                <input id="cs-notetol" type="number" min="0" step="0.01" class="field-input"
+                                       @bind="_company.NoteStaleTolerancePct" />
+                                <span class="field-caption">How far the deviation may move before a saved approver note must be redone.</span>
+                            </FormField>
+                        </div>
+                    </div>
+
+                    <div class="policy-group">
+                        <span class="policy-group-title">Bureau</span>
+                        <div class="field-grid">
+                            <FormField Label="CIBIL minimum score" For="cs-cibilmin">
+                                <input id="cs-cibilmin" type="number" min="0" step="1" class="field-input"
+                                       @bind="_company.CibilMinScore" />
+                                <span class="field-caption">Lowest bureau score treated as acceptable.</span>
+                            </FormField>
+
+                            <FormField Label="CIBIL maximum score" For="cs-cibilmax">
+                                <input id="cs-cibilmax" type="number" min="0" step="1" class="field-input"
+                                       @bind="_company.CibilMaxScore" />
+                                <span class="field-caption">Top of the scale in use. Not yet consumed — the CIBIL gate is the next phase.</span>
+                            </FormField>
+                        </div>
+                    </div>
+
+                    <div class="setup-actions">
+                        <button type="button" class="setup-save" @onclick="SavePolicyAsync">Save thresholds</button>
+                    </div>
+                </Panel>
+            }
+
+            @* ---------- Tab 4: Vehicle loan caps ---------- *@
+            @if (_activeTab == VehicleTab)
+            {
+                <VehicleCapsTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
+            }
+
+            @* ---------- Tab 5: User management ---------- *@
+            @if (_activeTab == UsersTab)
+            {
+                <UsersTab OnSaved="ShowToastAsync" />
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private const string ProfileTab = "Company Profile";
+    private const string BranchesTab = "Branches";
+    private const string PolicyTab = "Policy Thresholds";
+    private const string VehicleTab = "Vehicle Loan Caps";
+    private const string UsersTab = "User Management";
+
+    private static readonly string[] Tabs =
+        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, UsersTab };
+
+    private string _activeTab = ProfileTab;
+    private Company? _company;
+    private bool _loading = true;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    /// <summary>
+    /// True when a caution band sits above the cap it shades — the inconsistency inherited from the
+    /// original hardcoded values. Surfaced here rather than corrected, because which number is wrong
+    /// is a business decision.
+    /// </summary>
+    private bool BandsExceedCaps =>
+        _company is not null
+        && (_company.FoirRiskDangerPct > _company.FoirCapPct
+            || _company.LtvRiskDangerPct > _company.LtvCapPct);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        // The tenant is normally resolved as a side effect of creating a DbContext. This page reads
+        // CompanyId BEFORE it needs a context, so it has to ask for the claims itself — otherwise an
+        // Admin with a perfectly good company reads as having none.
+        await Tenant.EnsureLoadedAsync();
+
+        if (Tenant.CompanyId is not { } companyId)
+        {
+            // A SuperAdmin belongs to no company. User Management still works for them (it has its own
+            // company selector); the company-scoped tabs have nothing to show.
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        if (_company is null) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.Companies.FirstAsync(c => c.Id == _company.Id);
+
+        stored.Name = _company.Name;
+        stored.Address = _company.Address;
+        stored.ContactEmail = _company.ContactEmail;
+        stored.ContactPhone = _company.ContactPhone;
+
+        await db.SaveChangesAsync();
+        await ShowToastAsync("Company profile saved");
+    }
+
+    private async Task SavePolicyAsync()
+    {
+        if (_company is null) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.Companies.FirstAsync(c => c.Id == _company.Id);
+
+        stored.SlaOverdueDays = _company.SlaOverdueDays;
+        stored.FoirCapPct = _company.FoirCapPct;
+        stored.LtvCapPct = _company.LtvCapPct;
+        stored.FoirRiskCautionPct = _company.FoirRiskCautionPct;
+        stored.FoirRiskDangerPct = _company.FoirRiskDangerPct;
+        stored.LtvRiskCautionPct = _company.LtvRiskCautionPct;
+        stored.LtvRiskDangerPct = _company.LtvRiskDangerPct;
+        stored.GstPct = _company.GstPct;
+        stored.CibilMinScore = _company.CibilMinScore;
+        stored.CibilMaxScore = _company.CibilMaxScore;
+        stored.AddressValidityDays = _company.AddressValidityDays;
+        stored.NoteStaleTolerancePct = _company.NoteStaleTolerancePct;
+        stored.MinimumReferences = _company.MinimumReferences;
+
+        await db.SaveChangesAsync();
+        await ShowToastAsync("Policy thresholds saved — in effect immediately");
+    }
+
+    private async Task ShowToastAsync(string message)
+    {
+        _toast = message;
+
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(3000, token);
+            _toast = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer toast.
+        }
+    }
+}

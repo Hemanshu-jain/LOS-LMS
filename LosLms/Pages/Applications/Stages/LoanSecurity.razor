@@ -4,6 +4,7 @@
 @using LosLms.Components.Shared
 @using LosLms.Data
 @using LosLms.Models
+@using LosLms.Services
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @implements IDisposable
@@ -102,6 +103,11 @@ else
                                         <option value="">@BlankOption</option>
                                         @foreach (var o in _branchOptions) { <option value="@o">@o</option> }
                                     </select>
+                                    @if (_inactiveBranch is { Length: > 0 } closed
+                                         && string.Equals(_application.Branch, closed, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="field-caption">@closed is no longer an active branch — kept because this application was sourced through it.</span>
+                                    }
                                 </FormField>
 
                                 <FormField Label="Scheme" For="ls-scheme">
@@ -182,9 +188,59 @@ else
                                     <div class="field-grid">
                                         @if (_security.AssetType == "Vehicle")
                                         {
-                                            <FormField Label="Make &amp; model" For="sec-make">
-                                                <input id="sec-make" type="text" class="field-input" @bind="_security.MakeModel" />
-                                            </FormField>
+                                            @* Make and model come from the company's vehicle catalog,
+                                               which is also what carries each vehicle's lending cap.
+                                               Freeform text here meant the same lorry was spelled six
+                                               ways and no cap could attach to any of it. *@
+                                            @if (_vehicleCatalog.Count == 0)
+                                            {
+                                                <FormField Label="Make &amp; model" For="sec-make">
+                                                    <div id="sec-make" class="catalog-empty">
+                                                        No vehicle catalog configured — add makes/models in Company Setup
+                                                    </div>
+                                                </FormField>
+                                            }
+                                            else
+                                            {
+                                                <FormField Label="Make" For="sec-make">
+                                                    <select id="sec-make" class="field-input"
+                                                            value="@_selectedMake"
+                                                            @onchange="OnMakeChanged">
+                                                        <option value="">@BlankOption</option>
+                                                        @foreach (var make in CatalogMakes)
+                                                        {
+                                                            <option value="@make">@make</option>
+                                                        }
+                                                    </select>
+                                                </FormField>
+
+                                                <FormField Label="Model" For="sec-model">
+                                                    <select id="sec-model" class="field-input"
+                                                            value="@_selectedModel"
+                                                            disabled="@(string.IsNullOrEmpty(_selectedMake))"
+                                                            @onchange="OnModelChanged">
+                                                        <option value="">@BlankOption</option>
+                                                        @foreach (var model in CatalogModelsForSelectedMake)
+                                                        {
+                                                            <option value="@model">@model</option>
+                                                        }
+                                                    </select>
+                                                </FormField>
+                                            }
+
+                                            @* A value recorded before the catalog existed, or after its
+                                               row was removed. Shown, never silently dropped — it is
+                                               real data about a real vehicle. *@
+                                            @if (_unmatchedMakeModel is { Length: > 0 } unmatched)
+                                            {
+                                                <FormField Label="Recorded vehicle" For="sec-make-legacy">
+                                                    <div id="sec-make-legacy" class="catalog-unmatched">@unmatched</div>
+                                                    <span class="field-caption">
+                                                        Not in the vehicle catalog — pick a Make and Model above to replace it,
+                                                        or add this vehicle in Company Setup.
+                                                    </span>
+                                                </FormField>
+                                            }
 
                                             <FormField Label="Manufacturing year" For="sec-year">
                                                 <select id="sec-year" class="field-input" @bind="_security.MfgYear">
@@ -403,7 +459,7 @@ else
                     @if (_activeTab == ViabilityTab)
                     {
                         <Panel Title="Viability · income vs expense">
-                            <ViabilityPanel Model="_viability" ProposedEmi="ProposedEmi" />
+                            <ViabilityPanel Model="_viability" ProposedEmi="ProposedEmi" Policy="_policy" />
                         </Panel>
                     }
                 </div>
@@ -418,6 +474,98 @@ else
 }
 
 @code {
+
+    /// <summary>
+    /// This application's company policy. Was hardcoded constants on this page; now editable in
+    /// Company Setup and re-read on every load so an edit takes effect immediately.
+    /// </summary>
+    private CompanyPolicy _policy = CompanyPolicy.Fallback;
+
+    // ---- Vehicle catalog ----
+    //
+    // SecurityDetail.MakeModel stays one column; the two selects simply compose it. Splitting the
+    // column would have meant migrating every stored value and rewriting the CAM, the PDF and the
+    // summary rail for no gain — the catalog is what gives the value meaning, not the storage shape.
+    private List<VehicleLoanCap> _vehicleCatalog = new();
+    private string? _selectedMake;
+    private string? _selectedModel;
+
+    /// <summary>A stored make/model that no catalog row matches. Displayed, never discarded.</summary>
+    private string? _unmatchedMakeModel;
+
+    private IEnumerable<string> CatalogMakes =>
+        _vehicleCatalog.Select(v => v.Make).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(m => m);
+
+    private IEnumerable<string> CatalogModelsForSelectedMake =>
+        string.IsNullOrEmpty(_selectedMake)
+            ? Enumerable.Empty<string>()
+            : _vehicleCatalog
+                .Where(v => string.Equals(v.Make, _selectedMake, StringComparison.OrdinalIgnoreCase))
+                .Select(v => v.Model)
+                .OrderBy(m => m);
+
+    /// <summary>
+    /// Resolves the stored "Make Model" string back onto the catalog so both selects preselect.
+    /// </summary>
+    /// <remarks>
+    /// Matches on the composed string rather than splitting on the first space, because a make can be
+    /// two words ("Ashok Leyland") and a model almost always is. Anything that fails to match is kept
+    /// visible as <see cref="_unmatchedMakeModel"/> rather than being cleared — losing what an officer
+    /// recorded about a real vehicle would be worse than showing it unrecognised.
+    /// </remarks>
+    private void ResolveMakeModel()
+    {
+        _selectedMake = null;
+        _selectedModel = null;
+        _unmatchedMakeModel = null;
+
+        var stored = _security.MakeModel?.Trim();
+        if (string.IsNullOrEmpty(stored))
+        {
+            return;
+        }
+
+        var match = _vehicleCatalog.FirstOrDefault(v =>
+            string.Equals($"{v.Make} {v.Model}", stored, StringComparison.OrdinalIgnoreCase));
+
+        if (match is null)
+        {
+            _unmatchedMakeModel = stored;
+            return;
+        }
+
+        _selectedMake = match.Make;
+        _selectedModel = match.Model;
+    }
+
+    private void OnMakeChanged(ChangeEventArgs e)
+    {
+        _selectedMake = e.Value?.ToString();
+
+        // A model from the previous make would be a vehicle that does not exist.
+        _selectedModel = null;
+        ApplyMakeModel();
+    }
+
+    private void OnModelChanged(ChangeEventArgs e)
+    {
+        _selectedModel = e.Value?.ToString();
+        ApplyMakeModel();
+    }
+
+    private void ApplyMakeModel()
+    {
+        if (string.IsNullOrEmpty(_selectedMake) || string.IsNullOrEmpty(_selectedModel))
+        {
+            _security.MakeModel = null;
+            return;
+        }
+
+        _security.MakeModel = $"{_selectedMake} {_selectedModel}";
+
+        // A catalog pick supersedes whatever unrecognised text was there.
+        _unmatchedMakeModel = null;
+    }
     [Parameter] public string ApplicationId { get; set; } = string.Empty;
 
     // ---------------------------------------------------------------------
@@ -425,7 +573,8 @@ else
     // ---------------------------------------------------------------------
 
     private const string BlankOption = "— Select —";
-    private const int MinimumReferences = 2;
+    // Was a hardcoded 2; now Company.MinimumReferences.
+    private int MinimumReferences => _policy.MinimumReferences;
 
     /// <summary>Party type string for the co-applicant. There is no enum — see Party.PartyType.</summary>
     private const string CoApplicantPartyType = "CoApplicant";
@@ -446,6 +595,10 @@ else
     // Real rows from the Branches table, scoped to the signed-in user's company by the global query
     // filter. Loaded in OnParametersSetAsync alongside everything else this screen needs.
     private List<string> _branchOptions = new();
+
+    /// <summary>A closed branch this application was sourced through, re-added to the options so it
+    /// is not blanked out. Null when the stored branch is still active.</summary>
+    private string? _inactiveBranch;
 
     private static readonly string[] SchemeOptions = { "CV-STD-2026", "CV-PRIME-2026", "LAP-STD-2026" };
 
@@ -500,19 +653,42 @@ else
 
         if (_application is not null)
         {
+            // The APPLICATION's company sets policy, not the viewer's — a SuperAdmin opening
+            // another company's file must see it on that company's terms. Re-read per load, never
+            // cached, so an edit in Company Setup takes effect immediately.
+            _policy = await CompanyPolicyReader.ForApplicationAsync(db, ApplicationId);
+
             if (_application.CurrentStage < 2)
             {
                 Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
                 return;
             }
             _branchOptions = await db.Branches.AsNoTracking()
+                .Where(b => b.IsActive)
                 .OrderBy(b => b.Name)
                 .Select(b => b.Name)
                 .ToListAsync();
 
+            // A select whose bound value is absent from its options renders blank — and the next save
+            // would then write that blank back. An application sourced through a branch that has since
+            // closed keeps showing it, flagged, rather than quietly losing where it came from.
+            if (_application.Branch is { Length: > 0 } current
+                && !_branchOptions.Contains(current, StringComparer.OrdinalIgnoreCase))
+            {
+                _branchOptions.Insert(0, current);
+                _inactiveBranch = current;
+            }
+
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
             _security = security is null ? new SecurityForm() : ToForm(security);
+
+            // Company-scoped by query filter, so this is only ever this company's catalog.
+            _vehicleCatalog = await db.VehicleLoanCaps.AsNoTracking()
+                .OrderBy(v => v.Make).ThenBy(v => v.Model)
+                .ToListAsync();
+
+            ResolveMakeModel();
 
             var references = await db.References.AsNoTracking()
                 .Where(r => r.ApplicationId == ApplicationId)

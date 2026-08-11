@@ -33,7 +33,9 @@ namespace LosLms.Data;
 /// </remarks>
 public static class DemoSeedData
 {
-    private const decimal GstRate = 0.18m;
+    // The GST rate is NOT a constant here any more. It used to be a second, independent
+    // `GstRate = 0.18m` sitting alongside the one on Approvals, so a rate change moved one and not
+    // the other. It now comes from the seeded company's own policy, like every other threshold.
     private const decimal ProcessingFeeRate = 0.015m;
 
     /// <summary>Loan-to-value the demo files are written to, which fixes the margin and on-road cost.</summary>
@@ -59,9 +61,15 @@ public static class DemoSeedData
 
         var today = DateOnly.FromDateTime(DateTime.Today);
 
+        // The seeded company's own policy drives the seeded GST, exactly as it drives the live screen.
+        var seedCompany = await db.Companies.FirstAsync(c => c.Id == LosDbContext.SeedCompanyId);
+        var policy = CompanyPolicy.From(seedCompany);
+
+        SeedVehicleCatalog(db);
+
         foreach (var spec in Specs)
         {
-            Build(db, spec, today, officerIds, contentRootPath);
+            Build(db, spec, today, officerIds, contentRootPath, policy);
         }
 
         await db.SaveChangesAsync();
@@ -109,6 +117,47 @@ public static class DemoSeedData
 
     private const string Cv = "Commercial vehicle";
     private const string Lap = "Loan against property";
+
+    /// <summary>
+    /// The vehicle catalog, which is both the make/model dropdown source on Loan &amp; Security and the
+    /// per-vehicle lending ceiling.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately covers every vehicle the demo applications actually use, so their stored make and
+    /// model resolve against the catalog instead of all showing as unrecognised. Caps sit above each
+    /// demo file's loan amount — the point is to exercise the dropdowns, not to retroactively put a
+    /// seeded application over its own limit.
+    ///
+    /// Mahindra Furio 7 is deliberately LEFT OUT even though LN-2026-005009 uses it, so there is one
+    /// real example of an application whose vehicle is not in the catalog.
+    /// </remarks>
+    private static readonly (string Make, string Model, decimal Cap)[] VehicleCatalog =
+    {
+        ("Tata", "Signa 2823.K tipper", 2_500_000m),
+        ("Tata", "Ultra 1918.T", 2_600_000m),
+        ("Tata", "Intra V50", 2_200_000m),
+        ("Tata", "Ace Gold", 1_800_000m),
+        ("Ashok Leyland", "3520 haulage", 3_000_000m),
+        ("Ashok Leyland", "Dost+", 1_900_000m),
+        ("BharatBenz", "1917R", 2_000_000m),
+        ("Eicher", "Pro 6028 tanker", 3_200_000m),
+        ("Eicher", "Pro 2110", 2_400_000m),
+        ("Mahindra", "Bolero Pik-Up", 1_500_000m),
+    };
+
+    private static void SeedVehicleCatalog(LosDbContext db)
+    {
+        foreach (var (make, model, cap) in VehicleCatalog)
+        {
+            db.VehicleLoanCaps.Add(new VehicleLoanCap
+            {
+                CompanyId = LosDbContext.SeedCompanyId,
+                Make = make,
+                Model = model,
+                MaxLoanAmount = cap,
+            });
+        }
+    }
 
     private static readonly Spec[] Specs =
     {
@@ -190,7 +239,8 @@ public static class DemoSeedData
         Spec spec,
         DateOnly today,
         IReadOnlyDictionary<string, string> officerIds,
-        string contentRootPath)
+        string contentRootPath,
+        CompanyPolicy policy)
     {
         var queued = today.AddDays(-spec.QueuedDaysAgo);
         var created = queued.ToDateTime(TimeOnly.MinValue);
@@ -240,7 +290,7 @@ public static class DemoSeedData
         if (spec.Stage >= 4) { AddDocuments(db, spec, queued, contentRootPath); }
         if (spec.Stage >= 5) { AddReportsRcu(db, spec, queued, officerIds, contentRootPath); }
         if (spec.Stage >= 6) { AddEligibility(db, spec, emi); }
-        if (spec.Stage >= 7) { AddApprovals(db, spec, queued, officerIds, processingFee); }
+        if (spec.Stage >= 7) { AddApprovals(db, spec, queued, officerIds, processingFee, policy); }
         if (spec.Stage >= 8) { AddPostSanction(db, spec, queued, emi, contentRootPath); }
 
         if (spec.RejectReason is { } reason)
@@ -673,7 +723,8 @@ public static class DemoSeedData
         Spec spec,
         DateOnly queued,
         IReadOnlyDictionary<string, string> officerIds,
-        decimal processingFee)
+        decimal processingFee,
+        CompanyPolicy policy)
     {
         var seed = Seed(spec.Id);
         var stamped = DateTime.UtcNow;
@@ -733,10 +784,10 @@ public static class DemoSeedData
         // heads and the same locked processing fee.
         db.Charges.AddRange(
             NewCharge(spec.Id, "Processing fee", "Pulled from Loan & Security", processingFee,
-                Math.Round(processingFee * GstRate, MidpointRounding.AwayFromZero), locked: true),
-            NewCharge(spec.Id, "Documentation charge", "Flat", 2500m, 450m),
+                Gst(processingFee, policy), locked: true),
+            NewCharge(spec.Id, "Documentation charge", "Flat", 2500m, Gst(2500m, policy)),
             NewCharge(spec.Id, "Stamp duty", "As per state rate", 5000m, 0m),
-            NewCharge(spec.Id, "Valuation fee", "Flat", 3000m, 540m));
+            NewCharge(spec.Id, "Valuation fee", "Flat", 3000m, Gst(3000m, policy)));
 
         // 005005 is deliberately half-signed: the recommender has signed, the approver has not.
         var recommenderOnly = spec.Id == "LN-2026-005005";
@@ -770,6 +821,10 @@ public static class DemoSeedData
             UpdatedAt = stamped,
         });
     }
+
+    /// <summary>GST at the seeded company's configured rate, never a baked-in literal.</summary>
+    private static decimal Gst(decimal amount, CompanyPolicy policy) =>
+        Math.Round(amount * policy.GstRate, MidpointRounding.AwayFromZero);
 
     private static Charge NewCharge(
         string applicationId, string head, string basis, decimal amount, decimal gst, bool locked = false) => new()

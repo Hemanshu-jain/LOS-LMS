@@ -8,6 +8,15 @@
     <Authorized>
         <header class="app-bar">
             <a class="app-brand" href="/applications">LOS/LMS</a>
+
+            @* Cosmetic only. The page itself carries [Authorize(Roles = …)], so hiding the link is
+               convenience, not the control — Staff typing the URL still get the access-denied card. *@
+            <AuthorizeView Roles="@TenantContext.AdminRoles" Context="admin">
+                <Authorized>
+                    <a class="app-nav-link" href="/company-setup">Company Setup</a>
+                </Authorized>
+            </AuthorizeView>
+
             <div class="app-user">
                 <span class="app-user-name">@_displayName</span>
                 <span class="app-user-role">@_role</span>

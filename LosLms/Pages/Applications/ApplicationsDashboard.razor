@@ -10,6 +10,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject TenantContext Tenant
 
 <PageTitle>Applications · LOS/LMS</PageTitle>
 
@@ -247,10 +248,10 @@
                         {
                             var statusColors = StatusColors[row.Status];
                             var age = DaysQueued(QueueDateOf(row));
-                            var overdue = age > SlaOverdueDays;
+                            var overdue = age > _policy.SlaOverdueDays;
                             var badgeStyle = "background:" + statusColors.Bg + ";color:" + statusColors.Text + ";";
                             var selectLabel = "Select application " + row.Id;
-                            var overdueTitle = age + " days since queued — past " + SlaOverdueDays + "-day SLA";
+                            var overdueTitle = age + " days since queued — past " + _policy.SlaOverdueDays + "-day SLA";
 
                             <tr @key="row.Id" class="data-row" @onclick="() => OpenDrawer(row.Id)">
                                 <td class="checkbox-cell" @onclick:stopPropagation="true">
@@ -453,11 +454,11 @@
     // Constants
     // ---------------------------------------------------------------------
 
-    /// <remarks>
-    /// UNCONFIRMED. The five-day window comes from the reference spec, not from the client.
-    /// It must be verified with the business before this reaches production.
-    /// </remarks>
-    private const int SlaOverdueDays = 5;
+    /// <summary>
+    /// This company's policy, loaded per page load. Was a hardcoded five-day SLA window; it is now
+    /// editable in Company Setup. Falls back to the old defaults until the first load completes.
+    /// </summary>
+    private CompanyPolicy _policy = CompanyPolicy.Fallback;
 
     /// <summary>Blazor Server round-trips every keystroke over SignalR, so the search waits.</summary>
     private const int SearchDebounceMs = 300;
@@ -630,8 +631,16 @@
             .Concat(_officers.Select(o => o.DisplayName))
             .ToList();
 
+        _policy = await CompanyPolicyReader.ForCurrentCompanyAsync(db, Tenant);
+
         _branchOptions = new[] { AllBranchesOption }
-            .Concat(await db.Branches.AsNoTracking().OrderBy(b => b.Name).Select(b => b.Name).ToListAsync())
+            // Active only. A deactivated branch stops being offered on new work but still renders on
+            // the applications that already sourced through it, because those store the name.
+            .Concat(await db.Branches.AsNoTracking()
+                .Where(b => b.IsActive)
+                .OrderBy(b => b.Name)
+                .Select(b => b.Name)
+                .ToListAsync())
             .ToArray();
 
         _latestRejections = (await db.RejectionLogs.AsNoTracking().ToListAsync())

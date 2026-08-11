@@ -270,6 +270,12 @@ else
 }
 
 @code {
+
+    /// <summary>
+    /// This application's company policy. Was hardcoded constants on this page; now editable in
+    /// Company Setup and re-read on every load so an edit takes effect immediately.
+    /// </summary>
+    private CompanyPolicy _policy = CompanyPolicy.Fallback;
     [Parameter] public string ApplicationId { get; set; } = string.Empty;
 
     // ---------------------------------------------------------------------
@@ -277,7 +283,7 @@ else
     // ---------------------------------------------------------------------
 
     /// <summary>Only ever applied to Address, and only once Address is actually collected.</summary>
-    private const int AddressValidityDays = 90;
+    // Was a hardcoded 90 days; now Company.AddressValidityDays, read into _policy on load.
 
     private const long MaxUploadBytes = 10 * 1024 * 1024;
     private const int MaxBulkFiles = 13;
@@ -368,6 +374,11 @@ else
 
         if (_application is not null)
         {
+            // The APPLICATION's company sets policy, not the viewer's — a SuperAdmin opening
+            // another company's file must see it on that company's terms. Re-read per load, never
+            // cached, so an edit in Company Setup takes effect immediately.
+            _policy = await CompanyPolicyReader.ForApplicationAsync(db, ApplicationId);
+
             if (_application.CurrentStage < 4)
             {
                 Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
@@ -752,7 +763,7 @@ else
 
             if (documentType == "Address")
             {
-                document.ValidityDays = AddressValidityDays;
+                document.ValidityDays = _policy.AddressValidityDays;
             }
         }
 

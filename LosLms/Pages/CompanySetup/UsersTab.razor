@@ -1,0 +1,321 @@
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject UserManager<ApplicationUser> UserManager
+@inject TenantContext Tenant
+@inject ILogger<UsersTab> Logger
+
+<Panel Title="Users">
+    <Right>
+        <button type="button" class="add-row-button" @onclick="StartInvite">+ Invite user</button>
+    </Right>
+    <ChildContent>
+        <p class="setup-note">
+            Users are deactivated, never deleted. Their historical actions — who verified an RCU, who
+            approved a sanction — must stay attributable, so the record is disabled rather than removed.
+        </p>
+
+        @if (Tenant.IsSuperAdmin)
+        {
+            <div class="setup-inline-add">
+                <label class="setup-inline-label" for="us-company">Company</label>
+                <select id="us-company" class="field-input" value="@_companyFilter"
+                        @onchange="OnCompanyFilterChanged">
+                    <option value="">All companies</option>
+                    @foreach (var company in _companies)
+                    {
+                        <option value="@company.Id">@company.Name</option>
+                    }
+                </select>
+            </div>
+        }
+
+        @if (_invite is not null)
+        {
+            <div class="setup-inline-add">
+                <input class="field-input" placeholder="Display name" maxlength="100"
+                       @bind="_invite.DisplayName" @bind:event="oninput" />
+                <input class="field-input" type="email" placeholder="Email" maxlength="200"
+                       @bind="_invite.Email" @bind:event="oninput" />
+                <select class="field-input" @bind="_invite.Role">
+                    <option value="@TenantContext.StaffRole">Staff</option>
+                    <option value="@TenantContext.AdminRole">Admin</option>
+                </select>
+                <button type="button" class="setup-save" disabled="@InviteDisabled" @onclick="InviteAsync">
+                    Create account
+                </button>
+                <button type="button" class="setup-cancel" @onclick="() => _invite = null">Cancel</button>
+            </div>
+        }
+
+        @if (_error is not null)
+        {
+            <p class="inline-error" role="alert">@_error</p>
+        }
+
+        @* Shown exactly once, right after creation. There is no mail provider in this build, so this
+           is the only route the credential can take — and it is never stored in plain text, so it
+           cannot be recovered afterwards. *@
+        @if (_issued is not null)
+        {
+            <div class="setup-credential" role="alert">
+                <span class="setup-credential-title">Temporary password for @_issued.Email</span>
+                <code class="setup-credential-value">@_issued.Password</code>
+                <span class="setup-credential-note">
+                    Copy this now — it is shown once and cannot be retrieved. It has also been written to
+                    the server log. The user must change it at first sign-in.
+                </span>
+                <button type="button" class="setup-cancel" @onclick="() => _issued = null">Dismiss</button>
+            </div>
+        }
+
+        <div class="table-scroll">
+            <table class="row-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _users)
+                    {
+                        var u = row;
+                        <tr>
+                            <td>@u.User.DisplayName</td>
+                            <td>@u.User.Email</td>
+                            <td>
+                                @if (u.Role == TenantContext.SuperAdminRole)
+                                {
+                                    @* A SuperAdmin is not a company role and is not editable here. *@
+                                    <span class="status-pill">SuperAdmin</span>
+                                }
+                                else
+                                {
+                                    <select class="cell-input" value="@u.Role"
+                                            @onchange="e => ChangeRoleAsync(u, e.Value?.ToString())">
+                                        <option value="@TenantContext.StaffRole">Staff</option>
+                                        <option value="@TenantContext.AdminRole">Admin</option>
+                                    </select>
+                                }
+                            </td>
+                            <td>
+                                <span class="status-pill @(u.User.IsActive ? "is-active" : "is-inactive")">
+                                    @(u.User.IsActive ? "Active" : "Inactive")
+                                </span>
+                                @if (u.User.MustChangePassword)
+                                {
+                                    <span class="status-pill is-pending">Password change pending</span>
+                                }
+                            </td>
+                            <td class="align-right">
+                                @if (u.User.Id == Tenant.UserId)
+                                {
+                                    <span class="field-caption">You</span>
+                                }
+                                else
+                                {
+                                    <button type="button" class="row-action" @onclick="() => ToggleActiveAsync(u)">
+                                        @(u.User.IsActive ? "Deactivate" : "Reactivate")
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+
+                    @if (_users.Count == 0)
+                    {
+                        <tr><td colspan="5" class="empty-row">No users.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </ChildContent>
+</Panel>
+
+@code {
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private sealed record UserRow(ApplicationUser User, string Role);
+
+    private sealed class InviteForm
+    {
+        public string DisplayName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Role { get; set; } = TenantContext.StaffRole;
+    }
+
+    private sealed record IssuedCredential(string Email, string Password);
+
+    private List<UserRow> _users = new();
+    private List<Company> _companies = new();
+    private string _companyFilter = string.Empty;
+    private InviteForm? _invite;
+    private IssuedCredential? _issued;
+    private string? _error;
+
+    private bool InviteDisabled =>
+        _invite is null
+        || string.IsNullOrWhiteSpace(_invite.DisplayName)
+        || string.IsNullOrWhiteSpace(_invite.Email);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        // Needed before the first render: the markup branches on IsSuperAdmin and compares UserId, and
+        // the tenant is otherwise only resolved when a DbContext is created.
+        await Tenant.EnsureLoadedAsync();
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        if (Tenant.IsSuperAdmin)
+        {
+            _companies = await db.Companies.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+        }
+
+        // The ApplicationUser query filter already restricts an Admin to their own company. The extra
+        // predicate below is only for the SuperAdmin's company selector — an Admin's list is scoped by
+        // the database, not by this query, so it cannot be widened by tampering with the page.
+        var query = db.Users.AsNoTracking().AsQueryable();
+
+        if (Tenant.IsSuperAdmin && int.TryParse(_companyFilter, out var companyId))
+        {
+            query = query.Where(u => u.CompanyId == companyId);
+        }
+
+        var users = await query.OrderBy(u => u.DisplayName).ToListAsync();
+
+        _users = new List<UserRow>(users.Count);
+        foreach (var user in users)
+        {
+            var roles = await UserManager.GetRolesAsync(user);
+            _users.Add(new UserRow(user, roles.FirstOrDefault() ?? "—"));
+        }
+    }
+
+    private async Task OnCompanyFilterChanged(ChangeEventArgs e)
+    {
+        _companyFilter = e.Value?.ToString() ?? string.Empty;
+        await LoadAsync();
+    }
+
+    private void StartInvite()
+    {
+        _invite = new InviteForm();
+        _error = null;
+        _issued = null;
+    }
+
+    /// <summary>
+    /// Creates a real account on a generated temporary credential, the same mechanism the startup
+    /// seeder uses. No password is ever chosen by the admin or hardcoded anywhere.
+    /// </summary>
+    private async Task InviteAsync()
+    {
+        if (_invite is null || InviteDisabled) { return; }
+
+        _error = null;
+
+        var email = _invite.Email.Trim();
+
+        if (await UserManager.FindByEmailAsync(email) is not null)
+        {
+            _error = "An account with that email already exists.";
+            return;
+        }
+
+        // An Admin can only ever create inside their own company. A SuperAdmin has no company of their
+        // own, so they must pick one first rather than silently creating an orphaned account.
+        var companyId = Tenant.CompanyId
+            ?? (int.TryParse(_companyFilter, out var selected) ? selected : (int?)null);
+
+        if (companyId is null)
+        {
+            _error = "Select a company above before creating a user.";
+            return;
+        }
+
+        var password = IdentitySeeder.GenerateTemporaryPassword();
+
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            DisplayName = _invite.DisplayName.Trim(),
+            CompanyId = companyId,
+            IsActive = true,
+            MustChangePassword = true,
+        };
+
+        var result = await UserManager.CreateAsync(user, password);
+
+        if (!result.Succeeded)
+        {
+            _error = string.Join(" ", result.Errors.Select(x => x.Description));
+            return;
+        }
+
+        await UserManager.AddToRoleAsync(user, _invite.Role);
+
+        _issued = new IssuedCredential(email, password);
+
+        Logger.LogWarning(
+            "TEMPORARY CREDENTIAL issued for {Email} ({Role}, company {CompanyId}): {Password} — " +
+            "must be changed at first sign-in.",
+            email, _invite.Role, companyId, password);
+
+        _invite = null;
+        await LoadAsync();
+        await OnSaved.InvokeAsync($"Account created for {email}");
+    }
+
+    private async Task ChangeRoleAsync(UserRow row, string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role) || role == row.Role) { return; }
+
+        var user = await UserManager.FindByIdAsync(row.User.Id);
+        if (user is null) { return; }
+
+        var current = await UserManager.GetRolesAsync(user);
+        await UserManager.RemoveFromRolesAsync(user, current);
+        await UserManager.AddToRoleAsync(user, role);
+
+        await LoadAsync();
+
+        // Roles ride in the authentication cookie, so the change lands on their next sign-in rather
+        // than mid-session. Said out loud instead of leaving an admin wondering why nothing happened.
+        await OnSaved.InvokeAsync($"{user.DisplayName} is now {role} — effective at their next sign-in");
+    }
+
+    /// <summary>
+    /// Soft-disable only. Deleting the row would break every foreign key that records what this person
+    /// did — RCU verifier, override approver, PDD waiver, sanction signatory.
+    /// </summary>
+    private async Task ToggleActiveAsync(UserRow row)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.Users.FirstOrDefaultAsync(u => u.Id == row.User.Id);
+        if (stored is null) { return; }
+
+        stored.IsActive = !stored.IsActive;
+
+        // Rotating the stamp invalidates the cookie of anyone already signed in, so deactivating takes
+        // effect immediately rather than at the end of their session.
+        stored.SecurityStamp = Guid.NewGuid().ToString();
+
+        await db.SaveChangesAsync();
+        await LoadAsync();
+
+        await OnSaved.InvokeAsync(
+            $"{stored.DisplayName} {(stored.IsActive ? "reactivated" : "deactivated")}");
+    }
+}

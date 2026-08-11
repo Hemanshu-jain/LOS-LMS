@@ -1,0 +1,23 @@
+@page "/account/denied"
+
+<PageTitle>Access denied · LOS/LMS</PageTitle>
+
+@* Where the cookie handler sends a signed-in user who fails a role check.
+
+   It used to send them to the sign-in page, which is actively misleading: they ARE signed in, and
+   being shown a login form suggests their session expired rather than that they lack the role. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Access denied</h1>
+            <p class="auth-sub">
+                Your account does not have permission to open that page. Company Setup is restricted to
+                Admin and SuperAdmin users — ask an administrator if you need access.
+            </p>
+        </div>
+
+        <a class="auth-secondary" href="/applications">← Back to applications</a>
+    </div>
+</div>

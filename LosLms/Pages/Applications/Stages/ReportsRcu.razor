@@ -410,12 +410,22 @@ else
                 return;
             }
             _branchOptions = await db.Branches.AsNoTracking()
+                .Where(b => b.IsActive)
                 .OrderBy(b => b.Name)
                 .Select(b => b.Name)
                 .ToListAsync();
 
             await EnsureRowsAsync(db);
             await LoadAsync(db);
+
+            // After LoadAsync, because that is what populates _initiation. Same reason as Loan &
+            // Security: a select bound to a value missing from its options renders blank, and the next
+            // save would write that blank back over a branch this RCU was genuinely raised at.
+            if (_initiation.Branch is { Length: > 0 } recordedBranch
+                && !_branchOptions.Contains(recordedBranch, StringComparer.OrdinalIgnoreCase))
+            {
+                _branchOptions.Insert(0, recordedBranch);
+            }
         }
 
         _loading = false;

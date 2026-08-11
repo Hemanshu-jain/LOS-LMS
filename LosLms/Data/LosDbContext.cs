@@ -38,6 +38,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Branch> Branches => Set<Branch>();
 
+    public DbSet<VehicleLoanCap> VehicleLoanCaps => Set<VehicleLoanCap>();
+
     public DbSet<Application> Applications => Set<Application>();
 
     public DbSet<Party> Parties => Set<Party>();
@@ -682,11 +684,37 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             // The tenant every pre-existing row belongs to. Seeded here rather than at runtime because
             // it has to exist before the 128 seeded applications that reference it. CreatedAt is a
             // fixed date, not DateTime.UtcNow — a moving value would make every migration regenerate.
+            entity.Property(c => c.FoirCapPct).HasPrecision(5, 2);
+            entity.Property(c => c.LtvCapPct).HasPrecision(5, 2);
+            entity.Property(c => c.FoirRiskCautionPct).HasPrecision(5, 2);
+            entity.Property(c => c.FoirRiskDangerPct).HasPrecision(5, 2);
+            entity.Property(c => c.LtvRiskCautionPct).HasPrecision(5, 2);
+            entity.Property(c => c.LtvRiskDangerPct).HasPrecision(5, 2);
+            entity.Property(c => c.GstPct).HasPrecision(5, 2);
+            entity.Property(c => c.NoteStaleTolerancePct).HasPrecision(5, 2);
+
+            // Every policy value below is the exact literal it replaced in code, so relocating them
+            // changed no behaviour. They are the defaults on the model too, which is what a company
+            // created later starts from.
             entity.HasData(new Company
             {
                 Id = SeedCompanyId,
                 Name = "Default Company — rename in Company Setup",
+                SlaOverdueDays = 5,
+                FoirCapPct = 50m,
+                LtvCapPct = 85m,
+                FoirRiskCautionPct = 40m,
+                FoirRiskDangerPct = 60m,
+                LtvRiskCautionPct = 75m,
+                LtvRiskDangerPct = 90m,
+                GstPct = 18m,
+                CibilMinScore = 300,
+                CibilMaxScore = 900,
+                AddressValidityDays = 90,
+                NoteStaleTolerancePct = 0.5m,
+                MinimumReferences = 2,
                 CreatedAt = new DateTime(2026, 8, 11, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 8, 11, 0, 0, 0, DateTimeKind.Utc),
             });
         });
 
@@ -702,11 +730,27 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasData(
-                new Branch { Id = 1, CompanyId = SeedCompanyId, Name = "Nashik West" },
-                new Branch { Id = 2, CompanyId = SeedCompanyId, Name = "Nashik East" },
-                new Branch { Id = 3, CompanyId = SeedCompanyId, Name = "Pune Camp" },
-                new Branch { Id = 4, CompanyId = SeedCompanyId, Name = "Aurangabad" },
-                new Branch { Id = 5, CompanyId = SeedCompanyId, Name = "Jalgaon" });
+                new Branch { Id = 1, CompanyId = SeedCompanyId, Name = "Nashik West", IsActive = true },
+                new Branch { Id = 2, CompanyId = SeedCompanyId, Name = "Nashik East", IsActive = true },
+                new Branch { Id = 3, CompanyId = SeedCompanyId, Name = "Pune Camp", IsActive = true },
+                new Branch { Id = 4, CompanyId = SeedCompanyId, Name = "Aurangabad", IsActive = true },
+                new Branch { Id = 5, CompanyId = SeedCompanyId, Name = "Jalgaon", IsActive = true });
+        });
+
+        modelBuilder.Entity<VehicleLoanCap>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+
+            entity.Property(v => v.MaxLoanAmount).HasPrecision(18, 2);
+
+            // One cap per vehicle per company — the catalog is also the dropdown source, so a
+            // duplicate make/model would render twice and leave the cap ambiguous.
+            entity.HasIndex(v => new { v.CompanyId, v.Make, v.Model }).IsUnique();
+
+            entity.HasOne(v => v.Company)
+                .WithMany()
+                .HasForeignKey(v => v.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ApplicationUser>(entity =>
@@ -730,6 +774,9 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
         modelBuilder.Entity<Branch>()
             .HasQueryFilter(b => _isSuperAdmin || b.CompanyId == _companyId);
+
+        modelBuilder.Entity<VehicleLoanCap>()
+            .HasQueryFilter(v => _isSuperAdmin || v.CompanyId == _companyId);
 
         // The one deliberate exception, and it is narrow: when nobody is signed in the user filter is
         // open, because Identity's own sign-in path calls FindByEmailAsync on this very context before
@@ -791,6 +838,9 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 case Branch branch:
                     branch.CompanyId = companyId;
                     break;
+                case VehicleLoanCap cap:
+                    cap.CompanyId = companyId;
+                    break;
                 case ApplicationUser user:
                     user.CompanyId = companyId;
                     break;
@@ -815,6 +865,24 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
             switch (entry.Entity)
             {
+                case Company company:
+                    if (entry.State == EntityState.Added && company.CreatedAt == default)
+                    {
+                        company.CreatedAt = now;
+                    }
+
+                    company.UpdatedAt = now;
+                    break;
+
+                case VehicleLoanCap vehicleCap:
+                    if (entry.State == EntityState.Added && vehicleCap.CreatedAt == default)
+                    {
+                        vehicleCap.CreatedAt = now;
+                    }
+
+                    vehicleCap.UpdatedAt = now;
+                    break;
+
                 case Application application:
                     if (entry.State == EntityState.Added && application.CreatedAt == default)
                     {
