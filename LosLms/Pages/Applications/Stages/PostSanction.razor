@@ -870,6 +870,15 @@ else
 
     private async Task ReleaseFundsAsync()
     {
+        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
+        // event or a stale circuit must not get past it. One shared check, never re-implemented.
+        await using (var gateDb = await DbFactory.CreateDbContextAsync())
+        {
+            if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
+            {
+                return;
+            }
+        }
         // The button carries a real disabled attribute; this repeats the check so a crafted request
         // cannot release funds against an unfinished checklist.
         if (ReleaseBlocked || _application is null)

@@ -4,6 +4,7 @@
 @using LosLms.Components.Shared
 @using LosLms.Data
 @using LosLms.Models
+@using LosLms.Services
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @implements IDisposable
@@ -199,6 +200,33 @@ else
                                 @if (_notices.TryGetValue("aadhaar-ocr", out var aadhaarNotice))
                                 {
                                     <p class="inline-error" role="alert">@aadhaarNotice</p>
+                                }
+
+                                @* ---------- Bureau check ---------- *@
+                                @* Offered only once both identifiers exist — a bureau pull keyed on
+                                   nothing would be a wasted call, and on a half-typed PAN a wrong one. *@
+                                <div class="cibil-row">
+                                    <div class="cibil-state">
+                                        <span class="cibil-label">CIBIL</span>
+                                        <span class="cibil-value cibil-@CibilBand(party.CibilStatus)">
+                                            @CibilText(party)
+                                        </span>
+                                    </div>
+
+                                    @if (CanCheckCibil(party))
+                                    {
+                                        <button type="button" class="verify-button" @onclick="() => CheckCibilAsync(party)">
+                                            Check CIBIL
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="field-caption">Enter PAN and Aadhaar to enable the check</span>
+                                    }
+                                </div>
+                                @if (_notices.TryGetValue("cibil", out var cibilNotice))
+                                {
+                                    <p class="inline-error" role="alert">@cibilNotice</p>
                                 }
 
                                 <div class="panel-divider"></div>
@@ -734,6 +762,81 @@ else
     private void NotConfigured(string key, string message) => _notices[key] = message;
 
     // ---------------------------------------------------------------------
+    // Bureau check
+    // ---------------------------------------------------------------------
+
+    private const string CibilUnavailable =
+        "CIBIL check unavailable — provider not configured.";
+
+    /// <summary>
+    /// A bureau pull is keyed on PAN and Aadhaar, so both must exist before the action is offered.
+    /// Checked per party, because each one is a separate individual with a separate file.
+    /// </summary>
+    private static bool CanCheckCibil(PartyForm party) =>
+        !string.IsNullOrWhiteSpace(party.Pan) && !string.IsNullOrWhiteSpace(party.Aadhaar);
+
+    /// <summary>
+    /// Attempts the check and reports honestly that no bureau answers it.
+    /// </summary>
+    /// <remarks>
+    /// It must never set Passed or invent a score. A fabricated credit decision is the worst thing
+    /// this system could produce — it would put money out of the door against a number nobody
+    /// obtained. The consequence is that every application in this build needs an admin bypass, which
+    /// is the correct outcome of having no provider, not a defect to soften.
+    ///
+    /// Written straight through to the database rather than waiting for Save draft, because the gate
+    /// is recomputed from what is stored, not from what is on screen.
+    /// </remarks>
+    private async Task CheckCibilAsync(PartyForm party)
+    {
+        if (!CanCheckCibil(party) || _application is null)
+        {
+            return;
+        }
+
+        NotConfigured("cibil", CibilUnavailable);
+
+        party.CibilStatus = "Unavailable";
+        party.CibilCheckedAt = DateTime.UtcNow;
+        party.CibilScore = null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var stored = await db.Parties
+            .FirstOrDefaultAsync(p => p.ApplicationId == ApplicationId && p.PartyType == party.PartyType);
+
+        if (stored is null)
+        {
+            // The party has not been saved yet; the status rides along with the next Save draft.
+            return;
+        }
+
+        stored.CibilStatus = party.CibilStatus;
+        stored.CibilCheckedAt = party.CibilCheckedAt;
+        stored.CibilScore = null;
+        await db.SaveChangesAsync();
+
+        // Recompute rather than assume: another party may have been checked since this page loaded.
+        await GateCheckService.RecomputeCibilGateAsync(db, ApplicationId);
+    }
+
+    private static string CibilBand(string status) => status switch
+    {
+        "Passed" => "healthy",
+        "Failed" => "risk",
+        "Unavailable" => "caution",
+        _ => "none",
+    };
+
+    private static string CibilText(PartyForm party) => party.CibilStatus switch
+    {
+        "Passed" => $"Passed · score {party.CibilScore}",
+        "Failed" => $"Failed · score {party.CibilScore}",
+        "Unavailable" => "Unavailable — provider not configured",
+        _ => "Not checked",
+    };
+
+    // ---------------------------------------------------------------------
     // Uploads
     // ---------------------------------------------------------------------
 
@@ -879,6 +982,15 @@ else
 
     private async Task CompleteStageAsync()
     {
+        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
+        // event or a stale circuit must not get past it. One shared check, never re-implemented.
+        await using (var gateDb = await DbFactory.CreateDbContextAsync())
+        {
+            if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
+            {
+                return;
+            }
+        }
         // Defence in depth: the button carries a real disabled attribute, and the guard is
         // repeated here so a crafted request cannot advance the stage either.
         if (BlockedReason is not null)
@@ -1033,6 +1145,12 @@ else
         entity.EmployerName = form.EmployerName;
         entity.Designation = form.Designation;
         entity.MonthlyIncome = form.MonthlyIncome;
+
+        // Carried so a check run before the party row existed is not lost on the first save. Never
+        // written back as Passed — CheckCibilAsync only ever produces Unavailable.
+        entity.CibilStatus = form.CibilStatus;
+        entity.CibilScore = form.CibilScore;
+        entity.CibilCheckedAt = form.CibilCheckedAt;
         entity.YearsInJob = form.YearsInJob;
         entity.OfficeAddress = form.OfficeAddress;
 
@@ -1077,6 +1195,9 @@ else
         form.OfficeAddress = entity.OfficeAddress;
 
         form.DedupeStatus = entity.DedupeStatus;
+        form.CibilStatus = entity.CibilStatus;
+        form.CibilScore = entity.CibilScore;
+        form.CibilCheckedAt = entity.CibilCheckedAt;
         form.PanVerified = entity.PanVerified;
         form.AadhaarVerified = entity.AadhaarVerified;
         form.MobileVerified = entity.MobileVerified;

@@ -72,6 +72,25 @@ public class Party
     [MaxLength(20)]
     public string DedupeStatus { get; set; } = "NotRun";
 
+    // ---- Bureau ----
+
+    /// <summary>
+    /// NotChecked / Unavailable / Passed / Failed.
+    /// </summary>
+    /// <remarks>
+    /// Only NotChecked and Unavailable are reachable in this build. No bureau is configured, so no
+    /// code path may set Passed — a fabricated credit decision is the single worst thing this system
+    /// could invent. Passed and Failed exist so a real provider can populate them later without a
+    /// migration. Same discipline as <see cref="BankDetail.PennyDropStatus"/>.
+    /// </remarks>
+    [MaxLength(20)]
+    public string CibilStatus { get; set; } = "NotChecked";
+
+    /// <summary>Null until a real bureau returns one. Never invented.</summary>
+    public int? CibilScore { get; set; }
+
+    public DateTime? CibilCheckedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

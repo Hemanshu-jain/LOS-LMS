@@ -62,6 +62,18 @@ public class Application
     /// <summary>1-8. Stage 1 is Customer Details.</summary>
     public int CurrentStage { get; set; } = 1;
 
+    /// <summary>
+    /// Blocked / Passed / Bypassed. Gates every stage's completion action.
+    /// </summary>
+    /// <remarks>
+    /// Starts Blocked and stays there until every party on the file has a bureau score inside the
+    /// company's accepted range, or an Admin bypasses it. With no bureau configured in this build,
+    /// nothing can ever reach Passed on its own — so every application requires an admin bypass.
+    /// That is the honest consequence of having no provider, not a bug to work around.
+    /// </remarks>
+    [MaxLength(20)]
+    public string CibilGateStatus { get; set; } = "Blocked";
+
     /// <summary>One of: New, In progress, Sanctioned, Rejected.</summary>
     [MaxLength(30)]
     public string Status { get; set; } = "New";

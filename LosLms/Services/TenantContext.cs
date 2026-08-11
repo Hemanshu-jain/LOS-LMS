@@ -65,6 +65,9 @@ public sealed class TenantContext
     /// <summary>True when the signed-in user holds the SuperAdmin role and so is not company-scoped.</summary>
     public bool IsSuperAdmin { get; private set; }
 
+    /// <summary>True for a company Admin. Does NOT include SuperAdmin — check both where either will do.</summary>
+    public bool IsAdmin { get; private set; }
+
     /// <summary>True when someone is actually signed in. Distinguishes a SuperAdmin from an anonymous
     /// request — both have a null <see cref="CompanyId"/>, but they must not be treated alike.</summary>
     public bool HasUser { get; private set; }
@@ -108,6 +111,7 @@ public sealed class TenantContext
     {
         HasUser = user.Identity?.IsAuthenticated == true;
         IsSuperAdmin = HasUser && user.IsInRole(SuperAdminRole);
+        IsAdmin = HasUser && user.IsInRole(AdminRole);
         UserId = HasUser ? user.FindFirstValue(ClaimTypes.NameIdentifier) : null;
         DisplayName = HasUser ? user.FindFirstValue(DisplayNameClaim) : null;
 

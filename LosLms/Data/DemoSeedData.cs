@@ -1,4 +1,4 @@
-using LosLms.Models;
+﻿using LosLms.Models;
 using LosLms.Services;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
@@ -73,6 +73,14 @@ public static class DemoSeedData
         }
 
         await db.SaveChangesAsync();
+
+        // Derived from the parties just written rather than set alongside them. A second hand-written
+        // rule here could disagree with the live one, and the seeded files would then be gated
+        // differently from anything an officer creates.
+        foreach (var spec in Specs)
+        {
+            await GateCheckService.RecomputeCibilGateAsync(db, spec.Id);
+        }
 
         logger.LogInformation(
             "Demo data: seeded {Count} applications ({Sanctioned} sanctioned, {Progress} in progress, " +
@@ -351,6 +359,10 @@ public static class DemoSeedData
         var seed = Seed(spec.Id) + index;
         var isApplicant = partyType == "Applicant";
 
+        // The rejected file scores below the company's floor — which is why it was rejected. Every
+        // other checked party sits in a healthy 690-820 band.
+        var cibilScore = spec.RejectReason is not null ? 240 : 690 + seed % 131;
+
         return new Party
         {
             ApplicationId = spec.Id,
@@ -394,6 +406,13 @@ public static class DemoSeedData
             AadhaarVerified = false,
             MobileVerified = false,
             DedupeStatus = spec.Stage >= 2 ? "Pass" : "NotRun",
+
+            // Demo data, not a fabricated runtime result — these represent checks an officer really
+            // ran before the file moved on. Stage 1 files are deliberately left unchecked so the
+            // CIBIL gate is visible on a live application rather than only describable.
+            CibilStatus = spec.Stage < 2 ? "NotChecked" : cibilScore >= 300 ? "Passed" : "Failed",
+            CibilScore = spec.Stage < 2 ? null : cibilScore,
+            CibilCheckedAt = spec.Stage < 2 ? null : created.AddHours(3),
 
             CreatedAt = created,
             UpdatedAt = created,

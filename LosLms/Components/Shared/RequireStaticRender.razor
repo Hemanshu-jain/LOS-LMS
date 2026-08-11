@@ -1,0 +1,32 @@
+@inject NavigationManager Navigation
+
+@* Nothing to render — this component exists only for the check below. *@
+
+@code {
+    /// <summary>
+    /// Forces a real browser load when the page around it was rendered interactively.
+    /// </summary>
+    /// <remarks>
+    /// The /account pages must render statically: SignInManager writes the auth cookie through the
+    /// HTTP response, and inside a SignalR circuit the headers went out long ago — the attempt throws
+    /// "Headers are read-only, response has already started" and the sign-in or sign-out silently
+    /// fails. App.razor picks the static mode from the request path, but App.razor only runs on a
+    /// real request: a plain &lt;a href&gt; from any signed-in screen is handled by the interactive
+    /// router instead, which renders the page inside the existing circuit and never consults it.
+    ///
+    /// HttpContext cascades only into statically rendered components, so a null one is precisely the
+    /// broken case. Reloading the same URL for real makes App.razor run and apply the static mode.
+    ///
+    /// Put this in every page that needs a live response, not just the one that was reported broken —
+    /// all three fail the same way and only one of them is ever reached by an obvious link.
+    /// </remarks>
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (HttpContext is null)
+        {
+            Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        }
+    }
+}

@@ -1,11 +1,14 @@
-@* Sub-header shared by all eight stage screens: breadcrumb, the two stage actions, and the
+﻿@* Sub-header shared by all eight stage screens: breadcrumb, the two stage actions, and the
    cross-cutting Reject feature. *@
 
 @using System.Globalization
 @using LosLms.Data
+@using LosLms.Models
 @using LosLms.Services
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<LosDbContext> DbFactory
+@inject TenantContext Tenant
+@inject AdminRequestNotifier Notifier
 
 <div class="stage-sub-header">
     <button type="button" class="breadcrumb" @onclick="GoToApplications">
@@ -25,12 +28,13 @@
         <button type="button" class="stage-button" @onclick="OnSaveDraft">@SecondaryLabel</button>
 
         @* A real disabled attribute, not just the blocked styling — styling alone would still
-           let a keyboard or screen-reader user activate it. *@
+           let a keyboard or screen-reader user activate it. The gate is OR'd with the page's own
+           reason, so a screen that was already blocked stays blocked and says why. *@
         <button type="button"
-                class="stage-button is-primary @(CompleteBlocked ? "is-blocked" : null)"
-                disabled="@CompleteBlocked"
-                aria-disabled="@CompleteBlocked"
-                title="@(CompleteBlocked ? BlockedReason : null)"
+                class="stage-button is-primary @(EffectivelyBlocked ? "is-blocked" : null)"
+                disabled="@EffectivelyBlocked"
+                aria-disabled="@EffectivelyBlocked"
+                title="@(EffectivelyBlocked ? EffectiveBlockedReason : null)"
                 @onclick="OnCompleteStage">
             @PrimaryLabel
         </button>
@@ -40,7 +44,88 @@
 @if (_status == "Rejected")
 {
     <div class="rejected-banner" role="alert">
-        ⛔ This application was rejected@(_rejectedOn is { } on ? " on " + on.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) : null)@(string.IsNullOrWhiteSpace(_rejectedReason) ? null : " — " + _rejectedReason).
+        ⛔ This application was rejected@(_rejectedOn is { } on ? " on " + on.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) : null)@(string.IsNullOrWhiteSpace(_rejectedReason) ? "." : " — " + _rejectedReason)
+    </div>
+}
+
+@* ---------- The CIBIL gate ---------- *@
+@if (!ActiveGate.CanAdvance && _status != "Rejected")
+{
+    <div class="gate-banner" role="alert">
+        <span class="gate-banner-text">⛔ @ActiveGate.BlockedReason</span>
+
+        @if (ActiveGate.RequestPending)
+        {
+            <span class="gate-pending">Bypass requested — awaiting an Admin.</span>
+        }
+        else
+        {
+            <button type="button" class="gate-request" @onclick="RequestBypassAsync">
+                Request admin bypass
+            </button>
+        }
+    </div>
+}
+
+@* A denial the officer has not seen yet. Dismissible, because it is information, not a blocker. *@
+@if (ActiveGate.DeniedNote is { Length: > 0 } denied && !_denialDismissed)
+{
+    <div class="denied-banner" role="status">
+        <span>Your bypass request was denied — @denied</span>
+        <button type="button" class="denied-dismiss" @onclick="() => _denialDismissed = true">Dismiss</button>
+    </div>
+}
+
+@if (_rejectDenied is { Length: > 0 } rejectDenied && !_rejectDenialDismissed)
+{
+    <div class="denied-banner" role="status">
+        <span>Your rejection request was denied — @rejectDenied</span>
+        <button type="button" class="denied-dismiss" @onclick="() => _rejectDenialDismissed = true">Dismiss</button>
+    </div>
+}
+
+@* ---------- Admin review, in the application itself ---------- *@
+@* The Inbox links here rather than showing a summary popup: an Admin deciding a bypass should be
+   looking at the same screens the officer was, not a row in a list. *@
+@if (_isAdmin && _pending.Count > 0)
+{
+    <div class="admin-review" role="region" aria-label="Pending admin requests">
+        @foreach (var request in _pending)
+        {
+            var r = request;
+            <div class="admin-review-row">
+                <div class="admin-review-detail">
+                    <span class="admin-review-type">@AdminRequest.LabelFor(r.RequestType)</span>
+                    <span class="admin-review-meta">
+                        requested by @(_requesterNames.GetValueOrDefault(r.RequestedByUserId ?? string.Empty) ?? "—")
+                        on @r.RequestedAt.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture)
+                    </span>
+                    @if (!string.IsNullOrWhiteSpace(r.RequestReason))
+                    {
+                        <span class="admin-review-reason">“@r.RequestReason”</span>
+                    }
+                </div>
+
+                <div class="admin-review-actions">
+                    <input class="admin-review-note" placeholder="Note (required to deny)"
+                           value="@_reviewNotes.GetValueOrDefault(r.Id)"
+                           @oninput="e => _reviewNotes[r.Id] = e.Value?.ToString() ?? string.Empty" />
+                    <button type="button" class="admin-approve" @onclick="() => ReviewAsync(r, true)">Approve</button>
+                    <button type="button" class="admin-deny"
+                            disabled="@(string.IsNullOrWhiteSpace(_reviewNotes.GetValueOrDefault(r.Id)))"
+                            @onclick="() => ReviewAsync(r, false)">Deny</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@* Staff asked; the file has not moved. Said plainly so nobody assumes it was rejected. *@
+@if (_rejectRequested)
+{
+    <div class="denied-banner is-info" role="status">
+        <span>Rejection requested — an Admin will review it. The application is unchanged until then.</span>
+        <button type="button" class="denied-dismiss" @onclick="() => _rejectRequested = false">Dismiss</button>
     </div>
 }
 
@@ -62,6 +147,21 @@
 
     /// <summary>Shown as a tooltip while the complete button is blocked.</summary>
     [Parameter] public string? BlockedReason { get; set; }
+
+    /// <summary>
+    /// A gate the page owns and evaluates itself, rendered through the same banner and request
+    /// button as the CIBIL gate. Null on the seven screens that have no extra gate of their own.
+    /// </summary>
+    [Parameter] public GateResult? ExtraGate { get; set; }
+
+    /// <summary>
+    /// Identifies what <see cref="ExtraGate"/> is about, so an approval is scoped to it. Only ever
+    /// attached to a request raised for that gate — never to a CIBIL bypass.
+    /// </summary>
+    [Parameter] public string? GateSubjectKey { get; set; }
+
+    /// <summary>Raised after a bypass is requested or reviewed, so the page can re-evaluate.</summary>
+    [Parameter] public EventCallback OnGateChanged { get; set; }
 
     /// <summary>
     /// Label for the secondary action. Defaults to "Save draft"; Reports (RCU) overrides it with
@@ -90,11 +190,40 @@
     // Loaded here rather than threaded through eight screens: the reject visibility rule and the
     // rejected banner both need the current Status, and this is the one place all eight share.
     private string? _status;
-    private int _currentStage;
     private string? _rejectedReason;
     private DateOnly? _rejectedOn;
 
     private bool _showReject;
+
+    // ---- Gate + admin requests ----
+    private GateResult _gate = GateResult.Clear;
+    private bool _isAdmin;
+    private bool _denialDismissed;
+    private bool _rejectDenialDismissed;
+    private bool _rejectRequested;
+    private string? _rejectDenied;
+    private List<AdminRequest> _pending = new();
+    private Dictionary<string, string> _requesterNames = new(StringComparer.Ordinal);
+    private readonly Dictionary<int, string> _reviewNotes = new();
+
+    /// <summary>
+    /// The CIBIL gate first, then any gate the page itself contributes. Loan &amp; Security passes the
+    /// vehicle cap here rather than re-implementing the banner, the request button and the denial
+    /// notice for a second time.
+    /// </summary>
+    private GateResult ActiveGate =>
+        !_gate.CanAdvance ? _gate : (ExtraGate ?? GateResult.Clear);
+
+    private bool ExtraGateIsActive => _gate.CanAdvance && ExtraGate is { CanAdvance: false };
+
+    /// <summary>
+    /// The page's own gate OR the active gate. Either one blocking blocks the button, and the page's
+    /// reason wins when both apply — it is the more specific of the two.
+    /// </summary>
+    private bool EffectivelyBlocked => CompleteBlocked || !ActiveGate.CanAdvance;
+
+    private string? EffectiveBlockedReason =>
+        CompleteBlocked ? BlockedReason : ActiveGate.BlockedReason;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -104,31 +233,157 @@
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
+        await LoadGateAndRequestsAsync(db);
+    }
 
-        var snapshot = await db.Applications.AsNoTracking()
+    /// <summary>
+    /// Current status and, when rejected, why. Re-read after every review — approving a rejection
+    /// changes the status, and a page still offering "Reject application" on a rejected file is
+    /// telling the officer something that is no longer true.
+    /// </summary>
+    private async Task LoadStatusAsync(LosDbContext db)
+    {
+        var status = await db.Applications.AsNoTracking()
             .Where(a => a.Id == ApplicationId)
-            .Select(a => new { a.Status, a.CurrentStage })
+            .Select(a => a.Status)
             .FirstOrDefaultAsync();
 
-        if (snapshot is null)
+        if (status is null)
         {
             return;
         }
 
-        _status = snapshot.Status;
-        _currentStage = snapshot.CurrentStage;
+        _status = status;
 
-        if (_status == "Rejected")
+        if (_status != "Rejected")
         {
-            var latest = await db.RejectionLogs.AsNoTracking()
-                .Where(r => r.ApplicationId == ApplicationId)
-                .OrderByDescending(r => r.Id)
-                .Select(r => new { r.Reason, r.RejectedAt })
-                .FirstOrDefaultAsync();
-
-            _rejectedReason = latest?.Reason;
-            _rejectedOn = latest is null ? null : DateOnly.FromDateTime(latest.RejectedAt);
+            return;
         }
+
+        var latest = await db.RejectionLogs.AsNoTracking()
+            .Where(r => r.ApplicationId == ApplicationId)
+            .OrderByDescending(r => r.Id)
+            .Select(r => new { r.Reason, r.RejectedAt })
+            .FirstOrDefaultAsync();
+
+        _rejectedReason = latest?.Reason;
+        _rejectedOn = latest is null ? null : DateOnly.FromDateTime(latest.RejectedAt);
+    }
+
+    /// <summary>
+    /// The CIBIL gate and any admin requests attached to this file. Loaded here rather than on each
+    /// of the eight screens: this component is already the one thing they all render, and it already
+    /// opens a context to read Status.
+    /// </summary>
+    private async Task LoadGateAndRequestsAsync(LosDbContext db)
+    {
+        await LoadStatusAsync(db);
+        await Tenant.EnsureLoadedAsync();
+        _isAdmin = Tenant.IsSuperAdmin || Tenant.IsAdmin;
+
+        _gate = await GateCheckService.CanAdvanceAsync(db, ApplicationId);
+
+        var (_, _, rejectDenied) = await GateCheckService.LatestRequestStateAsync(
+            db, ApplicationId, AdminRequest.Reject);
+        _rejectDenied = rejectDenied;
+
+        _pending = _isAdmin
+            ? await db.AdminRequests.AsNoTracking()
+                .Where(r => r.ApplicationId == ApplicationId && r.Status == AdminRequest.Pending)
+                .OrderBy(r => r.Id)
+                .ToListAsync()
+            : new List<AdminRequest>();
+
+        if (_pending.Count > 0)
+        {
+            var ids = _pending.Select(r => r.RequestedByUserId).Where(id => id != null).ToList();
+            _requesterNames = await db.Users.AsNoTracking()
+                .Where(u => ids.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.DisplayName);
+        }
+    }
+
+    /// <summary>Raises whatever request the currently-blocking gate says would unblock it.</summary>
+    private async Task RequestBypassAsync()
+    {
+        var gate = ActiveGate;
+        if (gate.RequestType is not { Length: > 0 } requestType)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // The gate's own reason is the request's reason — the Admin reads the same sentence the
+        // officer was blocked by, rather than a second wording that could drift from it.
+        await GateCheckService.RaiseRequestAsync(
+            db, Notifier, ApplicationId, requestType, Tenant.UserId,
+            reason: gate.BlockedReason,
+            subjectKey: ExtraGateIsActive ? GateSubjectKey : null);
+
+        await LoadGateAndRequestsAsync(db);
+        await OnGateChanged.InvokeAsync();
+    }
+
+    /// <summary>
+    /// Approve or deny, and apply the real effect. This is the only place a bypass is granted or an
+    /// application is actually rejected.
+    /// </summary>
+    private async Task ReviewAsync(AdminRequest request, bool approve)
+    {
+        var note = _reviewNotes.GetValueOrDefault(request.Id);
+
+        // A denial without a reason is not a decision the officer can act on.
+        if (!approve && string.IsNullOrWhiteSpace(note))
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var stored = await db.AdminRequests.FirstOrDefaultAsync(r => r.Id == request.Id);
+        if (stored is null || stored.Status != AdminRequest.Pending)
+        {
+            return;
+        }
+
+        stored.Status = approve ? AdminRequest.Approved : AdminRequest.Denied;
+        stored.ReviewedByUserId = Tenant.UserId;
+        stored.ReviewedAt = DateTime.UtcNow;
+        stored.ReviewNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+
+        await db.SaveChangesAsync();
+
+        if (approve)
+        {
+            switch (stored.RequestType)
+            {
+                case AdminRequest.CibilBypass:
+                    var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
+                    application.CibilGateStatus = GateCheckService.Bypassed;
+                    await db.SaveChangesAsync();
+                    break;
+
+                case AdminRequest.MakeModelCapBypass:
+                    // Nothing to stamp on the application — the bypass IS the approved request, and
+                    // Loan & Security asks for it by name when it evaluates the cap.
+                    break;
+
+                case AdminRequest.Reject:
+                    await RejectionService.ApplyAsync(
+                        db, ApplicationId, stored.RequestReason ?? "Rejected by admin.");
+                    break;
+            }
+        }
+
+        _reviewNotes.Remove(request.Id);
+
+        var companyId = await db.Applications.AsNoTracking()
+            .Where(a => a.Id == ApplicationId).Select(a => a.CompanyId).FirstOrDefaultAsync();
+        await Notifier.NotifyAsync(companyId);
+
+        await LoadGateAndRequestsAsync(db);
+        await OnGateChanged.InvokeAsync();
     }
 
     private async Task ConfirmRejectAsync(string reason)
@@ -136,9 +391,13 @@
         _showReject = false;
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        await RejectionService.RejectAsync(db, ApplicationId, _currentStage, reason);
 
-        Navigation.NavigateTo("/applications");
+        // Staff no longer reject. They ask, and an Admin decides — the application's status does not
+        // move until then, which is why this stays on the page instead of navigating away.
+        await RejectionService.RequestAsync(db, Notifier, ApplicationId, Tenant.UserId, reason);
+
+        _rejectRequested = true;
+        await LoadGateAndRequestsAsync(db);
     }
 
     private void GoToApplications() => Navigation.NavigateTo("/applications");

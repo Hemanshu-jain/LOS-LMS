@@ -765,6 +765,15 @@ else
 
     private async Task CompleteStageAsync()
     {
+        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
+        // event or a stale circuit must not get past it. One shared check, never re-implemented.
+        await using (var gateDb = await DbFactory.CreateDbContextAsync())
+        {
+            if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
+            {
+                return;
+            }
+        }
         // Defence in depth: the button carries a real disabled attribute, and the same gate is
         // re-checked here so a crafted request cannot advance the stage either.
         if (CompleteBlocked || _application is null)

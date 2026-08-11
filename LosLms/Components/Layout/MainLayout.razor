@@ -13,6 +13,7 @@
                convenience, not the control — Staff typing the URL still get the access-denied card. *@
             <AuthorizeView Roles="@TenantContext.AdminRoles" Context="admin">
                 <Authorized>
+                    <a class="app-nav-link" href="/admin/inbox">Admin Inbox</a>
                     <a class="app-nav-link" href="/company-setup">Company Setup</a>
                 </Authorized>
             </AuthorizeView>

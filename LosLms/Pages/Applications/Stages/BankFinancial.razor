@@ -883,6 +883,15 @@ else
 
     private async Task CompleteStageAsync()
     {
+        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
+        // event or a stale circuit must not get past it. One shared check, never re-implemented.
+        await using (var gateDb = await DbFactory.CreateDbContextAsync())
+        {
+            if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
+            {
+                return;
+            }
+        }
         await PersistAsync(completeStage: true);
         Navigation.NavigateTo($"/applications/{ApplicationId}/document-checklist");
     }

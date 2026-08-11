@@ -64,6 +64,10 @@ else
 // rendered /account pages, neither of which can use the Blazor authentication state provider.
 builder.Services.AddHttpContextAccessor();
 
+// Singleton: it has to outlive any one circuit, because the point is telling OTHER users' circuits
+// that something changed. Single-server only — see the type's own remarks.
+builder.Services.AddSingleton<AdminRequestNotifier>();
+
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFactory>();
 

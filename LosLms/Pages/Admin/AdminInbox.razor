@@ -1,0 +1,249 @@
+@page "/admin/inbox"
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = TenantContext.AdminRoles)]
+@implements IAsyncDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject TenantContext Tenant
+@inject AdminRequestNotifier Notifier
+@inject NavigationManager Navigation
+
+<PageTitle>Admin inbox · LOS/LMS</PageTitle>
+
+<div class="inbox-page">
+    <div class="inbox-card">
+
+        <div class="inbox-head">
+            <div>
+                <span class="system-label">LOS/LMS · Admin inbox</span>
+                <h1 class="inbox-title">
+                    Pending requests
+                    @if (_pending.Count > 0)
+                    {
+                        <span class="inbox-count">@_pending.Count</span>
+                    }
+                </h1>
+            </div>
+
+            @* SuperAdmins see every company, so they need to say which one. An Admin's own company is
+               already the only one their query filter will return — no selector, nothing to choose. *@
+            @if (Tenant.IsSuperAdmin && _companies.Count > 0)
+            {
+                <label class="inbox-company">
+                    <span class="field-caption">Company</span>
+                    <select class="field-input" value="@(_companyFilter?.ToString() ?? "")"
+                            @onchange="OnCompanyFilterChangedAsync">
+                        <option value="">All companies</option>
+                        @foreach (var company in _companies)
+                        {
+                            <option value="@company.Id">@company.Name</option>
+                        }
+                    </select>
+                </label>
+            }
+        </div>
+
+        @if (_loading)
+        {
+            <p class="inbox-empty">Loading…</p>
+        }
+        else if (_pending.Count == 0)
+        {
+            <p class="inbox-empty">Nothing waiting. New requests appear here as they are raised.</p>
+        }
+        else
+        {
+            <table class="inbox-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Application</th>
+                        <th scope="col">Request</th>
+                        <th scope="col">Reason</th>
+                        <th scope="col">Raised by</th>
+                        <th scope="col">Raised</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _pending)
+                    {
+                        var r = row;
+                        <tr>
+                            <td><span class="inbox-appid">@r.ApplicationId</span></td>
+                            <td>
+                                <span class="inbox-type inbox-type-@TypeClass(r.RequestType)">
+                                    @AdminRequest.LabelFor(r.RequestType)
+                                </span>
+                            </td>
+                            <td class="inbox-reason">@(string.IsNullOrWhiteSpace(r.RequestReason) ? "—" : r.RequestReason)</td>
+                            <td>@(_names.GetValueOrDefault(r.RequestedByUserId ?? string.Empty) ?? "—")</td>
+                            <td>@r.RequestedAt.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture)</td>
+                            <td class="inbox-actions">
+                                @* Deciding happens on the application, not from a list row. An Admin
+                                   approving a bypass should be looking at the same screen the officer
+                                   was blocked on. *@
+                                <button type="button" class="inbox-open"
+                                        @onclick="() => OpenAsync(r)">Review on file →</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <h2 class="inbox-subtitle">Recently decided</h2>
+
+        @if (_decided.Count == 0)
+        {
+            <p class="inbox-empty">No decisions yet.</p>
+        }
+        else
+        {
+            <table class="inbox-table is-log">
+                <thead>
+                    <tr>
+                        <th scope="col">Application</th>
+                        <th scope="col">Request</th>
+                        <th scope="col">Outcome</th>
+                        <th scope="col">Note</th>
+                        <th scope="col">Decided by</th>
+                        <th scope="col">Decided</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _decided)
+                    {
+                        <tr>
+                            <td><span class="inbox-appid">@row.ApplicationId</span></td>
+                            <td>@AdminRequest.LabelFor(row.RequestType)</td>
+                            <td>
+                                <span class="inbox-outcome inbox-outcome-@row.Status.ToLowerInvariant()">
+                                    @row.Status
+                                </span>
+                            </td>
+                            <td class="inbox-reason">@(string.IsNullOrWhiteSpace(row.ReviewNote) ? "—" : row.ReviewNote)</td>
+                            <td>@(_names.GetValueOrDefault(row.ReviewedByUserId ?? string.Empty) ?? "—")</td>
+                            <td>@(row.ReviewedAt?.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture) ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private const int DecidedHistoryRows = 25;
+
+    private bool _loading = true;
+    private List<AdminRequest> _pending = new();
+    private List<AdminRequest> _decided = new();
+    private Dictionary<string, string> _names = new(StringComparer.Ordinal);
+    private List<Company> _companies = new();
+    private int? _companyFilter;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+
+        Notifier.Changed += OnRequestsChangedAsync;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        if (Tenant.IsSuperAdmin)
+        {
+            _companies = await db.Companies.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+        }
+
+        await LoadAsync(db);
+    }
+
+    private async Task LoadAsync(LosDbContext db)
+    {
+        // Applications are already company-filtered, so joining through them is what scopes the inbox.
+        // An Admin cannot widen this by any input they control — the filter reads their own claim.
+        var query = from request in db.AdminRequests.AsNoTracking()
+                    join application in db.Applications.AsNoTracking()
+                        on request.ApplicationId equals application.Id
+                    where _companyFilter == null || application.CompanyId == _companyFilter
+                    select request;
+
+        _pending = await query.Where(r => r.Status == AdminRequest.Pending)
+            .OrderBy(r => r.RequestedAt)
+            .ToListAsync();
+
+        _decided = await query.Where(r => r.Status != AdminRequest.Pending)
+            .OrderByDescending(r => r.ReviewedAt)
+            .Take(DecidedHistoryRows)
+            .ToListAsync();
+
+        var userIds = _pending.Select(r => r.RequestedByUserId)
+            .Concat(_decided.Select(r => r.RequestedByUserId))
+            .Concat(_decided.Select(r => r.ReviewedByUserId))
+            .Where(id => id is not null)
+            .Distinct()
+            .ToList();
+
+        _names = userIds.Count == 0
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : await db.Users.AsNoTracking()
+                .Where(u => userIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.DisplayName);
+
+        _loading = false;
+    }
+
+    /// <summary>
+    /// Fired by another circuit raising or deciding a request. Reloads rather than patching state —
+    /// the whole list is two small queries, and a patch would have to replicate the same filters.
+    /// </summary>
+    private async Task OnRequestsChangedAsync(int companyId)
+    {
+        await InvokeAsync(async () =>
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            await LoadAsync(db);
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnCompanyFilterChangedAsync(ChangeEventArgs e)
+    {
+        _companyFilter = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await LoadAsync(db);
+    }
+
+    /// <summary>Opens the stage the request came from, where the approve/deny controls live.</summary>
+    private async Task OpenAsync(AdminRequest request)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stage = await db.Applications.AsNoTracking()
+            .Where(a => a.Id == request.ApplicationId)
+            .Select(a => a.CurrentStage)
+            .FirstOrDefaultAsync();
+
+        Navigation.NavigateTo(LoanStages.Path(request.ApplicationId, stage));
+    }
+
+    /// <summary>Unsubscribing is not optional — the notifier is a singleton and would otherwise hold
+    /// this circuit alive for the life of the process.</summary>
+    public ValueTask DisposeAsync()
+    {
+        Notifier.Changed -= OnRequestsChangedAsync;
+        return ValueTask.CompletedTask;
+    }
+
+    private static string TypeClass(string requestType) => requestType switch
+    {
+        AdminRequest.Reject => "reject",
+        AdminRequest.MakeModelCapBypass => "cap",
+        _ => "cibil",
+    };
+}

@@ -11,6 +11,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject TenantContext Tenant
+@inject AdminRequestNotifier Notifier
 
 <PageTitle>Applications · LOS/LMS</PageTitle>
 
@@ -437,6 +438,16 @@
                             Reject application
                         </button>
                     }
+
+                    @* Inside the drawer body, directly under the button it answers — outside it, the
+                       panel's own overflow hides it and the officer sees nothing happen. *@
+                    @if (_drawerRejectRequested)
+                    {
+                        <div class="drawer-request-note" role="status">
+                            Rejection requested — an Admin will review it. This application is
+                            unchanged until then.
+                        </div>
+                    }
                 </div>
             </div>
 
@@ -598,6 +609,9 @@
         new(StringComparer.Ordinal);
 
     private bool _showDrawerReject;
+
+    /// <summary>Staff asked for a rejection; the file is unchanged until an Admin decides.</summary>
+    private bool _drawerRejectRequested;
     private string? _officerSavedMessage;
 
     private ElementReference _drawerPanel;
@@ -1009,6 +1023,7 @@
     {
         _drawerId = null;
         _showDrawerReject = false;
+        _drawerRejectRequested = false;
         _officerSavedMessage = null;
     }
 
@@ -1057,12 +1072,13 @@
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        await RejectionService.RejectAsync(db, app.Id, app.CurrentStage, reason);
 
-        // Reload so the table badge, triage counts, and future drawer banner all reflect Rejected,
-        // then close — the same end state as the stage screens navigating back to the dashboard.
+        // A request, not a rejection. The status does not move until an Admin approves it, so the
+        // table badge and triage counts deliberately stay exactly as they were.
+        await RejectionService.RequestAsync(db, Notifier, app.Id, Tenant.UserId, reason);
+
+        _drawerRejectRequested = true;
         await LoadAsync();
-        CloseDrawer();
     }
 
     private void HandleDrawerKeyDown(KeyboardEventArgs e)

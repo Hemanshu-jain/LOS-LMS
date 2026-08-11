@@ -1,10 +1,12 @@
-@page "/account/logout"
+﻿@page "/account/logout"
 @using LosLms.Models
 @using Microsoft.AspNetCore.Identity
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager Navigation
 
 <PageTitle>Sign out · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
 
 @* A form post, not a link. Signing out over GET means any page on the internet can log the user out
    with an <img> tag; a posted form carries an antiforgery token and cannot be triggered from

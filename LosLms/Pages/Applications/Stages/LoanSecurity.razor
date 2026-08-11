@@ -37,10 +37,13 @@ else
     <div class="stage-page">
         <div class="stage-card">
 
-            @* No completion gate on this stage, unlike Stage 1's dedupe gate.
-               TODO: confirm with Arun/client whether Stage 2 needs a real completion gate. *@
+            @* The vehicle loan cap lives only here — this is where the vehicle and the amount are
+               both set, and the file cannot leave Stage 2 until it clears or an Admin bypasses it. *@
             <StageSubHeader ApplicationId="@_application.Id"
                             CompleteBlocked="false"
+                            ExtraGate="_capGate"
+                            GateSubjectKey="@VehicleCapCheck.SubjectKeyFor(_security.MakeModel, _security.MfgYear)"
+                            OnGateChanged="RefreshCapGateAsync"
                             OnSaveDraft="SaveDraftAsync"
                             OnCompleteStage="CompleteStageAsync" />
 
@@ -120,8 +123,11 @@ else
                                 <FormField Label="Requested amount" For="ls-amount">
                                     <div class="currency-input">
                                         <span class="currency-symbol">₹</span>
+                                        @* ponytail: re-checks the cap on every keystroke, one indexed
+                                           lookup each. Debounce if a remote database makes it show. *@
                                         <input id="ls-amount" type="number" min="0" step="1" class="field-input has-prefix"
-                                               @bind="_application.LoanAmount" @bind:event="oninput" />
+                                               @bind="_application.LoanAmount" @bind:event="oninput"
+                                               @bind:after="RefreshCapGateAsync" />
                                     </div>
                                 </FormField>
 
@@ -526,6 +532,9 @@ else
     /// <summary>A stored make/model that no catalog row matches. Displayed, never discarded.</summary>
     private string? _unmatchedMakeModel;
 
+    /// <summary>The vehicle loan cap as a gate, recomputed whenever the vehicle or the amount moves.</summary>
+    private GateResult _capGate = GateResult.Clear;
+
     private IEnumerable<string> CatalogMakes =>
         _vehicleCatalog.Select(v => v.Make).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(m => m);
 
@@ -596,29 +605,36 @@ else
         }
     }
 
-    private void OnMakeChanged(ChangeEventArgs e)
+    private async Task OnMakeChanged(ChangeEventArgs e)
     {
         _selectedMake = e.Value?.ToString();
 
         // A model from the previous make would be a vehicle that does not exist, and its year with it.
         _selectedModel = null;
         _selectedYear = null;
-        ApplyMakeModel();
+        await ApplyMakeModelAsync();
     }
 
-    private void OnModelChanged(ChangeEventArgs e)
+    private async Task OnModelChanged(ChangeEventArgs e)
     {
         _selectedModel = e.Value?.ToString();
 
         // Years are priced per model, so the previous model's year does not carry over.
         _selectedYear = null;
-        ApplyMakeModel();
+        await ApplyMakeModelAsync();
     }
 
-    private void OnYearChanged(ChangeEventArgs e)
+    private async Task OnYearChanged(ChangeEventArgs e)
     {
         _selectedYear = e.Value?.ToString();
+        await ApplyMakeModelAsync();
+    }
+
+    /// <summary>Composes the stored value and re-checks the cap against the newly chosen vehicle.</summary>
+    private async Task ApplyMakeModelAsync()
+    {
         ApplyMakeModel();
+        await RefreshCapGateAsync();
     }
 
     private void ApplyMakeModel()
@@ -761,6 +777,7 @@ else
                 .ToListAsync();
 
             ResolveMakeModel();
+            await RefreshCapGateAsync(db);
 
             var references = await db.References.AsNoTracking()
                 .Where(r => r.ApplicationId == ApplicationId)
@@ -1018,8 +1035,42 @@ else
         await ShowToastAsync("Draft saved");
     }
 
+    /// <summary>
+    /// Re-evaluates the cap from the values currently on screen. Called on load, after the vehicle
+    /// or the amount changes, and after an Admin decides a bypass.
+    /// </summary>
+    private async Task RefreshCapGateAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _capGate = await CapGateAsync(db);
+    }
+
+    private async Task RefreshCapGateAsync(LosDbContext db) => _capGate = await CapGateAsync(db);
+
+    private Task<GateResult> CapGateAsync(LosDbContext db) =>
+        VehicleCapCheck.GateAsync(
+            db, ApplicationId, _security.AssetType ?? string.Empty,
+            _security.MakeModel, _security.MfgYear, _application?.LoanAmount ?? 0m);
+
     private async Task CompleteStageAsync()
     {
+        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
+        // event or a stale circuit must not get past it. One shared check, never re-implemented.
+        await using (var gateDb = await DbFactory.CreateDbContextAsync())
+        {
+            if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
+            {
+                return;
+            }
+
+            // Evaluated against the in-memory form, which is exactly what PersistAsync is about to
+            // write — checking the stored row instead would judge values that are being replaced.
+            _capGate = await CapGateAsync(gateDb);
+            if (!_capGate.CanAdvance)
+            {
+                return;
+            }
+        }
         await PersistAsync(completeStage: true);
         Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial");
     }

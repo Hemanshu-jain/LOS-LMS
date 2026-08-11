@@ -756,3 +756,15 @@
 .drawer-reject-button:hover {
     background: #f8d7d7;
 }
+
+/* Rejection was requested, not applied — deliberately informational, not a status change. */
+.drawer-request-note {
+    margin: 10px 0 0;
+    padding: 8px 11px;
+    border: 1px solid #c9d4e4;
+    border-left: 3px solid #2f5d9e;
+    background: #f2f6fc;
+    border-radius: 3px;
+    font-size: 11.5px;
+    color: #24405f;
+}

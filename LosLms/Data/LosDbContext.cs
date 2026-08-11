@@ -102,6 +102,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<RejectionLog> RejectionLogs => Set<RejectionLog>();
 
+    public DbSet<AdminRequest> AdminRequests => Set<AdminRequest>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -753,6 +755,35 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany()
                 .HasForeignKey(v => v.CompanyId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AdminRequest>(entity =>
+        {
+            entity.ToTable("AdminRequest");
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.Status).HasDefaultValue(AdminRequest.Pending);
+
+            // The Inbox reads pending-first, so both columns are worth an index.
+            entity.HasIndex(r => new { r.ApplicationId, r.RequestType, r.Status });
+            entity.HasIndex(r => r.Status);
+
+            entity.HasOne(r => r.Application)
+                .WithMany()
+                .HasForeignKey(r => r.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, not cascade: removing a user must never erase who asked for a bypass or who
+            // granted it. That is the audit trail this table exists to be.
+            entity.HasOne(r => r.RequestedBy)
+                .WithMany()
+                .HasForeignKey(r => r.RequestedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(r => r.ReviewedBy)
+                .WithMany()
+                .HasForeignKey(r => r.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ApplicationUser>(entity =>

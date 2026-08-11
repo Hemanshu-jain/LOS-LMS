@@ -61,6 +61,13 @@ public sealed class PartyForm
 
     // ---- Server-owned state ----
     public string DedupeStatus { get; set; } = "NotRun";
+
+    /// <summary>NotChecked / Unavailable / Passed / Failed. See <see cref="Party.CibilStatus"/>.</summary>
+    public string CibilStatus { get; set; } = "NotChecked";
+
+    public int? CibilScore { get; set; }
+
+    public DateTime? CibilCheckedAt { get; set; }
     public bool PanVerified { get; set; }
     public bool AadhaarVerified { get; set; }
     public bool MobileVerified { get; set; }

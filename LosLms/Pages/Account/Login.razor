@@ -1,4 +1,4 @@
-@page "/account/login"
+﻿@page "/account/login"
 @using LosLms.Models
 @using Microsoft.AspNetCore.Identity
 @attribute [AllowAnonymous]
@@ -7,6 +7,8 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Sign in · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
 
 @* Statically rendered — see App.razor. That is what gives this page a live HttpContext for the
    authentication cookie, and what makes <EditForm method="post"> a real form post with automatic
