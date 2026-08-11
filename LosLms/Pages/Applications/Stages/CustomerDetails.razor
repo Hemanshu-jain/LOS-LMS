@@ -10,6 +10,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject IHttpClientFactory HttpClientFactory
 
 <PageTitle>Customer Details · @ApplicationId</PageTitle>
 
@@ -281,21 +282,29 @@ else
                             </FormField>
 
                             <FormField Label="City" For="contact-city">
-                                <input id="contact-city" type="text" class="field-input"
+                                <input id="contact-city" type="text" class="field-input" list="city-suggestions"
                                        @bind="party.City" @bind:after="AfterContactChanged" />
+                                <datalist id="city-suggestions">
+                                    @foreach (var c in CitySuggestions) { <option value="@c"></option> }
+                                </datalist>
                             </FormField>
 
                             <FormField Label="State" For="contact-state">
-                                <select id="contact-state" class="field-input"
-                                        @bind="party.State" @bind:after="AfterContactChanged">
-                                    <option value="">@BlankOption</option>
-                                    @foreach (var o in StateOptions) { <option value="@o">@o</option> }
-                                </select>
+                                <input id="contact-state" type="text" class="field-input" list="state-suggestions"
+                                       @bind="party.State" @bind:after="AfterContactChanged" />
+                                <datalist id="state-suggestions">
+                                    @foreach (var s in StateSuggestions) { <option value="@s"></option> }
+                                </datalist>
                             </FormField>
 
                             <FormField Label="PIN code" For="contact-pin" Error="@ErrorFor("pinCode")">
                                 <input id="contact-pin" type="text" class="field-input" maxlength="6"
-                                       @bind="party.PinCode" @bind:after="AfterContactChanged" @onblur='() => Validate("pinCode")' />
+                                       @bind="party.PinCode" @bind:after="AfterContactChanged"
+                                       @onblur='() => OnPinCodeChanged()' />
+                                @if (_pinLookup is not null)
+                                {
+                                    <span class="field-hint">@_pinLookup</span>
+                                }
                             </FormField>
 
                             <FormField Label="Residence type" For="contact-residence">
@@ -396,7 +405,26 @@ else
     private static readonly string[] CategoryOptions = { "Individual", "Proprietorship", "Partnership firm", "Private limited company", "HUF" };
     private static readonly string[] NationalityOptions = { "Indian", "Other" };
     private static readonly string[] TongueOptions = { "Marathi", "Hindi", "English", "Other" };
-    private static readonly string[] StateOptions = { "Maharashtra", "Other" };
+    // State and city used to be a fixed { "Maharashtra", "Other" } dropdown — kept locking every
+    // non-Maharashtra loan officer out of the form. Both are now free-text inputs with a datalist
+    // of suggestions; anything typed that doesn't match the suggestions still saves as-is.
+    private static readonly string[] CitySuggestions =
+    {
+        "Hyderabad", "Mumbai", "Chennai", "Bangalore", "Delhi",
+    };
+
+    private static readonly string[] StateSuggestions =
+    {
+        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
+        "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+        "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
+        "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+        "Uttar Pradesh", "Uttarakhand", "West Bengal",
+        "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+        "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
+    };
+
     private static readonly string[] ResidenceOptions = { "Owned", "Rented", "Company provided" };
     private static readonly string[] EmploymentOptions = { "Salaried", "Self-employed", "Business owner" };
 
@@ -431,6 +459,8 @@ else
     private string? _uploadError;
     private string? _toast;
     private CancellationTokenSource? _toastCts;
+    private string? _pinLookup;
+    private CancellationTokenSource? _pinLookupCts;
 
     private readonly Dictionary<string, PartyForm> _parties = new();
     private readonly Dictionary<string, SectionState> _sections = new();
@@ -484,6 +514,8 @@ else
     {
         _toastCts?.Cancel();
         _toastCts?.Dispose();
+        _pinLookupCts?.Cancel();
+        _pinLookupCts?.Dispose();
     }
 
     // ---------------------------------------------------------------------
@@ -540,6 +572,98 @@ else
         {
             s.ContactCollapsed = true;
             s.ContactAutoCollapsed = true;
+        }
+    }
+
+    // ponytail: offline prefix table covering the 5 default cities. Three-digit zone prefixes are
+    // stable, sourced from India Post's public PIN directory; misses fall through to the remote
+    // lookup below. Full six-digit coverage would be a static asset, not a constant — add a JSON
+    // file under wwwroot and load it here if the remote endpoint is unreachable in production.
+    private sealed record PinEntry(string City, string State, string[] Prefixes);
+
+    private static readonly IReadOnlyList<PinEntry> PinPrefixTable = new PinEntry[]
+    {
+        new("Hyderabad", "Telangana",   new[] { "500" }),
+        new("Mumbai",    "Maharashtra", new[] { "400" }),
+        new("Chennai",   "Tamil Nadu",  new[] { "600" }),
+        new("Bangalore", "Karnataka",   new[] { "560" }),
+        new("Delhi",     "Delhi",       new[] { "110" }),
+    };
+
+    private async Task OnPinCodeChanged()
+    {
+        Validate("pinCode");
+
+        var party = ActiveParty;
+        var pin = party.PinCode;
+
+        if (string.IsNullOrEmpty(pin) || !PinPattern.IsMatch(pin))
+        {
+            _pinLookup = null;
+            return;
+        }
+
+        // Cheap local hit first — covers most demo traffic and avoids a network round-trip.
+        var prefix = pin[..3];
+        var local = PinPrefixTable.FirstOrDefault(p => p.Prefixes.Contains(prefix));
+        if (local is not null)
+        {
+            party.City = local.City;
+            party.State = local.State;
+            _pinLookup = $"Auto-filled from PIN: {local.City}, {local.State}";
+            return;
+        }
+
+        // Remote fallback. India Post's public PostOffice API (api.postalpincode.in) returns the
+        // post office(s) for a 6-digit PIN; we take the first match's District + State.
+        //
+        // ponytail: anonymous, no key, no SLA. If the call fails or the network is unreachable the
+        // form still saves — the lookup is a convenience, not a gate. Suppressing the throw keeps
+        // the page interactive on flaky connections.
+        try
+        {
+            _pinLookupCts?.Cancel();
+            _pinLookupCts = new CancellationTokenSource();
+            var ct = _pinLookupCts.Token;
+
+            var http = HttpClientFactory.CreateClient();
+            var url = $"https://api.postalpincode.in/pincode/{pin}";
+            using var response = await http.GetAsync(url, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _pinLookup = "PIN lookup unavailable — enter city/state manually.";
+                return;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream, cancellationToken: ct);
+            var first = doc.RootElement[0];
+            if (first.TryGetProperty("Status", out var status) && status.GetString() == "Success"
+                && first.TryGetProperty("PostOffice", out var offices)
+                && offices.GetArrayLength() > 0)
+            {
+                var office = offices[0];
+                var district = office.TryGetProperty("District", out var d) ? d.GetString() : null;
+                var state = office.TryGetProperty("State", out var s) ? s.GetString() : null;
+
+                if (!string.IsNullOrWhiteSpace(state))
+                {
+                    party.State = state;
+                }
+                if (!string.IsNullOrWhiteSpace(district))
+                {
+                    party.City = district;
+                }
+                _pinLookup = $"Auto-filled from PIN: {party.City}, {party.State}";
+            }
+            else
+            {
+                _pinLookup = "PIN not found — enter city/state manually.";
+            }
+        }
+        catch (Exception)
+        {
+            _pinLookup = "PIN lookup failed — enter city/state manually.";
         }
     }
 

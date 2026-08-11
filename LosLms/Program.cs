@@ -14,6 +14,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// PIN-code -> city/state autofill on Customer Details hits an anonymous India Post endpoint.
+// Default factory, no keys, no base address — each call site passes its own URL.
+builder.Services.AddHttpClient();
+
 // An empty or absent LosDb connection string switches the whole app onto a self-contained SQLite
 // file — this is the portable client-demo build, which needs no MySQL server. Development keeps its
 // real MySQL connection string in appsettings and behaves exactly as before.
