@@ -1,0 +1,92 @@
+@inject IJSRuntime JS
+
+@* A short first-run walkthrough for Company Setup. Shown once per company while setup is still
+   outstanding, and never again after it completes. Deliberately tiny — a stepped overlay, no library,
+   no new dependency. Dismissal is remembered per company in localStorage so it does not re-nag on
+   every reload, but it simply never renders once SetupCompletedAt is stamped. *@
+
+@if (_open)
+{
+    <div class="walkthrough-scrim" role="dialog" aria-modal="true" aria-label="First-run setup guide">
+        <div class="walkthrough-card">
+            <span class="walkthrough-step-count">Step @(_step + 1) of @Steps.Length</span>
+            <h2 class="walkthrough-title">@Steps[_step].Title</h2>
+            <p class="walkthrough-body">@Steps[_step].Body</p>
+
+            <div class="walkthrough-actions">
+                <button type="button" class="walkthrough-skip" @onclick="DismissAsync">Skip</button>
+                <div class="walkthrough-nav">
+                    @if (_step > 0)
+                    {
+                        <button type="button" class="walkthrough-back" @onclick="() => _step--">Back</button>
+                    }
+                    @if (_step < Steps.Length - 1)
+                    {
+                        <button type="button" class="walkthrough-next" @onclick="() => _step++">Next</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="walkthrough-next" @onclick="DismissAsync">Got it</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>False once the company's setup is complete — then the guide never shows.</summary>
+    [Parameter] public bool Visible { get; set; }
+
+    /// <summary>Scopes the "already dismissed" flag so it is remembered per company, not globally.</summary>
+    [Parameter] public int CompanyId { get; set; }
+
+    private bool _open;
+    private int _step;
+    private bool _checked;
+
+    private (string Title, string Body)[] Steps { get; } =
+    {
+        ("Welcome — let's set up your company",
+         "A few details are needed before the rest of the app unlocks. This takes a minute. You can reopen these tabs any time from Company Setup."),
+        ("1 · Company Profile",
+         "Enter your company's name (and, if you like, its contact details and address). The name is required before the app can be used."),
+        ("2 · Branches",
+         "Add at least one branch. Applications are booked against a branch, so the app stays locked until one exists."),
+        ("3 · Policy Thresholds",
+         "Review the underwriting limits — FOIR/LTV caps, GST, CIBIL band and so on. Sensible defaults are pre-filled; confirm or adjust them to your policy."),
+        ("You're ready to go",
+         "Once a company name and at least one branch are saved, the redirect lifts and the full app opens for everyone in your company."),
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // localStorage is only reachable once interactive, so the decision waits for the first render.
+        if (!firstRender || _checked)
+        {
+            return;
+        }
+
+        _checked = true;
+
+        if (!Visible)
+        {
+            return;
+        }
+
+        var dismissed = await JS.InvokeAsync<string?>("localStorage.getItem", Key);
+        if (string.IsNullOrEmpty(dismissed))
+        {
+            _open = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DismissAsync()
+    {
+        _open = false;
+        await JS.InvokeVoidAsync("localStorage.setItem", Key, "1");
+    }
+
+    private string Key => $"los-walkthrough-{CompanyId}";
+}

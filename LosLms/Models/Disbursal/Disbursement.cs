@@ -46,6 +46,51 @@ public class Disbursement
     /// <summary>Anchors the repayment schedule's due dates.</summary>
     public DateOnly? FirstEmiDate { get; set; }
 
+    // ---- Disbursement account & trade advance ----
+
+    /// <summary>
+    /// Which of the lender's own accounts the money leaves from. Plain text for now
+    /// (e.g. "HDFC Bank — Operations A/C ****1234"); a real account master is out of scope.
+    /// </summary>
+    [MaxLength(200)]
+    public string? DisburseFromAccount { get; set; }
+
+    /// <summary>
+    /// Advance already paid to the dealer/seller before disbursal. Subtracted from the net
+    /// disbursement amount, which is itself computed on every render and never stored.
+    /// </summary>
+    public decimal? TradeAdvance { get; set; }
+
+    // ---- EMI adjustment (Post Sanction) ----
+
+    /// <summary>Officer's override for the first month's instalment; null = use the computed EMI.</summary>
+    public decimal? FirstEmiOverride { get; set; }
+
+    /// <summary>Round the regular instalments to this nearest rupee figure (10 or 100); null = no rounding.</summary>
+    public decimal? EmiRoundedTo { get; set; }
+
+    // ---- E-agreement, welcome letter, welcome SMS ----
+    //
+    // The two documents are generated for real. Dispatch to an e-sign provider and an SMS gateway are
+    // honest stubs — the status columns only ever leave their default until a real provider is wired,
+    // and specifically are never set to 'Signed'/'Sent' by anything in this build.
+
+    [MaxLength(400)]
+    public string? AgreementFilePath { get; set; }
+
+    /// <summary>NotSent / Sent / Signed. Only ever 'NotSent' in this build — no e-sign provider.</summary>
+    [MaxLength(20)]
+    public string AgreementEsignStatus { get; set; } = "NotSent";
+
+    [MaxLength(400)]
+    public string? WelcomeLetterFilePath { get; set; }
+
+    /// <summary>NotSent / Sent. Only ever 'NotSent' in this build — no SMS gateway.</summary>
+    [MaxLength(20)]
+    public string WelcomeSmsStatus { get; set; } = "NotSent";
+
+    public DateTime? WelcomeSmsSentAt { get; set; }
+
     [MaxLength(400)]
     public string? MemoFilePath { get; set; }
 

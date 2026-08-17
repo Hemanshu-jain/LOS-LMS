@@ -68,6 +68,12 @@ public class AdminRequest
     /// <summary>Unblocks Loan &amp; Security when the vehicle is over cap or absent from the catalog.</summary>
     public const string MakeModelCapBypass = "MakeModelCapBypass";
 
+    /// <summary>
+    /// Approving this changes a catalog vehicle's cap to a new ceiling. The new amount rides in the
+    /// <see cref="SubjectKey"/> — "Make Model|Year|NewAmount" — so approval needs nothing typed.
+    /// </summary>
+    public const string MakeModelCapChange = "MakeModelCapChange";
+
     /// <summary>Approving this is what actually rejects the application.</summary>
     public const string Reject = "Reject";
 
@@ -82,6 +88,7 @@ public class AdminRequest
     {
         CibilBypass => "CIBIL bypass",
         MakeModelCapBypass => "Vehicle cap bypass",
+        MakeModelCapChange => "Vehicle cap change",
         Reject => "Reject application",
         _ => requestType,
     };

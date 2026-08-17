@@ -76,6 +76,7 @@ else
                                     <div class="field-grid">
                                         <FormField Label="PSL classification" For="el-psl">
                                             <select id="el-psl" class="field-input" @bind="_classification.Psl">
+                                                <option value="">@BlankOption</option>
                                                 @foreach (var o in PslOptions) { <option value="@o">@o</option> }
                                             </select>
                                         </FormField>

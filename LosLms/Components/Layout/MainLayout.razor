@@ -1,5 +1,10 @@
 @inherits LayoutComponentBase
+@using LosLms.Data
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
 @inject NavigationManager Navigation
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject UpdateNotificationService Updates
 
 @* The app bar is the only chrome this layout owns. It replaces the hardcoded
    "Credit Officer · Nashik West" chip that used to live inside the Applications Dashboard and
@@ -18,6 +23,13 @@
                 </Authorized>
             </AuthorizeView>
 
+            @* Server-lifecycle management — SuperAdmin only, never a company Admin. *@
+            <AuthorizeView Roles="@TenantContext.SuperAdminRole" Context="super">
+                <Authorized>
+                    <a class="app-nav-link" href="/system/updates">System Updates</a>
+                </Authorized>
+            </AuthorizeView>
+
             <div class="app-user">
                 <span class="app-user-name">@_displayName</span>
                 <span class="app-user-role">@_role</span>
@@ -29,6 +41,20 @@
         </header>
     </Authorized>
 </AuthorizeView>
+
+@* Passive reminder for the SuperAdmin — the background check found a newer release. Installing it is
+   still a deliberate click-through to System Updates; this only surfaces that one exists. *@
+@if (_role == "SuperAdmin" && Updates.UpdateAvailable && !_updateDismissed)
+{
+    <div class="update-banner" role="status">
+        <span class="update-banner-text">
+            🔔 A new version (<strong>@Updates.LatestTag</strong>) is available.
+        </span>
+        <a class="update-banner-action" href="/system/updates">Review &amp; install →</a>
+        <button type="button" class="update-banner-dismiss" aria-label="Dismiss"
+                @onclick="() => _updateDismissed = true">🗙</button>
+    </div>
+}
 
 @Body
 
@@ -43,6 +69,7 @@
 
     private string _displayName = string.Empty;
     private string _role = string.Empty;
+    private bool _updateDismissed;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -67,13 +94,39 @@
             : user.IsInRole(TenantContext.StaffRole) ? "Staff"
             : "No role";
 
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+
         // Backstop for the temporary-password rule. Login redirects there already; this catches
         // somebody who signs in and then types a URL to get around it. The /account pages are
-        // exempt or it would redirect to itself forever.
-        if (user.HasClaim(TenantContext.MustChangePasswordClaim, "true")
-            && !Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("account/", StringComparison.OrdinalIgnoreCase))
+        // exempt or it would redirect to itself forever. Password change takes precedence over the
+        // setup gate below — a temporary credential must be replaced first.
+        if (user.HasClaim(TenantContext.MustChangePasswordClaim, "true"))
         {
-            Navigation.NavigateTo("/account/change-password", forceLoad: true);
+            if (!relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase))
+            {
+                Navigation.NavigateTo("/account/change-password", forceLoad: true);
+            }
+
+            return;
+        }
+
+        // Backstop for the first-run setup gate — the interactive-circuit half of the middleware in
+        // Program.cs, which never sees SignalR navigations. Same rule: a company-scoped user whose
+        // company setup is not complete is sent to Company Setup and can reach nothing else. SuperAdmin
+        // has no company and is exempt; so are the /account and /company-setup pages themselves.
+        var isSuperAdmin = user.IsInRole(TenantContext.SuperAdminRole);
+        var setupExempt = relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase)
+            || relative.StartsWith("company-setup", StringComparison.OrdinalIgnoreCase);
+
+        if (!isSuperAdmin
+            && !setupExempt
+            && int.TryParse(user.FindFirst(TenantContext.CompanyIdClaim)?.Value, out var companyId))
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            if (!await CompanySetupState.IsCompleteAsync(db, companyId))
+            {
+                Navigation.NavigateTo("/company-setup", forceLoad: true);
+            }
         }
     }
 }

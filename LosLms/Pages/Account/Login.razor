@@ -51,6 +51,15 @@
 
             <button type="submit" class="auth-submit">Sign in</button>
         </EditForm>
+
+        @* Native disclosure — no JS, which matters on this statically rendered page. There is no
+           self-service reset by design: no email or SMS provider exists in this build, and for internal
+           staff software an admin-driven reset is the correct control anyway. *@
+        <details class="auth-forgot">
+            <summary>Forgot your password?</summary>
+            <p>Contact your company Admin to reset your password. They can issue you a new temporary
+               password from Company Setup → User Management.</p>
+        </details>
     </div>
 </div>
 

@@ -24,6 +24,7 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 {
     private readonly int? _companyId;
     private readonly bool _isSuperAdmin;
+    private readonly bool _isAdmin;
     private readonly bool _hasUser;
 
     public LosDbContext(DbContextOptions<LosDbContext> options, TenantContext tenant)
@@ -31,8 +32,16 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
     {
         _companyId = tenant.CompanyId;
         _isSuperAdmin = tenant.IsSuperAdmin;
+        _isAdmin = tenant.IsAdmin;
         _hasUser = tenant.HasUser;
     }
+
+    /// <summary>
+    /// The signed-in user is an Admin or SuperAdmin — the accounts with full authority over a
+    /// company's files. Snapshotted at construction like the tenant, so the stage gates can read one
+    /// flag off the context they already hold instead of every gate call threading a user through.
+    /// </summary>
+    public bool IsElevatedUser => _isSuperAdmin || _isAdmin;
 
     public DbSet<Company> Companies => Set<Company>();
 
@@ -53,6 +62,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<BankDetail> BankDetails => Set<BankDetail>();
 
     public DbSet<BankStatement> BankStatements => Set<BankStatement>();
+
+    public DbSet<BankStatementAnalysis> BankStatementAnalyses => Set<BankStatementAnalysis>();
 
     public DbSet<CamCostBreakdown> CamCostBreakdowns => Set<CamCostBreakdown>();
 
@@ -549,11 +560,36 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             entity.ToTable("Disbursement");
             entity.HasKey(d => d.Id);
 
+            entity.Property(d => d.TradeAdvance).HasPrecision(18, 2);
+            entity.Property(d => d.FirstEmiOverride).HasPrecision(18, 2);
+            entity.Property(d => d.EmiRoundedTo).HasPrecision(18, 2);
+            entity.Property(d => d.AgreementEsignStatus).HasDefaultValue("NotSent");
+            entity.Property(d => d.WelcomeSmsStatus).HasDefaultValue("NotSent");
+
             entity.HasIndex(d => d.ApplicationId).IsUnique();
 
             entity.HasOne(d => d.Application)
                 .WithOne()
                 .HasForeignKey<Disbursement>(d => d.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BankStatementAnalysis>(entity =>
+        {
+            entity.ToTable("BankStatementAnalyses");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Status).HasDefaultValue(BankStatementAnalysis.NotConfigured);
+
+            // Reserved for a real provider's full response; long text, nullable, never populated here.
+            entity.Property(a => a.RawResultJson).HasColumnType("longtext");
+
+            // Many per application — not unique. Inherits tenant isolation through the filtered
+            // Application, like every other child table.
+            entity.HasIndex(a => a.ApplicationId);
+
+            entity.HasOne(a => a.Application)
+                .WithMany()
+                .HasForeignKey(a => a.ApplicationId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -698,10 +734,14 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             // Every policy value below is the exact literal it replaced in code, so relocating them
             // changed no behaviour. They are the defaults on the model too, which is what a company
             // created later starts from.
+            // Ships with a BLANK name and no branches on purpose: a fresh install is a blank slate, so
+            // first-run setup is forced (SetupCompletedAt stays null until an Admin enters a real name
+            // and a branch). No place names, customer names or demo figures are baked into the build —
+            // only the policy-threshold defaults below, which the Policy Thresholds tab exists to confirm.
             entity.HasData(new Company
             {
                 Id = SeedCompanyId,
-                Name = "Default Company — rename in Company Setup",
+                Name = string.Empty,
                 SlaOverdueDays = 5,
                 FoirCapPct = 50m,
                 LtvCapPct = 85m,
@@ -731,12 +771,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .HasForeignKey(b => b.CompanyId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasData(
-                new Branch { Id = 1, CompanyId = SeedCompanyId, Name = "Nashik West", IsActive = true },
-                new Branch { Id = 2, CompanyId = SeedCompanyId, Name = "Nashik East", IsActive = true },
-                new Branch { Id = 3, CompanyId = SeedCompanyId, Name = "Pune Camp", IsActive = true },
-                new Branch { Id = 4, CompanyId = SeedCompanyId, Name = "Aurangabad", IsActive = true },
-                new Branch { Id = 5, CompanyId = SeedCompanyId, Name = "Jalgaon", IsActive = true });
+            // No seeded branches. The client enters their own on the Branches tab during first-run
+            // setup — shipping "Nashik West" et al. would bake one deployment's places into every build.
         });
 
         modelBuilder.Entity<VehicleLoanCap>(entity =>

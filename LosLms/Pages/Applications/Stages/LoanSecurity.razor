@@ -11,6 +11,8 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject TenantContext Tenant
+@inject AdminRequestNotifier Notifier
 
 <PageTitle>Loan &amp; Security · @ApplicationId</PageTitle>
 
@@ -265,9 +267,80 @@ else
                                                 </FormField>
                                             }
 
+                                            @* ---- Cap change: a vehicle already in the catalog ----
+                                               Staff propose a new ceiling; an Admin approves and the
+                                               catalog updates. Admins apply it on the spot. *@
+                                            @if (MatchedCap is { } matched)
+                                            {
+                                                <FormField Label="Vehicle cap" For="sec-cap">
+                                                    <div id="sec-cap" class="resolved-year">@FormatInr(matched.MaxLoanAmount)</div>
+                                                    @if (_capChangePending)
+                                                    {
+                                                        <span class="field-caption">Cap change requested — awaiting an Admin.</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="cap-change-row">
+                                                            <div class="currency-input">
+                                                                <span class="currency-symbol">₹</span>
+                                                                <input type="number" min="0" step="1" class="field-input has-prefix"
+                                                                       placeholder="New cap" @bind="_capChangeAmount" />
+                                                            </div>
+                                                            <button type="button" class="add-row-button"
+                                                                    disabled="@(_capChangeAmount is not > 0m)"
+                                                                    @onclick="RequestCapChangeAsync">Request cap change</button>
+                                                        </div>
+                                                    }
+                                                    @if (_capChangeMessage is { } capMsg)
+                                                    {
+                                                        <span class="field-caption">@capMsg</span>
+                                                    }
+                                                </FormField>
+                                            }
+
+                                            @* ---- Add a vehicle the catalog does not have ----
+                                               Enter it with a cap; on completing the stage it is
+                                               written into the catalog as this vehicle's ceiling. *@
+                                            @if (MatchedCap is null)
+                                            {
+                                                @if (!_addNewVehicle)
+                                                {
+                                                    <FormField Label="Not listed?" For="sec-addnew">
+                                                        <button id="sec-addnew" type="button" class="add-row-button"
+                                                                @onclick="StartAddNewVehicle">＋ Add a vehicle not in the catalog</button>
+                                                    </FormField>
+                                                }
+                                                else
+                                                {
+                                                    <FormField Label="New make" For="sec-nm-make">
+                                                        <input id="sec-nm-make" class="field-input" maxlength="80"
+                                                               @bind="_newMake" @bind:event="oninput" @bind:after="OnNewVehicleChangedAsync" />
+                                                    </FormField>
+                                                    <FormField Label="New model" For="sec-nm-model">
+                                                        <input id="sec-nm-model" class="field-input" maxlength="120"
+                                                               @bind="_newModel" @bind:event="oninput" @bind:after="OnNewVehicleChangedAsync" />
+                                                    </FormField>
+                                                    <FormField Label="New model year" For="sec-nm-year">
+                                                        <input id="sec-nm-year" type="number" min="1990" max="2100" step="1" class="field-input"
+                                                               @bind="_newYear" @bind:after="OnNewVehicleChangedAsync" />
+                                                    </FormField>
+                                                    <FormField Label="Proposed cap" For="sec-nm-cap">
+                                                        <div class="currency-input">
+                                                            <span class="currency-symbol">₹</span>
+                                                            <input id="sec-nm-cap" type="number" min="0" step="1" class="field-input has-prefix"
+                                                                   @bind="_newVehicleCap" @bind:after="RefreshCapGateAsync" />
+                                                        </div>
+                                                        <span class="field-caption">Added to the catalog as this vehicle's cap when you complete the stage.</span>
+                                                        <button type="button" class="row-action" @onclick="CancelAddNewVehicle">Cancel</button>
+                                                    </FormField>
+                                                }
+                                            }
+
                                             @* Derived from the catalog year above, not typed. Two
                                                independent year fields could disagree on the same
                                                vehicle, and the cap is priced against this one. *@
+                                            @if (!_addNewVehicle)
+                                            {
                                             <FormField Label="Manufacturing year" For="sec-year">
                                                 @if (_vehicleCatalog.Count > 0)
                                                 {
@@ -286,6 +359,7 @@ else
                                                     </select>
                                                 }
                                             </FormField>
+                                            }
 
                                             <FormField Label="Registration no." For="sec-reg">
                                                 <input id="sec-reg" type="text" class="field-input" @bind="_security.RegNo" />
@@ -435,6 +509,8 @@ else
                                                 <th>Mobile</th>
                                                 <th>Address</th>
                                                 <th>Known since</th>
+                                                <th>ID proof</th>
+                                                <th>Photo</th>
                                                 <th></th>
                                             </tr>
                                         </thead>
@@ -473,6 +549,28 @@ else
                                                     </td>
                                                     <td><input class="reference-input" @bind="reference.Address" /></td>
                                                     <td><input class="reference-input" @bind="reference.KnownSince" /></td>
+                                                    <td class="reference-upload-cell">
+                                                        <label class="upload-target @(!string.IsNullOrWhiteSpace(reference.IdProofFilePath) ? "is-filled" : null)">
+                                                            @(!string.IsNullOrWhiteSpace(reference.IdProofFilePath) ? "✓ ID proof" : "Upload")
+                                                            <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                                       OnChange="@(e => OnReferenceFileSelectedAsync(e, index, ReferenceUploadKind.IdProof))" />
+                                                        </label>
+                                                        @if (ReferenceFileUrl(reference.IdProofFilePath) is { } idUrl)
+                                                        {
+                                                            <a class="reference-file-link" href="@idUrl" target="_blank" rel="noopener">view</a>
+                                                        }
+                                                    </td>
+                                                    <td class="reference-upload-cell">
+                                                        <label class="upload-target @(!string.IsNullOrWhiteSpace(reference.PhotoFilePath) ? "is-filled" : null)">
+                                                            @(!string.IsNullOrWhiteSpace(reference.PhotoFilePath) ? "✓ Photo" : "Upload")
+                                                            <InputFile class="visually-hidden" accept="image/*"
+                                                                       OnChange="@(e => OnReferenceFileSelectedAsync(e, index, ReferenceUploadKind.Photo))" />
+                                                        </label>
+                                                        @if (ReferenceFileUrl(reference.PhotoFilePath) is { } photoUrl)
+                                                        {
+                                                            <a class="reference-file-link" href="@photoUrl" target="_blank" rel="noopener">view</a>
+                                                        }
+                                                    </td>
                                                     <td class="remove-cell">
                                                         @* Only offered above the two-row minimum, and never for the derived
                                                            Co-Applicant row — that one is not the officer's to delete, however
@@ -534,6 +632,39 @@ else
 
     /// <summary>The vehicle loan cap as a gate, recomputed whenever the vehicle or the amount moves.</summary>
     private GateResult _capGate = GateResult.Clear;
+
+    // ---- Off-catalog vehicle the officer is adding (its cap seeds the catalog on completion) ----
+    private bool _addNewVehicle;
+    private string? _newMake;
+    private string? _newModel;
+    private int? _newYear;
+    private decimal? _newVehicleCap;
+
+    private bool NewVehicleReady =>
+        !string.IsNullOrWhiteSpace(_newMake) && !string.IsNullOrWhiteSpace(_newModel)
+        && _newYear is > 1990 and <= 2100 && _newVehicleCap is > 0m;
+
+    // ---- Cap-change request for a vehicle already in the catalog ----
+    private decimal? _capChangeAmount;
+    private bool _capChangePending;
+    private string? _capChangeMessage;
+
+    /// <summary>The catalog row the selected vehicle matches, or null when it is off-catalog.</summary>
+    private VehicleLoanCap? MatchedCap
+    {
+        get
+        {
+            var makeModel = _security.MakeModel?.Trim();
+            if (string.IsNullOrWhiteSpace(makeModel))
+            {
+                return null;
+            }
+
+            return _vehicleCatalog.FirstOrDefault(v =>
+                string.Equals($"{v.Make} {v.Model}", makeModel, StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrWhiteSpace(_security.MfgYear) || v.Year.ToString() == _security.MfgYear!.Trim()));
+        }
+    }
 
     private IEnumerable<string> CatalogMakes =>
         _vehicleCatalog.Select(v => v.Make).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(m => m);
@@ -705,6 +836,8 @@ else
 
     private enum UploadKind { Invoice, Insurance }
 
+    private enum ReferenceUploadKind { IdProof, Photo }
+
     // ---------------------------------------------------------------------
     // State
     // ---------------------------------------------------------------------
@@ -778,6 +911,7 @@ else
 
             ResolveMakeModel();
             await RefreshCapGateAsync(db);
+            await LoadCapChangePendingAsync(db);
 
             var references = await db.References.AsNoTracking()
                 .Where(r => r.ApplicationId == ApplicationId)
@@ -1025,6 +1159,68 @@ else
         }
     }
 
+    /// <summary>
+    /// Uploads a reference's ID proof or photo. Same disk-write pattern as the security documents
+    /// above, but targeted at a specific reference row: the path is set on the in-memory form, and the
+    /// delete-and-reinsert save re-persists it onto the fresh row. The derived Co-Applicant row uses
+    /// this too — only its Name is read-only, not its uploads.
+    /// </summary>
+    private async Task OnReferenceFileSelectedAsync(InputFileChangeEventArgs e, int index, ReferenceUploadKind kind)
+    {
+        _uploadError = null;
+        var file = e.File;
+
+        if (file is null || _application is null || index < 0 || index >= _references.Count)
+        {
+            return;
+        }
+
+        if (file.Size > MaxUploadBytes)
+        {
+            _uploadError = $"File is too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB.";
+            return;
+        }
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension))
+        {
+            _uploadError = "Unsupported file type. Use JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, "references");
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+
+        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "references", fileName);
+
+        if (kind == ReferenceUploadKind.IdProof)
+        {
+            _references[index].IdProofFilePath = relativePath;
+        }
+        else
+        {
+            _references[index].PhotoFilePath = relativePath;
+        }
+    }
+
+    /// <summary>The guarded /files URL for a stored reference document, or null when there is none.</summary>
+    private string? ReferenceFileUrl(string? storedPath) =>
+        string.IsNullOrWhiteSpace(storedPath) || _application is null
+            ? null
+            : $"/files/{_application.Id}/references/{Path.GetFileName(storedPath)}";
+
     // ---------------------------------------------------------------------
     // Persistence
     // ---------------------------------------------------------------------
@@ -1047,13 +1243,177 @@ else
 
     private async Task RefreshCapGateAsync(LosDbContext db) => _capGate = await CapGateAsync(db);
 
-    private Task<GateResult> CapGateAsync(LosDbContext db) =>
-        VehicleCapCheck.GateAsync(
+    private async Task<GateResult> CapGateAsync(LosDbContext db)
+    {
+        // A brand-new vehicle being added: its proposed cap is the ceiling, so the stage is not
+        // blocked as long as that cap covers the requested amount. The catalog row itself is written
+        // on completion (EnsureNewVehicleCapAsync), not on every keystroke.
+        if (_addNewVehicle && NewVehicleReady
+            && _newVehicleCap >= (_application?.LoanAmount ?? 0m))
+        {
+            return GateResult.Clear;
+        }
+
+        return await VehicleCapCheck.GateAsync(
             db, ApplicationId, _security.AssetType ?? string.Empty,
             _security.MakeModel, _security.MfgYear, _application?.LoanAmount ?? 0m);
+    }
+
+    // -------------------- Off-catalog vehicle --------------------
+
+    private void StartAddNewVehicle()
+    {
+        _addNewVehicle = true;
+
+        // Adding a new vehicle supersedes any catalog pick, so clear the dropdowns and the composed
+        // value — the new fields drive it from here.
+        _selectedMake = _selectedModel = _selectedYear = null;
+        _security.MakeModel = null;
+        _security.MfgYear = null;
+    }
+
+    private async Task CancelAddNewVehicle()
+    {
+        _addNewVehicle = false;
+        _newMake = _newModel = null;
+        _newYear = null;
+        _newVehicleCap = null;
+        _security.MakeModel = null;
+        _security.MfgYear = null;
+        await RefreshCapGateAsync();
+    }
+
+    /// <summary>Composes the typed make/model/year onto the security form and re-checks the cap.</summary>
+    private async Task OnNewVehicleChangedAsync()
+    {
+        var make = _newMake?.Trim();
+        var model = _newModel?.Trim();
+
+        _security.MakeModel = string.IsNullOrEmpty(make) || string.IsNullOrEmpty(model)
+            ? null
+            : $"{make} {model}";
+        _security.MfgYear = _newYear?.ToString();
+
+        await RefreshCapGateAsync();
+    }
+
+    /// <summary>
+    /// Writes the off-catalog vehicle into the catalog as its own cap, unless a row already exists
+    /// for that exact make/model/year. Runs at completion so an abandoned draft never seeds the table.
+    /// </summary>
+    private async Task EnsureNewVehicleCapAsync()
+    {
+        if (!_addNewVehicle || !NewVehicleReady || _application is null)
+        {
+            return;
+        }
+
+        var make = _newMake!.Trim();
+        var model = _newModel!.Trim();
+        var year = _newYear!.Value;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var caps = await db.VehicleLoanCaps.ToListAsync();
+        var exists = caps.Any(v =>
+            string.Equals(v.Make, make, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(v.Model, model, StringComparison.OrdinalIgnoreCase)
+            && v.Year == year);
+
+        if (exists)
+        {
+            return;
+        }
+
+        db.VehicleLoanCaps.Add(new VehicleLoanCap
+        {
+            CompanyId = _application.CompanyId,
+            Make = make,
+            Model = model,
+            Year = year,
+            MaxLoanAmount = _newVehicleCap!.Value,
+        });
+
+        await db.SaveChangesAsync();
+    }
+
+    // -------------------- Cap change on an existing catalog vehicle --------------------
+
+    /// <summary>
+    /// Staff propose a new ceiling and an Admin approves it (updating the catalog). An Admin, being
+    /// the authority, applies it on the spot — the same "admin decides here and now" rule the gates use.
+    /// </summary>
+    private async Task RequestCapChangeAsync()
+    {
+        if (MatchedCap is not { } cap || _capChangeAmount is not { } newAmount || newAmount <= 0m)
+        {
+            return;
+        }
+
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        if (Tenant.IsSuperAdmin || Tenant.IsAdmin)
+        {
+            var stored = await db.VehicleLoanCaps.FirstOrDefaultAsync(v => v.Id == cap.Id);
+            if (stored is not null)
+            {
+                stored.MaxLoanAmount = newAmount;
+                await db.SaveChangesAsync();
+            }
+
+            _capChangeAmount = null;
+            _capChangeMessage = $"Cap updated to {FormatInr(newAmount)}.";
+            _vehicleCatalog = await db.VehicleLoanCaps.AsNoTracking()
+                .OrderBy(v => v.Make).ThenBy(v => v.Model).ToListAsync();
+            await RefreshCapGateAsync();
+            return;
+        }
+
+        var subjectKey = CapChangeSubjectKey(cap, newAmount);
+        var raised = await GateCheckService.RaiseRequestAsync(
+            db, Notifier, ApplicationId, AdminRequest.MakeModelCapChange, Tenant.UserId,
+            reason: $"Change cap for {cap.Make} {cap.Model} ({cap.Year}) from "
+                    + $"{FormatInr(cap.MaxLoanAmount)} to {FormatInr(newAmount)}.",
+            subjectKey: subjectKey);
+
+        _capChangeMessage = raised
+            ? "Cap change requested — an Admin will review it."
+            : "A cap change is already awaiting an Admin.";
+        _capChangeAmount = null;
+        await LoadCapChangePendingAsync(db);
+    }
+
+    /// <summary>Encodes the vehicle and the proposed new cap so approval can apply it without a note.</summary>
+    private static string CapChangeSubjectKey(VehicleLoanCap cap, decimal newAmount) =>
+        $"{cap.Make} {cap.Model}|{cap.Year}|{newAmount.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>Whether a cap-change request for the selected vehicle is already waiting.</summary>
+    private async Task LoadCapChangePendingAsync(LosDbContext db)
+    {
+        if (MatchedCap is not { } cap)
+        {
+            _capChangePending = false;
+            return;
+        }
+
+        var prefix = $"{cap.Make} {cap.Model}|{cap.Year}|";
+        _capChangePending = await db.AdminRequests.AsNoTracking()
+            .AnyAsync(r => r.ApplicationId == ApplicationId
+                           && r.RequestType == AdminRequest.MakeModelCapChange
+                           && r.Status == AdminRequest.Pending
+                           && r.SubjectKey!.StartsWith(prefix));
+    }
+
+    private static string FormatInr(decimal amount) =>
+        "₹" + amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("en-IN"));
 
     private async Task CompleteStageAsync()
     {
+        // An off-catalog vehicle the officer entered becomes a catalog row here, BEFORE the gate is
+        // evaluated — so the cap it seeds is what the gate then measures against.
+        await EnsureNewVehicleCapAsync();
+
         // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
         // event or a stale circuit must not get past it. One shared check, never re-implemented.
         await using (var gateDb = await DbFactory.CreateDbContextAsync())
@@ -1131,6 +1491,10 @@ else
                 Mobile = form.Mobile,
                 Address = form.Address,
                 KnownSince = form.KnownSince,
+                // Uploaded on the form and re-persisted here: the row is deleted and re-inserted on
+                // every save, so the paths have to ride along or the files would orphan.
+                IdProofFilePath = form.IdProofFilePath,
+                PhotoFilePath = form.PhotoFilePath,
             });
         }
 
@@ -1188,6 +1552,8 @@ else
         Mobile = entity.Mobile,
         Address = entity.Address,
         KnownSince = entity.KnownSince,
+        IdProofFilePath = entity.IdProofFilePath,
+        PhotoFilePath = entity.PhotoFilePath,
     };
 
     private static void ApplyToEntity(SecurityForm form, SecurityDetail entity)

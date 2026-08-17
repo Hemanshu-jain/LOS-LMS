@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- This is the single executable the operator double-clicks. It is named for the product, not
+         "watchdog", because from their side it simply IS the app: it starts the server, opens the
+         browser, keeps it running, and applies updates. -->
+    <AssemblyName>LOS-LMS</AssemblyName>
+    <RootNamespace>LosLms.Watchdog</RootNamespace>
+    <!-- BCL only: Process + ZipFile are in the shared framework, so no package references. -->
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+</Project>
