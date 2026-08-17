@@ -16,28 +16,28 @@ namespace LosLms.Data;
 /// pointless migration each time. Roles and role assignments go through <c>UserManager</c> for the
 /// same reason — normalised keys and the security stamp are its job, not something to hand-write.
 ///
-/// The company and the five branches DO go through <c>HasData</c> (see
-/// <c>LosDbContext.ConfigureTenancy</c>): they are fully deterministic, and the company has to exist
-/// before the 128 seeded applications that reference it.
+/// The blank-slate company row DOES go through <c>HasData</c> (see
+/// <c>LosDbContext.ConfigureTenancy</c>): it is deterministic and must exist before first-run setup.
 ///
-/// Idempotent — safe to run on every start, and it is, because the portable SQLite build creates its
-/// database with EnsureCreated and never runs a migration.
+/// Idempotent — safe to run on every start. The schema is brought up to date by EF Core migrations
+/// on the SQLite database before this runs.
 /// </remarks>
 public static class IdentitySeeder
 {
-    /// <summary>The three ex-Officer rows, now real accounts. Ids are fixed so they are stable across
-    /// rebuilds and readable in the database.</summary>
+    /// <summary>
+    /// The single bootstrap account the build ships with: one generic company Admin, enough to sign in
+    /// and complete first-run Company Setup. No demo staff — the client creates their own real staff on
+    /// the User Management tab, then deactivates this one. Generic name and email on purpose: nothing
+    /// place-, person- or client-specific is baked into the build. Id is fixed so it is stable across
+    /// rebuilds.
+    /// </summary>
     private static readonly (string Id, string DisplayName, string Email, string Role)[] SeedUsers =
     {
-        // R. Kulkarni gets Admin; the other two are Staff. Flagged in the startup banner so the
-        // choice is visible and easy to change.
-        ("usr-r-kulkarni",  "R. Kulkarni",  "r.kulkarni@placeholder.local",  TenantContext.AdminRole),
-        ("usr-s-deshpande", "S. Deshpande", "s.deshpande@placeholder.local", TenantContext.StaffRole),
-        ("usr-a-rao",       "A. Rao",       "a.rao@placeholder.local",       TenantContext.StaffRole),
+        ("usr-admin", "Administrator", "admin@loslms.local", TenantContext.AdminRole),
     };
 
     private const string SuperAdminId = "usr-superadmin";
-    private const string SuperAdminEmail = "superadmin@placeholder.local";
+    private const string SuperAdminEmail = "superadmin@loslms.local";
 
     public static async Task SeedAsync(IServiceProvider services, ILogger logger)
     {
@@ -78,7 +78,8 @@ public static class IdentitySeeder
 
         await LinkSeededApplicationsAsync(scope.ServiceProvider);
 
-        ReportCredentials(logger, created);
+        var contentRoot = scope.ServiceProvider.GetService<IHostEnvironment>()?.ContentRootPath;
+        ReportCredentials(logger, created, contentRoot);
     }
 
     /// <summary>
@@ -260,7 +261,8 @@ public static class IdentitySeeder
 
     private static void ReportCredentials(
         ILogger logger,
-        IReadOnlyList<(string DisplayName, string Email, string Role, string Password)> created)
+        IReadOnlyList<(string DisplayName, string Email, string Role, string Password)> created,
+        string? contentRoot)
     {
         if (created.Count == 0)
         {
@@ -268,17 +270,48 @@ public static class IdentitySeeder
         }
 
         var lines = created.Select(c => $"  {c.Role,-10}  {c.Email,-32}  {c.Password}");
+        var body = string.Join(Environment.NewLine, lines);
 
         logger.LogWarning(
             """
             ================================================================
-             TEMPORARY SIGN-IN CREDENTIALS — shown once, at first seed only
+             TEMPORARY SIGN-IN CREDENTIALS — shown once, at first start only
              Every one of these must be changed at first sign-in; the app
-             will force it. They are NOT stored anywhere in plain text.
+             will force it. They are NOT stored anywhere in the database.
             ----------------------------------------------------------------
             {Credentials}
             ================================================================
             """,
-            string.Join(Environment.NewLine, lines));
+            body);
+
+        // Also drop them in a plain file next to the app, because whoever double-clicks the launcher
+        // may never look at the console window. The app forces a password change on first sign-in, so
+        // this file is only useful until they log in — it tells them to delete it once they have.
+        if (contentRoot is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var path = Path.Combine(contentRoot, "FIRST-RUN-LOGIN.txt");
+            File.WriteAllText(path,
+                "LOS/LMS — first-run sign-in" + Environment.NewLine +
+                Environment.NewLine +
+                "THIS computer is the server. Run LOS-LMS.exe on ONE machine only." + Environment.NewLine +
+                "On every other device (staff, other branches), just open the address the app" + Environment.NewLine +
+                "window shows (e.g. http://THIS-PCs-IP:5037) in a web browser — do NOT run the app" + Environment.NewLine +
+                "there. All devices then share this one server's data, live." + Environment.NewLine +
+                Environment.NewLine +
+                "Sign in with one of these, then set your own password when prompted:" + Environment.NewLine +
+                Environment.NewLine +
+                body + Environment.NewLine +
+                Environment.NewLine +
+                "Delete this file once you have signed in and changed the password.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not write FIRST-RUN-LOGIN.txt; the credentials above are still valid.");
+        }
     }
 }

@@ -178,7 +178,7 @@ else
                                                @oninput="e => party.Pan = Upper(e.Value)"
                                                @onblur='() => Validate("pan")' />
                                     </FormField>
-                                    <button type="button" class="verify-button" @onclick='() => NotConfigured("pan-ocr", PanOcrUnavailable)'>Verify OCR</button>
+                                    <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "pan-ocr", PanOcrUnavailable)'>Verify OCR</button>
                                 </div>
                                 @if (_notices.TryGetValue("pan-ocr", out var panNotice))
                                 {
@@ -195,7 +195,7 @@ else
                                                @oninput="e => party.Aadhaar = e.Value?.ToString()"
                                                @onblur='() => { _aadhaarFocused = false; Validate("aadhaar"); }' />
                                     </FormField>
-                                    <button type="button" class="verify-button" @onclick='() => NotConfigured("aadhaar-ocr", AadhaarOcrUnavailable)'>Verify OCR</button>
+                                    <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "aadhaar-ocr", AadhaarOcrUnavailable)'>Verify OCR</button>
                                 </div>
                                 @if (_notices.TryGetValue("aadhaar-ocr", out var aadhaarNotice))
                                 {
@@ -309,20 +309,20 @@ else
                                        @bind="party.Address2" @bind:after="AfterContactChanged" />
                             </FormField>
 
-                            <FormField Label="City" For="contact-city">
-                                <input id="contact-city" type="text" class="field-input" list="city-suggestions"
-                                       @bind="party.City" @bind:after="AfterContactChanged" />
-                                <datalist id="city-suggestions">
-                                    @foreach (var c in CitySuggestions) { <option value="@c"></option> }
-                                </datalist>
+                            <FormField Label="State" For="contact-state">
+                                <select id="contact-state" class="field-input"
+                                        @bind="party.State" @bind:after="OnStateChanged">
+                                    <option value="">@BlankOption</option>
+                                    @foreach (var s in StateOptionsFor(party.State)) { <option value="@s">@s</option> }
+                                </select>
                             </FormField>
 
-                            <FormField Label="State" For="contact-state">
-                                <input id="contact-state" type="text" class="field-input" list="state-suggestions"
-                                       @bind="party.State" @bind:after="AfterContactChanged" />
-                                <datalist id="state-suggestions">
-                                    @foreach (var s in StateSuggestions) { <option value="@s"></option> }
-                                </datalist>
+                            <FormField Label="City" For="contact-city">
+                                <select id="contact-city" class="field-input"
+                                        @bind="party.City" @bind:after="OnCityChanged">
+                                    <option value="">@BlankOption</option>
+                                    @foreach (var c in CityOptionsFor(party.State, party.City)) { <option value="@c">@c</option> }
+                                </select>
                             </FormField>
 
                             <FormField Label="PIN code" For="contact-pin" Error="@ErrorFor("pinCode")">
@@ -433,26 +433,6 @@ else
     private static readonly string[] CategoryOptions = { "Individual", "Proprietorship", "Partnership firm", "Private limited company", "HUF" };
     private static readonly string[] NationalityOptions = { "Indian", "Other" };
     private static readonly string[] TongueOptions = { "Marathi", "Hindi", "English", "Other" };
-    // State and city used to be a fixed { "Maharashtra", "Other" } dropdown — kept locking every
-    // non-Maharashtra loan officer out of the form. Both are now free-text inputs with a datalist
-    // of suggestions; anything typed that doesn't match the suggestions still saves as-is.
-    private static readonly string[] CitySuggestions =
-    {
-        "Hyderabad", "Mumbai", "Chennai", "Bangalore", "Delhi",
-    };
-
-    private static readonly string[] StateSuggestions =
-    {
-        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
-        "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
-        "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
-        "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
-        "Uttar Pradesh", "Uttarakhand", "West Bengal",
-        "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
-        "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
-    };
-
     private static readonly string[] ResidenceOptions = { "Owned", "Rented", "Company provided" };
     private static readonly string[] EmploymentOptions = { "Salaried", "Self-employed", "Business owner" };
 
@@ -601,6 +581,56 @@ else
             s.ContactCollapsed = true;
             s.ContactAutoCollapsed = true;
         }
+    }
+
+    // Linked State ↔ City. Choosing a city fills in its state; changing the state drops a city that
+    // no longer belongs to it, so the two can never disagree.
+    private void OnCityChanged()
+    {
+        var party = ActiveParty;
+        var state = LosLms.Services.Reference.IndiaLocations.StateForCity(party.City);
+        if (state is not null)
+        {
+            party.State = state;
+        }
+
+        AfterContactChanged();
+    }
+
+    private void OnStateChanged()
+    {
+        var party = ActiveParty;
+        if (!string.IsNullOrEmpty(party.City)
+            && !LosLms.Services.Reference.IndiaLocations.CitiesFor(party.State)
+                .Contains(party.City, StringComparer.OrdinalIgnoreCase))
+        {
+            party.City = string.Empty;
+        }
+
+        AfterContactChanged();
+    }
+
+    // The full list of states; a non-standard value already on the record (e.g. from a PIN lookup) is
+    // kept visible so nothing is silently dropped.
+    private static IEnumerable<string> StateOptionsFor(string? current)
+    {
+        var states = LosLms.Services.Reference.IndiaLocations.States;
+        return !string.IsNullOrEmpty(current) && !states.Contains(current, StringComparer.OrdinalIgnoreCase)
+            ? states.Prepend(current)
+            : states;
+    }
+
+    // Cities for the chosen state; before a state is picked, every city is offered so a user can pick
+    // the city first and have the state fill itself in. Any current value not in the list is kept.
+    private static IEnumerable<string> CityOptionsFor(string? state, string? currentCity)
+    {
+        var cities = string.IsNullOrEmpty(state)
+            ? LosLms.Services.Reference.IndiaLocations.AllCities
+            : LosLms.Services.Reference.IndiaLocations.CitiesFor(state);
+
+        return !string.IsNullOrEmpty(currentCity) && !cities.Contains(currentCity, StringComparer.OrdinalIgnoreCase)
+            ? cities.Prepend(currentCity)
+            : cities;
     }
 
     // ponytail: offline prefix table covering the 5 default cities. Three-digit zone prefixes are
@@ -760,6 +790,20 @@ else
     // ---------------------------------------------------------------------
 
     private void NotConfigured(string key, string message) => _notices[key] = message;
+
+    /// <summary>
+    /// PAN/Aadhaar OCR verification, now routed through <see cref="DigiKycService"/>. No provider is
+    /// configured, so the result is always "not configured" and the officer sees the same message as
+    /// before — nothing about the Verify buttons changes for the user. <see cref="DigiKycService.Apply"/>
+    /// is a no-op on that result; it becomes the write-back path that fills the party's Personal and
+    /// Contact fields once a real provider is wired, needing no change here.
+    /// </summary>
+    private async Task VerifyKycAsync(PartyForm party, string noticeKey, string message)
+    {
+        var result = await DigiKycService.VerifyAsync(party.Pan, party.Aadhaar);
+        DigiKycService.Apply(party, result);
+        NotConfigured(noticeKey, message);
+    }
 
     // ---------------------------------------------------------------------
     // Bureau check

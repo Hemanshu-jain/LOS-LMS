@@ -106,6 +106,14 @@ public class Company
     /// <summary>Reference contacts required before Loan &amp; Security counts as complete.</summary>
     public int MinimumReferences { get; set; } = 2;
 
+    /// <summary>
+    /// When first-run setup was completed for this company — a real <see cref="Name"/> plus at least
+    /// one <see cref="Branch"/>. Null means setup is still outstanding, and until it is done every
+    /// company-scoped user is redirected to Company Setup and can do nothing else. Stamped once, the
+    /// first time both conditions hold; never cleared.
+    /// </summary>
+    public DateTime? SetupCompletedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

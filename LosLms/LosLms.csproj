@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>f2692832-c044-4215-bcb0-09f80019d3e7</UserSecretsId>
+
+    <!-- The running app's version. The System Updates page reads this and compares it against the
+         latest GitHub Release tag. Bump it for every release; publish.ps1 names the artifact from it. -->
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,8 +21,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
-    <!-- Portable demo build uses SQLite instead of MySQL. Harmless in development (unused). -->
+    <!-- SQLite is the one and only database: an embedded file created automatically on first run, so
+         the product installs by double-click with no database server to set up. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.29" />
     <PackageReference Include="QuestPDF" Version="2026.7.2" />
   </ItemGroup>

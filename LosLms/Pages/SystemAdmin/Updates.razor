@@ -1,0 +1,233 @@
+@page "/system/updates"
+@using System.Reflection
+@using LosLms.Services
+@attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
+@inject IHttpClientFactory HttpClientFactory
+@inject IConfiguration Config
+@inject IWebHostEnvironment Environment
+@inject UpdateNotificationService Notifications
+
+@* Server-lifecycle management, SuperAdmin only — not a per-company Admin concern. Checks a public
+   GitHub repo's latest Release, downloads the matching build zip, and (only on an explicit second
+   confirmation) signals the watchdog to swap it in. The app never overwrites its own running binaries;
+   the watchdog does that, and rolls back if anything fails. *@
+
+<PageTitle>System Updates · LOS/LMS</PageTitle>
+
+<div class="updates-page">
+    <div class="updates-card">
+        <div class="updates-head">
+            <div>
+                <span class="updates-eyebrow">System</span>
+                <h1 class="updates-title">Software updates</h1>
+            </div>
+            <a class="updates-back" href="/applications">← Applications</a>
+        </div>
+
+        <p class="updates-current">
+            Running version <strong>@_currentVersion</strong>
+            @if (!string.IsNullOrWhiteSpace(_source))
+            {
+                <span class="updates-source"> · update source: @_source</span>
+            }
+        </p>
+
+        <div class="updates-actions">
+            <button type="button" class="updates-button" disabled="@_busy" @onclick="CheckAsync">
+                @(_checking ? "Checking…" : "Check now")
+            </button>
+        </div>
+
+        @if (_message is not null)
+        {
+            <p class="updates-message" role="status">@_message</p>
+        }
+
+        @if (_result is not null)
+        {
+            @if (!_result.Checked)
+            {
+                <p class="updates-failure" role="alert">Couldn't check for updates — @_result.FailureReason</p>
+            }
+            else if (!_result.UpdateAvailable)
+            {
+                <p class="updates-uptodate" role="status">
+                    You're up to date. Latest release is <strong>@_result.LatestTag</strong>.
+                </p>
+            }
+            else
+            {
+                <div class="updates-available">
+                    <h2 class="updates-available-title">
+                        Update available: <strong>@_result.LatestTag</strong>
+                    </h2>
+
+                    @if (!string.IsNullOrWhiteSpace(_result.ReleaseNotes))
+                    {
+                        <div class="updates-notes">
+                            <span class="updates-notes-label">What's new</span>
+                            <pre class="updates-notes-body">@_result.ReleaseNotes</pre>
+                        </div>
+                    }
+
+                    @if (_result.AssetDownloadUrl is null)
+                    {
+                        <p class="updates-failure" role="alert">
+                            This release has no downloadable .zip build attached, so it can't be applied
+                            automatically. Attach the publish.ps1 artifact to the GitHub Release.
+                        </p>
+                    }
+                    else if (_downloadedZip is null)
+                    {
+                        <button type="button" class="updates-button is-primary" disabled="@_busy" @onclick="DownloadAsync">
+                            @(_downloading ? "Downloading…" : $"Download update ({FormatSize(_result.AssetSize)})")
+                        </button>
+                    }
+                    else
+                    {
+                        <p class="updates-downloaded" role="status">
+                            Downloaded — ready to apply. Staged at <code>@_downloadedZip</code>.
+                        </p>
+
+                        @if (!_confirmApply)
+                        {
+                            <button type="button" class="updates-button is-danger" @onclick="() => _confirmApply = true">
+                                Apply now…
+                            </button>
+                        }
+                        else
+                        {
+                            <div class="updates-confirm" role="alertdialog">
+                                <p>
+                                    This signals the watchdog to stop the server, swap in @_result.LatestTag,
+                                    and restart. Branch staff will be briefly disconnected. If the swap fails,
+                                    the watchdog restores the current version automatically. Continue?
+                                </p>
+                                <div class="updates-confirm-actions">
+                                    <button type="button" class="updates-button" @onclick="() => _confirmApply = false">Cancel</button>
+                                    <button type="button" class="updates-button is-danger" disabled="@_busy" @onclick="ApplyAsync">
+                                        Yes, apply @_result.LatestTag
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private string _currentVersion = "unknown";
+    private string? _source;
+    private string StagingFolder =>
+        Path.Combine(Environment.ContentRootPath, Config["Updates:StagingFolder"] ?? "updates");
+
+    private UpdateCheckResult? _result;
+    private string? _downloadedZip;
+    private bool _checking;
+    private bool _downloading;
+    private bool _applying;
+    private bool _confirmApply;
+    private string? _message;
+
+    private bool _busy => _checking || _downloading || _applying;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var version = Assembly.GetEntryAssembly()?.GetName().Version;
+        _currentVersion = version is null ? "unknown" : version.ToString(3);
+
+        var owner = Config["Updates:GitHubOwner"];
+        var repo = Config["Updates:GitHubRepo"];
+        _source = string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo)
+            ? null
+            : $"{owner}/{repo}";
+
+        await CheckAsync();
+    }
+
+    private async Task CheckAsync()
+    {
+        _checking = true;
+        _message = null;
+        _downloadedZip = null;
+        _confirmApply = false;
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient();
+            _result = await UpdateService.CheckAsync(
+                http, Config["Updates:GitHubOwner"], Config["Updates:GitHubRepo"], _currentVersion);
+
+            // Keep the shared banner in step with a manual check — clears it once this shows up to date.
+            if (_result.Checked)
+            {
+                Notifications.Set(_result);
+            }
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (_result?.AssetDownloadUrl is not { } url || _result.AssetName is not { } name)
+        {
+            return;
+        }
+
+        _downloading = true;
+        _message = null;
+
+        try
+        {
+            var http = HttpClientFactory.CreateClient();
+            _downloadedZip = await UpdateService.DownloadAsync(http, url, name, StagingFolder);
+            _message = "Download complete.";
+        }
+        catch (Exception ex)
+        {
+            _message = $"Download failed — {ex.Message}";
+        }
+        finally
+        {
+            _downloading = false;
+        }
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (_downloadedZip is null)
+        {
+            return;
+        }
+
+        _applying = true;
+
+        try
+        {
+            await UpdateService.WriteApplySignal(StagingFolder, _downloadedZip);
+            _confirmApply = false;
+            _message =
+                "Signalled the watchdog. It will stop the server, apply the update, and restart it shortly — "
+                + "reconnect in a minute. If the update can't be applied, the current version is kept running.";
+        }
+        catch (Exception ex)
+        {
+            _message = $"Couldn't signal the watchdog — {ex.Message}. Is the server running under LosLms.Watchdog.exe?";
+        }
+        finally
+        {
+            _applying = false;
+        }
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes <= 0 ? "size unknown"
+        : bytes >= 1024 * 1024 ? $"{bytes / (1024d * 1024d):0.#} MB"
+        : $"{bytes / 1024d:0.#} KB";
+}

@@ -146,8 +146,39 @@ else
                                                 <FormField Label="Disbursement amount">
                                                     <div class="computed-value">
                                                         <span class="computed-amount">@FormatInr(NetDisbursement)</span>
-                                                        <span class="computed-caption">(after Stage 7 charges deducted)</span>
+                                                        <span class="computed-caption">(after Stage 7 charges and trade advance deducted)</span>
                                                     </div>
+                                                </FormField>
+
+                                                <FormField Label="Disburse from account" For="ps-fromacct">
+                                                    <input id="ps-fromacct" class="field-input"
+                                                           placeholder="e.g. HDFC Bank — Operations A/C ****1234"
+                                                           @bind="_disbursement.DisburseFromAccount" @bind:event="oninput" />
+                                                </FormField>
+
+                                                <FormField Label="Trade advance already paid" For="ps-tradeadv">
+                                                    <div class="currency-input">
+                                                        <span class="currency-symbol">₹</span>
+                                                        <input id="ps-tradeadv" type="number" min="0" step="1" class="field-input has-prefix"
+                                                               @bind="_disbursement.TradeAdvance" @bind:event="oninput" />
+                                                    </div>
+                                                </FormField>
+
+                                                <FormField Label="First EMI amount" For="ps-firstemiamt">
+                                                    <div class="currency-input">
+                                                        <span class="currency-symbol">₹</span>
+                                                        <input id="ps-firstemiamt" type="number" min="0" step="1" class="field-input has-prefix"
+                                                               placeholder="@FormatInr(StandardEmi)"
+                                                               @bind="_disbursement.FirstEmiOverride" />
+                                                    </div>
+                                                </FormField>
+
+                                                <FormField Label="Round regular EMI to nearest" For="ps-emiround">
+                                                    <select id="ps-emiround" class="field-input" @bind="EmiRoundedToChoice">
+                                                        <option value="">None</option>
+                                                        <option value="10">₹10</option>
+                                                        <option value="100">₹100</option>
+                                                    </select>
                                                 </FormField>
 
                                                 <FormField Label="Beneficiary name" For="ps-benname">
@@ -201,6 +232,59 @@ else
                                                         Upload signed memo · PDF / JPG
                                                         <InputFile OnChange="e => UploadAsync(e, MemoSlot)" accept=".pdf,.jpg,.jpeg,.png" />
                                                     </label>
+                                                }
+                                            </div>
+
+                                            @* ---------- Welcome letter + SMS ---------- *@
+                                            <div class="upload-block">
+                                                <span class="sub-block-label">Welcome letter</span>
+                                                @{
+                                                    var welcome = FileNameOf(_disbursement.WelcomeLetterFilePath);
+                                                }
+                                                <div class="doc-row">
+                                                    <button type="button" class="doc-action" @onclick="GenerateWelcomeLetterAsync">
+                                                        @(welcome is null ? "Generate Welcome Letter" : "Regenerate")
+                                                    </button>
+                                                    @if (welcome is not null)
+                                                    {
+                                                        <a class="file-link" href="@UrlFor(_disbursement.WelcomeLetterFilePath!)" target="_blank">✓ @welcome</a>
+                                                    }
+                                                </div>
+
+                                                <span class="sub-block-label">Welcome SMS</span>
+                                                <div class="sms-preview">@WelcomeSmsText</div>
+                                                <div class="doc-row">
+                                                    <button type="button" class="doc-action" @onclick="SendWelcomeSmsAsync">Send SMS</button>
+                                                    <span class="doc-status">Status: @_disbursement.WelcomeSmsStatus</span>
+                                                </div>
+                                                @if (_smsNotice is not null)
+                                                {
+                                                    <p class="inline-notice" role="status">@_smsNotice</p>
+                                                }
+                                            </div>
+
+                                            @* ---------- Loan agreement + e-signature ---------- *@
+                                            <div class="upload-block">
+                                                <span class="sub-block-label">Loan agreement</span>
+                                                @{
+                                                    var agreement = FileNameOf(_disbursement.AgreementFilePath);
+                                                }
+                                                <div class="doc-row">
+                                                    <button type="button" class="doc-action" @onclick="GenerateAgreementAsync">
+                                                        @(agreement is null ? "Generate Agreement" : "Regenerate")
+                                                    </button>
+                                                    @if (agreement is not null)
+                                                    {
+                                                        <a class="file-link" href="@UrlFor(_disbursement.AgreementFilePath!)" target="_blank">✓ @agreement</a>
+                                                    }
+                                                </div>
+                                                <div class="doc-row">
+                                                    <button type="button" class="doc-action" @onclick="SendForEsignAsync" disabled="@(agreement is null)">Send for e-Signature</button>
+                                                    <span class="doc-status">Status: @_disbursement.AgreementEsignStatus</span>
+                                                </div>
+                                                @if (_esignNotice is not null)
+                                                {
+                                                    <p class="inline-notice" role="status">@_esignNotice</p>
                                                 }
                                             </div>
                                         </div>
@@ -631,6 +715,17 @@ else
         _charges = await db.Charges.AsNoTracking()
             .Where(c => c.ApplicationId == ApplicationId).ToListAsync();
 
+        // Merge fields for the welcome letter / agreement / SMS.
+        _companyName = _application is null
+            ? string.Empty
+            : await db.Companies.Where(c => c.Id == _application.CompanyId)
+                .Select(c => c.Name).FirstOrDefaultAsync() ?? string.Empty;
+
+        // Kept so a real SMS gateway has a number to send to; unused while the send is stubbed.
+        _applicantMobile = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant")
+            .Select(p => p.Mobile).FirstOrDefaultAsync();
+
         var created = false;
 
         _disbursement = await db.Disbursements.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
@@ -749,14 +844,170 @@ else
 
     /// <summary>
     /// Computed on every render, never stored. Storing it would let it drift the moment a Stage 7
-    /// charge is edited or waived.
+    /// charge is edited or a trade advance is entered.
     /// </summary>
-    private decimal NetDisbursement => SanctionedAmount - ChargesTotal;
+    private decimal NetDisbursement => SanctionedAmount - ChargesTotal - (_disbursement.TradeAdvance ?? 0m);
 
     private List<AmortizationRow> Schedule =>
         _disbursement.FirstEmiDate is { } firstDue
-            ? LoanMath.Schedule(SanctionedAmount, SanctionedRoi, SanctionedTenure, firstDue)
+            ? LoanMath.Schedule(
+                SanctionedAmount, SanctionedRoi, SanctionedTenure, firstDue,
+                _disbursement.FirstEmiOverride, _disbursement.EmiRoundedTo)
             : new List<AmortizationRow>();
+
+    /// <summary>The standard computed EMI, shown as the First-EMI field's placeholder.</summary>
+    private decimal StandardEmi => LoanMath.Emi(SanctionedAmount, SanctionedRoi, SanctionedTenure);
+
+    /// <summary>
+    /// The first month's instalment as the schedule actually renders it (override if set, else
+    /// standard). Used by the welcome letter and SMS so their EMI matches what the borrower will pay.
+    /// </summary>
+    private decimal FirstMonthEmi
+    {
+        get
+        {
+            var schedule = Schedule;
+            return schedule.Count > 0 ? schedule[0].Emi : (_disbursement.FirstEmiOverride ?? StandardEmi);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // EMI rounding choice — maps the decimal? column to the three-option select.
+    // ---------------------------------------------------------------------
+
+    private string EmiRoundedToChoice
+    {
+        get => _disbursement.EmiRoundedTo switch { 10m => "10", 100m => "100", _ => string.Empty };
+        set => _disbursement.EmiRoundedTo = value switch { "10" => 10m, "100" => 100m, _ => (decimal?)null };
+    }
+
+    // ---------------------------------------------------------------------
+    // Welcome letter, welcome SMS, e-agreement
+    // ---------------------------------------------------------------------
+
+    private string _companyName = string.Empty;
+    private string? _applicantMobile;
+    private string? _smsNotice;
+    private string? _esignNotice;
+
+    /// <summary>The SMS text the officer sees — composed for real from the loan's merge fields.</summary>
+    private string WelcomeSmsText =>
+        WelcomeSmsService.BuildMessage(_companyName, SanctionedAmount, FirstMonthEmi, SanctionedTenure);
+
+    /// <summary>Generates a real welcome-letter PDF and files it against the disbursement.</summary>
+    private async Task GenerateWelcomeLetterAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        var bytes = WelcomeLetterPdf.Build(
+            _companyName, _application.Id, _application.CustomerName,
+            DateOnly.FromDateTime(DateTime.Today), SanctionedAmount, FirstMonthEmi, SanctionedTenure);
+
+        _disbursement.WelcomeLetterFilePath = await WriteGeneratedAsync(bytes, "welcomeletter");
+        await SaveDisbursementAsync();
+        await ShowToastAsync("Welcome letter generated");
+    }
+
+    /// <summary>Generates a real loan-agreement PDF (parties, terms, security) and files it.</summary>
+    private async Task GenerateAgreementAsync()
+    {
+        if (_application is null || _decision is null)
+        {
+            await ShowToastAsync("Sanction details missing — cannot build the agreement.");
+            return;
+        }
+
+        List<Party> parties;
+        SecurityDetail? security;
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            parties = await db.Parties.AsNoTracking()
+                .Where(p => p.ApplicationId == ApplicationId)
+                .OrderBy(p => p.PartyType)
+                .ToListAsync();
+
+            security = await db.SecurityDetails.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
+        }
+
+        var bytes = LoanAgreementPdf.Build(_companyName, _application, _decision, FirstMonthEmi, parties, security);
+
+        _disbursement.AgreementFilePath = await WriteGeneratedAsync(bytes, "agreement");
+        await SaveDisbursementAsync();
+        await ShowToastAsync("Agreement generated");
+    }
+
+    /// <summary>
+    /// Composes the welcome SMS (real) and attempts to send it (stubbed). No gateway is configured, so
+    /// the status stays NotSent and the officer sees an honest message. The 'Sent' branch is the
+    /// dormant real path and is never reached while <see cref="SmsSendResult.IsConfigured"/> is false.
+    /// </summary>
+    private async Task SendWelcomeSmsAsync()
+    {
+        _smsNotice = null;
+
+        var result = await WelcomeSmsService.SendAsync(_applicantMobile, WelcomeSmsText);
+        if (!result.IsConfigured)
+        {
+            _smsNotice = WelcomeSmsService.Unavailable;
+            return;
+        }
+
+        _disbursement.WelcomeSmsStatus = "Sent";
+        _disbursement.WelcomeSmsSentAt = DateTime.UtcNow;
+        await SaveDisbursementAsync();
+    }
+
+    /// <summary>
+    /// Dispatches the generated agreement for e-signature (stubbed). No provider is configured, so the
+    /// status stays NotSent. Never sets 'Signed' — only a real provider's verified webhook may.
+    /// </summary>
+    private async Task SendForEsignAsync()
+    {
+        _esignNotice = null;
+
+        if (string.IsNullOrWhiteSpace(_disbursement.AgreementFilePath))
+        {
+            _esignNotice = "Generate the agreement first.";
+            return;
+        }
+
+        var result = await EsignService.DispatchAsync(_disbursement.AgreementFilePath);
+        if (!result.IsConfigured)
+        {
+            _esignNotice = EsignService.Unavailable;
+            return;
+        }
+
+        // Dispatched, not signed. 'Signed' is set only by a verified provider webhook, which does not
+        // exist in this build.
+        _disbursement.AgreementEsignStatus = "Sent";
+        await SaveDisbursementAsync();
+    }
+
+    /// <summary>Writes generated PDF bytes to the guarded uploads folder, same shape as an upload.</summary>
+    private async Task<string> WriteGeneratedAsync(byte[] bytes, string kind)
+    {
+        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application!.Id, "postsanction");
+        Directory.CreateDirectory(folder);
+
+        var fileName = $"{kind}-{Guid.NewGuid():N}.pdf";
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+
+        return Path.Combine("App_Data", "uploads", _application.Id, "postsanction", fileName);
+    }
+
+    /// <summary>Persists the disbursement row (all its fields, including the just-set path/status).</summary>
+    private async Task SaveDisbursementAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await PersistAsync(db);
+        await db.SaveChangesAsync();
+    }
 
     // ---------------------------------------------------------------------
     // Editing
@@ -926,6 +1177,15 @@ else
         disbursement.ValueDate = _disbursement.ValueDate;
         disbursement.Utr = _disbursement.Utr;
         disbursement.FirstEmiDate = _disbursement.FirstEmiDate;
+        disbursement.DisburseFromAccount = _disbursement.DisburseFromAccount;
+        disbursement.TradeAdvance = _disbursement.TradeAdvance;
+        disbursement.FirstEmiOverride = _disbursement.FirstEmiOverride;
+        disbursement.EmiRoundedTo = _disbursement.EmiRoundedTo;
+        disbursement.WelcomeLetterFilePath = _disbursement.WelcomeLetterFilePath;
+        disbursement.WelcomeSmsStatus = _disbursement.WelcomeSmsStatus;
+        disbursement.WelcomeSmsSentAt = _disbursement.WelcomeSmsSentAt;
+        disbursement.AgreementFilePath = _disbursement.AgreementFilePath;
+        disbursement.AgreementEsignStatus = _disbursement.AgreementEsignStatus;
 
         var enach = await db.EnachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
         if (enach is null)
