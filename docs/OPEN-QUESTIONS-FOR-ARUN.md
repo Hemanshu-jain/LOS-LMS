@@ -14,6 +14,15 @@ nobody has confirmed.
 
 ---
 
+## Update — 29 Aug 2026
+
+- **Stack is SQLite**, not MySQL. One embedded `App_Data/los_lms.db` file, no database server; the
+  migration chain is a single SQLite `InitialCreate` plus `AlignRiskBandsAndSqliteTypes`.
+- **Smoke-test F2 (admins self-approving their own bypass/reject requests) is fixed** — the review
+  handler blocks the requester from deciding their own request, SuperAdmin included.
+- **Post-Sanction release gate is now fail-closed** (see §0) and **FOIR/LTV risk bands are aligned to
+  the caps** (see §0.1). Both shipped in this pass.
+
 ## Where this stands — 12 Aug 2026
 
 Four things below have been **resolved since this document was written**, and are marked ✅ in place
@@ -54,13 +63,17 @@ in the branch disbursement checklist reads Cleared. **Seven rows exist. The cont
 are nine.**
 
 The two missing items were never specified, so they were never built, so the gate cannot check them.
-An officer clearing all seven sees the button go live and can release funds with two compliance
-items that no one has even named, let alone verified.
+
+> **Updated 2026-08-29 — the gate is now FAIL-CLOSED.** Previously an officer who cleared the seven
+> defined rows saw *Release funds* go live and could disburse with two un-named compliance items. The
+> gate now stays **blocked until the checklist actually holds all nine defined rows AND every one reads
+> Cleared** (`PostSanction.razor` → `ReleaseBlocked`). So money can no longer leave early. This does
+> **not** answer the question below — it just makes the consequence of leaving it unanswered safe:
+> Stage 8 cannot release funds at all until the two items are defined in `SeedChecklist()`, at which
+> point the gate opens automatically with no further code change.
 
 The screen states this rather than hiding it — the header reads *"7 of 9 flags cleared (2 items
-pending definition)"*, not "7 of 7" — and the gate is written against **every row in the table**
-rather than a count of seven, so defining the two missing items and inserting them tightens the
-control automatically with no code change. The code carries a matching block comment.
+pending definition)"*, not "7 of 7". The code carries a matching block comment.
 
 **Question, and it is the highest-priority one in this document: what are the other two checklist
 items?** Until they are named, Stage 8 must not go anywhere near production money.
@@ -78,11 +91,12 @@ items?** Until they are named, Stage 8 must not go anywhere near production mone
 > can fix them, not whether they are right. An editable wrong threshold is still a wrong threshold,
 > and this section stays open until the client confirms each one.
 >
-> One thing the relocation made visible and did not fix: **the risk bands sit outside the hard
-> caps.** `FoirRiskDangerPct` is 60 while `FoirCapPct` is 50; `LtvRiskDangerPct` is 90 while
-> `LtvCapPct` is 85. So a file at 57% FOIR shows amber on Stage 2, then Stage 6 collapses the
-> eligible amount. A file exactly at the cap never reads green. Left as-is on purpose rather than
-> silently "corrected", because which of the two numbers is wrong is the client's call.
+> **Updated 2026-08-29 — the risk-band ordering is now fixed.** The danger bands were aligned to the
+> hard caps: `FoirRiskDangerPct` 60→**50** (= `FoirCapPct`) and `LtvRiskDangerPct` 90→**85** (=
+> `LtvCapPct`), in both the model defaults and the seeded company row (migration
+> `AlignRiskBandsAndSqliteTypes`). A file no longer reads amber "permissible" while eligibility is
+> already capping it. The **values themselves are still the invented ones** and still need the client
+> to confirm the real policy numbers — only the ordering bug was corrected.
 
 Stage 6 now calculates how much the customer may borrow, and blocks the file when that figure comes
 in below what was requested. The arithmetic is real. **The policy behind it is not.**
@@ -687,7 +701,9 @@ warning.
 - **Repayment schedule final balance** lands near zero rather than exactly zero, because EMI is a
   rounded figure. Real lenders absorb the difference into the final instalment.
   **Question:** should the last EMI be adjusted to close the balance exactly?
-- **The 128 applications currently in the database are generated test data**, not real records.
+- **A shipped build is a blank slate** — zero applications, one blank-slate company, one bootstrap
+  Admin (`admin@loslms.local`). The demo dataset (~15 worked applications + vehicle-cap catalog) only
+  loads when `Seed:DemoApplications=true` is set for development; it is off in the shipped build.
 - **Loading, empty and error states have not been designed** for stages 2–8. Worth solving once at
   the shared-component level rather than eight times.
 - **CAM.pdf contents** — currently header, cost breakdown, sanction summary and full repayment

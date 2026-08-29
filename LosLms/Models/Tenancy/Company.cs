@@ -54,23 +54,23 @@ public class Company
 
     /// <summary>FOIR at or below this reads healthy; above it reads caution.</summary>
     /// <remarks>
-    /// KNOWN INCONSISTENCY, carried over deliberately rather than silently corrected:
-    /// <see cref="FoirRiskDangerPct"/> defaults to 60 while <see cref="FoirCapPct"/> refuses at 50, so
-    /// a file between the two reads amber — "elevated but permissible" — while the eligibility engine
-    /// is already capping it. Same story for LTV: danger at 90 against a cap of 85. A file sitting
-    /// exactly at either cap also never reads healthy. Resolve as a business decision in Company
-    /// Setup; the code no longer has an opinion.
+    /// The danger band is aligned to the hard cap by default (<see cref="FoirRiskDangerPct"/> = 50 =
+    /// <see cref="FoirCapPct"/>, and 85 = <see cref="LtvCapPct"/> for LTV), so the red signal fires at
+    /// exactly the point the eligibility engine starts capping — rather than the old defaults (danger
+    /// 60/90 against caps 50/85), which let a file read amber "elevated but permissible" while it was
+    /// already being capped. The values remain editable per company in Company Setup and still need the
+    /// client to confirm the actual policy numbers; only the ordering is fixed here.
     /// </remarks>
     public decimal FoirRiskCautionPct { get; set; } = 40m;
 
-    /// <summary>FOIR above this reads risk.</summary>
-    public decimal FoirRiskDangerPct { get; set; } = 60m;
+    /// <summary>FOIR above this reads risk. Aligned to <see cref="FoirCapPct"/>.</summary>
+    public decimal FoirRiskDangerPct { get; set; } = 50m;
 
     /// <summary>LTV at or below this reads healthy.</summary>
     public decimal LtvRiskCautionPct { get; set; } = 75m;
 
-    /// <summary>LTV above this reads risk.</summary>
-    public decimal LtvRiskDangerPct { get; set; } = 90m;
+    /// <summary>LTV above this reads risk. Aligned to <see cref="LtvCapPct"/>.</summary>
+    public decimal LtvRiskDangerPct { get; set; } = 85m;
 
     // ---- Policy: charges ----
 

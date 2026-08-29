@@ -23,8 +23,9 @@
                 </Authorized>
             </AuthorizeView>
 
-            @* Server-lifecycle management — SuperAdmin only, never a company Admin. *@
-            <AuthorizeView Roles="@TenantContext.SuperAdminRole" Context="super">
+            @* Server-lifecycle management — Admin and SuperAdmin (the latter still has the
+               system-only concerns on top). *@
+            <AuthorizeView Roles="@TenantContext.AdminRoles" Context="super">
                 <Authorized>
                     <a class="app-nav-link" href="/system/updates">System Updates</a>
                 </Authorized>
@@ -44,7 +45,7 @@
 
 @* Passive reminder for the SuperAdmin — the background check found a newer release. Installing it is
    still a deliberate click-through to System Updates; this only surfaces that one exists. *@
-@if (_role == "SuperAdmin" && Updates.UpdateAvailable && !_updateDismissed)
+@if (_role is "SuperAdmin" or "Admin" && Updates.UpdateAvailable && !_updateDismissed)
 {
     <div class="update-banner" role="status">
         <span class="update-banner-text">

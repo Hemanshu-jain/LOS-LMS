@@ -75,8 +75,8 @@ builder.Services.AddScoped(sp =>
 // Nothing set here may affect the MODEL — only behaviour. Identity reads Stores.MaxLengthForKeys
 // (and ProtectPersonalData) while building the model, from the application service provider, which
 // the design-time factory has no way to supply. Setting either one would make `dotnet ef migrations`
-// scaffold different column types from the ones the app actually runs against. Pomelo's default
-// varchar(255) indexes fine under InnoDB's 3072-byte limit, so there is nothing to gain by pinning it.
+// scaffold different column types from the ones the app actually runs against. SQLite's TEXT keys
+// index fine at the default length, so there is nothing to gain by pinning it.
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.User.RequireUniqueEmail = true;

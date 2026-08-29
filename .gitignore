@@ -488,7 +488,14 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Portable demo SQLite database - created at runtime by EnsureCreated, never source.
+# Portable SQLite database - created at runtime by migrations, never source. Lives under App_Data
+# (the updater preserves that folder across version swaps); may hold real customer PII in production.
 LosLms/los_lms.db
 LosLms/los_lms.db-shm
 LosLms/los_lms.db-wal
+LosLms/App_Data/los_lms.db
+LosLms/App_Data/los_lms.db-shm
+LosLms/App_Data/los_lms.db-wal
+
+# First-run temporary sign-in credentials, written at startup. Never source control.
+LosLms/FIRST-RUN-LOGIN.txt

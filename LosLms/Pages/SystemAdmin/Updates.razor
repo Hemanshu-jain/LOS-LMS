@@ -1,7 +1,7 @@
 @page "/system/updates"
 @using System.Reflection
 @using LosLms.Services
-@attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
+@attribute [Authorize(Roles = TenantContext.AdminRoles)]
 @inject IHttpClientFactory HttpClientFactory
 @inject IConfiguration Config
 @inject IWebHostEnvironment Environment

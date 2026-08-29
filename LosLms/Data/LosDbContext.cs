@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 namespace LosLms.Data;
 
 /// <summary>
-/// Entity Framework Core context for the central LOS/LMS MySQL database, and the Identity store.
+/// Entity Framework Core context for the central LOS/LMS SQLite database, and the Identity store.
 /// </summary>
 /// <remarks>
 /// PROVISIONAL SCHEMA — the two entities here exist to make the Applications Dashboard and
@@ -137,7 +137,7 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
         {
             entity.HasKey(a => a.Id);
 
-            // MySQL needs explicit precision or EF warns and silently truncates.
+            // Explicit precision on money columns; EF warns without it.
             entity.Property(a => a.LoanAmount).HasPrecision(18, 2);
             entity.Property(a => a.ProcessingFee).HasPrecision(18, 2);
             entity.Property(a => a.AdvanceEmi).HasPrecision(18, 2);
@@ -580,8 +580,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             entity.HasKey(a => a.Id);
             entity.Property(a => a.Status).HasDefaultValue(BankStatementAnalysis.NotConfigured);
 
-            // Reserved for a real provider's full response; long text, nullable, never populated here.
-            entity.Property(a => a.RawResultJson).HasColumnType("longtext");
+            // Reserved for a real provider's full response; unbounded text, nullable, never populated here.
+            entity.Property(a => a.RawResultJson).HasColumnType("TEXT");
 
             // Many per application — not unique. Inherits tenant isolation through the filtered
             // Application, like every other child table.
@@ -746,9 +746,11 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 FoirCapPct = 50m,
                 LtvCapPct = 85m,
                 FoirRiskCautionPct = 40m,
-                FoirRiskDangerPct = 60m,
+                // Danger bands aligned to the hard caps (was 60/90) so the red signal fires at the
+                // point eligibility starts capping, not beyond it. See Company.FoirRiskDangerPct.
+                FoirRiskDangerPct = 50m,
                 LtvRiskCautionPct = 75m,
-                LtvRiskDangerPct = 90m,
+                LtvRiskDangerPct = 85m,
                 GstPct = 18m,
                 CibilMinScore = 300,
                 CibilMaxScore = 900,

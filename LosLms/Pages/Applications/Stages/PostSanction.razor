@@ -813,21 +813,27 @@ else
     private int ClearedCount => _checklist.Count(c => c.Flag == "Cleared");
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // GATE COVERS ONLY 7 OF 9 INTENDED ITEMS. The other 2 checklist items are not
-    // yet defined (see Post Sanction content brief). The moment they are added to
-    // this table, this gate must require ALL rows including them — do not let this
-    // silently stay at 7 once 9 exist.
+    // FAIL-CLOSED. Only 7 of the 9 intended checklist items are defined (the other 2
+    // were never specified — see the Post Sanction content brief). Rather than let an
+    // officer clear the 7 that exist and release real money with 2 compliance items
+    // that no one has named, this gate stays BLOCKED until the table actually holds
+    // all IntendedChecklistItems rows AND every one reads Cleared.
     //
-    // Written against every row rather than a count of 7 precisely so that adding
-    // the missing items tightens the control automatically. Releasing funds is a
-    // real-money action; 7-of-7 is not "done" while the brief says there are 9.
+    // The moment the missing 2 are added to SeedChecklist(), IntendedChecklistItems
+    // is met and the gate opens automatically — no other change needed. Do NOT relax
+    // this back to "every existing row" while fewer than 9 rows exist.
     // ─────────────────────────────────────────────────────────────────────────────
-    private bool ReleaseBlocked => _checklist.Count == 0 || _checklist.Any(c => c.Flag != "Cleared");
+    private bool ReleaseBlocked =>
+        _checklist.Count < IntendedChecklistItems || _checklist.Any(c => c.Flag != "Cleared");
 
     private string? ReleaseBlockedReason =>
-        ReleaseBlocked
-            ? $"{_checklist.Count - ClearedCount} checklist item(s) still pending."
-            : null;
+        !ReleaseBlocked
+            ? null
+            : _checklist.Count < IntendedChecklistItems
+                ? $"{IntendedChecklistItems - _checklist.Count} checklist item(s) are still pending "
+                    + "definition — release stays blocked until all "
+                    + $"{IntendedChecklistItems} are defined and cleared."
+                : $"{_checklist.Count - ClearedCount} checklist item(s) still pending.";
 
     // ---------------------------------------------------------------------
     // Sanctioned terms — Stage 7's decision, not the originally requested figures

@@ -1,5 +1,19 @@
 # Full-System Smoke Test Report — LOS/LMS
 
+> **⚠️ SUPERSEDED — read this first (updated 2026-08-29).** This report is a point-in-time record
+> from build `c1e9cbc` and several of its facts no longer hold on the current branch. Kept for
+> history; do not treat the details below as the current state. What has changed since:
+> - **Database is now SQLite**, not MySQL 8.0. The whole app runs on one embedded `App_Data/los_lms.db`
+>   file (no server, no Pomelo). The migration chain was collapsed to a single SQLite `InitialCreate`.
+> - **Finding F2 (self-approval of admin requests) is FIXED.** `StageSubHeader.ReviewAsync` now blocks
+>   a requester — even a SuperAdmin — from deciding their own request.
+> - **The seeder ships one blank-slate Admin** (`admin@loslms.local`), not the `r.kulkarni` /
+>   `s.deshpande` / `a.rao` set listed below. Those were demo/test accounts.
+> - **A shipped build is a blank slate:** 0 applications, no second company. The "128 applications"
+>   and isolation-fixture data referenced below only exist when the dev seed flags are turned on.
+> - **Post-Sanction release gate is now fail-closed** (blocked until all 9 checklist items are defined
+>   and cleared), and the **FOIR/LTV risk bands are aligned to the hard caps**. See the handover doc.
+
 **Date:** 2026-08-12
 **Build:** `main` @ c1e9cbc · .NET 8 Blazor Server · MySQL 8.0 (`los_lms`) · QuestPDF community
 **Scope:** Read / verify / report only. No application code or schema was changed. The only state
