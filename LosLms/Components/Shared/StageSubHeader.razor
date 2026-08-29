@@ -20,23 +20,24 @@
            concern), and pointless once it is already Rejected — hidden entirely, not disabled. *@
         @if (_status is not "Sanctioned" and not "Rejected")
         {
-            <button type="button" class="stage-button is-reject" @onclick="() => _showReject = true">
+            <button type="button" class="stage-button is-reject" disabled="@(!_interactive)" @onclick="() => _showReject = true">
                 Reject application
             </button>
         }
 
-        <button type="button" class="stage-button" @onclick="OnSaveDraft">@SecondaryLabel</button>
+        <button type="button" class="stage-button" disabled="@(!_interactive)" @onclick="OnSaveDraft">@SecondaryLabel</button>
 
         @* A real disabled attribute, not just the blocked styling — styling alone would still
            let a keyboard or screen-reader user activate it. The gate is OR'd with the page's own
-           reason, so a screen that was already blocked stays blocked and says why. *@
+           reason, so a screen that was already blocked stays blocked and says why. Also disabled
+           until the circuit is live, so an early click is not silently lost. *@
         <button type="button"
                 class="stage-button is-primary @(EffectivelyBlocked ? "is-blocked" : null)"
-                disabled="@EffectivelyBlocked"
-                aria-disabled="@EffectivelyBlocked"
-                title="@(EffectivelyBlocked ? EffectiveBlockedReason : null)"
+                disabled="@(EffectivelyBlocked || !_interactive)"
+                aria-disabled="@(EffectivelyBlocked || !_interactive)"
+                title="@(!_interactive ? "Connecting…" : EffectivelyBlocked ? EffectiveBlockedReason : null)"
                 @onclick="OnCompleteStage">
-            @PrimaryLabel
+            @(_interactive ? PrimaryLabel : "Connecting…")
         </button>
     </div>
 </div>
@@ -60,8 +61,8 @@
         }
         else
         {
-            <button type="button" class="gate-request" @onclick="RequestBypassAsync">
-                Request admin bypass
+            <button type="button" class="gate-request" disabled="@(!_interactive)" @onclick="RequestBypassAsync">
+                @(_interactive ? "Request admin bypass" : "Connecting…")
             </button>
         }
     </div>
@@ -208,6 +209,11 @@
 
     private bool _showReject;
 
+    // False until the Blazor Server circuit has attached on the client. Until then the prerendered
+    // buttons are inert — a click in the first few seconds does nothing — so they are disabled and
+    // labelled "Connecting…" rather than silently swallowing the click. Set once, in OnAfterRender.
+    private bool _interactive;
+
     // ---- Gate + admin requests ----
     private GateResult _gate = GateResult.Clear;
     private bool _isAdmin;
@@ -252,6 +258,17 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
         await LoadGateAndRequestsAsync(db);
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // OnAfterRender only runs once the component is interactive on the client, never during the
+        // static prerender — so this is the moment the buttons actually start working.
+        if (firstRender)
+        {
+            _interactive = true;
+            StateHasChanged();
+        }
     }
 
     /// <summary>

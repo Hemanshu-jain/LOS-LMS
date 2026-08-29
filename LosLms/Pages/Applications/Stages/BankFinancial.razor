@@ -22,6 +22,7 @@
 }
 else if (_application is null)
 {
+    <NotFoundStatus />
     <div class="stage-page">
         <div class="not-found">
             <h1 class="not-found-title">Application not found</h1>
@@ -322,7 +323,7 @@ else
                                                 <tr>
                                                     <td>Processing fee</td>
                                                     <td class="align-right">
-                                                        <span class="cam-value">@FormatInr(_application.ProcessingFee ?? 0m)</span>
+                                                        <span class="cam-value">@FormatInr(_application!.ProcessingFee ?? 0m)</span>
                                                         @if (ProcessingFeePercent is { } pct)
                                                         {
                                                             <span class="cam-extra">(@pct.ToString("0.#", CultureInfo.InvariantCulture)% of loan amount)</span>
@@ -381,7 +382,7 @@ else
 
     @if (_showSchedule)
     {
-        <RepaymentScheduleModal Principal="_application.LoanAmount"
+        <RepaymentScheduleModal Principal="_application!.LoanAmount"
                                 AnnualRatePct="@(_application.Roi ?? 0m)"
                                 Months="@(_application.Tenure ?? 0)"
                                 OnClose="() => _showSchedule = false" />

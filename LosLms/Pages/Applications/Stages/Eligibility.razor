@@ -17,6 +17,7 @@
 }
 else if (_application is null)
 {
+    <NotFoundStatus />
     <div class="stage-page">
         <div class="not-found">
             <h1 class="not-found-title">Application not found</h1>
@@ -324,7 +325,7 @@ else
                                                     </tr>
                                                     <tr>
                                                         <td>Loan amount</td>
-                                                        <td class="align-right cam-value">@FormatInr(_application.LoanAmount)</td>
+                                                        <td class="align-right cam-value">@FormatInr(_application!.LoanAmount)</td>
                                                     </tr>
                                                     <tr>
                                                         <td>LTV on on-road cost</td>
@@ -415,7 +416,7 @@ else
                                     <div class="detail-rows">
                                         <div class="detail-row">
                                             <span class="detail-label">Requested amount</span>
-                                            <span class="detail-value">@FormatInr(_application.LoanAmount)</span>
+                                            <span class="detail-value">@FormatInr(_application!.LoanAmount)</span>
                                         </div>
                                         <div class="detail-row">
                                             <span class="detail-label">Deviation %</span>

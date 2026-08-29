@@ -21,6 +21,7 @@
 }
 else if (_application is null)
 {
+    <NotFoundStatus />
     <div class="stage-page">
         <div class="not-found">
             <h1 class="not-found-title">Application not found</h1>
@@ -1061,6 +1062,10 @@ else
 
         var touched = new List<(PartyForm Form, Party Entity)>();
 
+        // Identifiers a touched party held BEFORE this save, so a match that is being *broken* still
+        // gets its now-orphaned counterpart re-evaluated (see RecomputeDedupeAsync).
+        var affectedIdentifiers = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var (key, _) in PartyTabs)
         {
             var form = _parties[key];
@@ -1077,8 +1082,13 @@ else
                 entity = new Party { ApplicationId = _application.Id, PartyType = key };
                 db.Parties.Add(entity);
             }
+            else
+            {
+                AddIdentifiers(affectedIdentifiers, entity.Pan, entity.Aadhaar, entity.Mobile);
+            }
 
             MapFormToEntity(form, entity);
+            AddIdentifiers(affectedIdentifiers, entity.Pan, entity.Aadhaar, entity.Mobile);
             touched.Add((form, entity));
         }
 
@@ -1088,9 +1098,19 @@ else
         foreach (var (form, entity) in touched)
         {
             form.Id = entity.Id;
-            var status = await RunDedupeAsync(db, entity);
-            entity.DedupeStatus = status;
-            form.DedupeStatus = status;
+            entity.DedupeStatus = await RunDedupeAsync(db, entity);
+        }
+
+        // Also re-evaluate the OTHER side of any match: any party sharing an identifier with one just
+        // saved. Without this the counterpart of a new match keeps reading "Pass" (a duplicate silently
+        // cleared), and the counterpart of a just-broken match keeps reading "Fail" forever. Statuses
+        // set here are persisted by the SaveChanges below, together with the stage advance.
+        var touchedIds = touched.Select(t => t.Entity.Id).ToHashSet();
+        await RecomputeDedupeAsync(db, affectedIdentifiers, touchedIds);
+
+        foreach (var (form, entity) in touched)
+        {
+            form.DedupeStatus = entity.DedupeStatus;
         }
 
         var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
@@ -1153,6 +1173,51 @@ else
         }
 
         return "Pass";
+    }
+
+    /// <summary>
+    /// Recomputes the dedupe status of every party that shares any of <paramref name="identifiers"/>,
+    /// so both sides of a match agree. Uses the unfiltered Parties set on purpose — a PAN is national,
+    /// so a duplicate on another company's file is still a duplicate, exactly as
+    /// <see cref="RunDedupeAsync"/> already searches. Changed rows are left tracked for the caller's
+    /// SaveChanges to persist.
+    /// </summary>
+    private static async Task RecomputeDedupeAsync(
+        LosDbContext db, IReadOnlyCollection<string> identifiers, IReadOnlySet<int> alreadyDone)
+    {
+        if (identifiers.Count == 0)
+        {
+            return;
+        }
+
+        var affected = await db.Parties
+            .Where(p => (p.Pan != null && identifiers.Contains(p.Pan))
+                || (p.Aadhaar != null && identifiers.Contains(p.Aadhaar))
+                || (p.Mobile != null && identifiers.Contains(p.Mobile)))
+            .ToListAsync();
+
+        foreach (var party in affected)
+        {
+            // The saved parties were already recomputed by the caller.
+            if (alreadyDone.Contains(party.Id))
+            {
+                continue;
+            }
+
+            party.DedupeStatus = await RunDedupeAsync(db, party);
+        }
+    }
+
+    /// <summary>Adds each non-blank identifier (trimmed, matching <see cref="Blank"/>) to the set.</summary>
+    private static void AddIdentifiers(HashSet<string> set, params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (Blank(value) is { } identifier)
+            {
+                set.Add(identifier);
+            }
+        }
     }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

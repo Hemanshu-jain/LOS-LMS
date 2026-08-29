@@ -22,6 +22,7 @@
 }
 else if (_application is null)
 {
+    <NotFoundStatus />
     <div class="stage-page">
         <div class="not-found">
             <h1 class="not-found-title">Application not found</h1>
@@ -97,14 +98,14 @@ else
                         <Panel Title="Loan details">
                             <div class="field-grid">
                                 <FormField Label="DSA / sourcing channel" For="ls-dsa">
-                                    <select id="ls-dsa" class="field-input" @bind="_application.SourcingChannel">
+                                    <select id="ls-dsa" class="field-input" @bind="_application!.SourcingChannel">
                                         <option value="">@BlankOption</option>
                                         @foreach (var o in ChannelOptions) { <option value="@o">@o</option> }
                                     </select>
                                 </FormField>
 
                                 <FormField Label="Sourcing branch" For="ls-branch">
-                                    <select id="ls-branch" class="field-input" @bind="_application.Branch">
+                                    <select id="ls-branch" class="field-input" @bind="_application!.Branch">
                                         <option value="">@BlankOption</option>
                                         @foreach (var o in _branchOptions) { <option value="@o">@o</option> }
                                     </select>
@@ -116,7 +117,7 @@ else
                                 </FormField>
 
                                 <FormField Label="Scheme" For="ls-scheme">
-                                    <select id="ls-scheme" class="field-input" @bind="_application.Scheme">
+                                    <select id="ls-scheme" class="field-input" @bind="_application!.Scheme">
                                         <option value="">@BlankOption</option>
                                         @foreach (var o in SchemeOptions) { <option value="@o">@o</option> }
                                     </select>
@@ -128,26 +129,26 @@ else
                                         @* ponytail: re-checks the cap on every keystroke, one indexed
                                            lookup each. Debounce if a remote database makes it show. *@
                                         <input id="ls-amount" type="number" min="0" step="1" class="field-input has-prefix"
-                                               @bind="_application.LoanAmount" @bind:event="oninput"
+                                               @bind="_application!.LoanAmount" @bind:event="oninput"
                                                @bind:after="RefreshCapGateAsync" />
                                     </div>
                                 </FormField>
 
                                 <FormField Label="Tenure (months)" For="ls-tenure">
                                     <input id="ls-tenure" type="number" min="0" step="1" class="field-input"
-                                           @bind="_application.Tenure" @bind:event="oninput" />
+                                           @bind="_application!.Tenure" @bind:event="oninput" />
                                 </FormField>
 
                                 <FormField Label="ROI %" For="ls-roi">
                                     <input id="ls-roi" type="number" min="0" step="0.01" class="field-input"
-                                           @bind="_application.Roi" @bind:event="oninput" />
+                                           @bind="_application!.Roi" @bind:event="oninput" />
                                 </FormField>
 
                                 <FormField Label="Processing fee" For="ls-fee">
                                     <div class="currency-input">
                                         <span class="currency-symbol">₹</span>
                                         <input id="ls-fee" type="number" min="0" step="1" class="field-input has-prefix"
-                                               @bind="_application.ProcessingFee" />
+                                               @bind="_application!.ProcessingFee" />
                                     </div>
                                 </FormField>
 
@@ -155,12 +156,12 @@ else
                                     <div class="currency-input">
                                         <span class="currency-symbol">₹</span>
                                         <input id="ls-advemi" type="number" min="0" step="1" class="field-input has-prefix"
-                                               @bind="_application.AdvanceEmi" />
+                                               @bind="_application!.AdvanceEmi" />
                                     </div>
                                 </FormField>
 
                                 <FormField Label="Repayment mode" For="ls-repay">
-                                    <select id="ls-repay" class="field-input" @bind="_application.RepaymentMode">
+                                    <select id="ls-repay" class="field-input" @bind="_application!.RepaymentMode">
                                         <option value="">@BlankOption</option>
                                         @foreach (var o in RepaymentOptions) { <option value="@o">@o</option> }
                                     </select>
@@ -168,7 +169,7 @@ else
 
                                 <FormField Label="Expected disbursal date" For="ls-disbursal">
                                     <input id="ls-disbursal" type="date" class="field-input"
-                                           @bind="_application.DisbursalDate" />
+                                           @bind="_application!.DisbursalDate" />
                                 </FormField>
                             </div>
                         </Panel>
