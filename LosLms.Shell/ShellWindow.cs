@@ -41,9 +41,6 @@ public sealed class ShellWindow : Form
     /// </summary>
     public event Action? NavigationFailed;
 
-    /// <summary>Raised once the WebView2 core is initialised and ready to navigate.</summary>
-    public event Action? Ready;
-
     public ShellWindow(string windowTitle)
     {
         Text = windowTitle;
@@ -200,7 +197,6 @@ public sealed class ShellWindow : Form
         };
 
         _coreReady = true;
-        Ready?.Invoke();
 
         if (_pendingUrl is { } url)
         {

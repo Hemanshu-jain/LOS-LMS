@@ -20,8 +20,16 @@ internal sealed class BackendSupervisor
     private readonly string _applyTempDir = Path.Combine(Paths.InstallRoot, "_apply");
     private readonly string _backupDir = Path.Combine(Paths.InstallRoot, "_backup");
 
+    // Crash-loop guard: if the backend keeps dying within this window of being started, it is not a
+    // transient crash to restart through — it is broken (a bad config or, once they are added, a bad
+    // SDK/API key). Stop after this many rapid failures instead of respawning forever.
+    private static readonly TimeSpan RapidFailureWindow = TimeSpan.FromSeconds(15);
+    private const int MaxRapidFailures = 5;
+
     private string _connectionString = "";
     private Process? _backend;
+    private DateTime _backendStartedAt;
+    private int _rapidFailures;
     private volatile bool _stopping;
 
     public int Port { get; private set; }
@@ -30,6 +38,9 @@ internal sealed class BackendSupervisor
 
     /// <summary>Raised (on a background thread) after the backend is restarted, so the shell can reload.</summary>
     public event Action? BackendRestarted;
+
+    /// <summary>Raised when the backend crash-loops and the supervisor gives up, so the shell can say so.</summary>
+    public event Action? BackendFailedPermanently;
 
     public async Task StartAsync(string connectionString, Action<string> progress, CancellationToken ct)
     {
@@ -70,6 +81,20 @@ internal sealed class BackendSupervisor
 
                 if (_backend is { HasExited: true } && !_stopping)
                 {
+                    _rapidFailures = DateTime.UtcNow - _backendStartedAt < RapidFailureWindow
+                        ? _rapidFailures + 1
+                        : 0;
+
+                    if (_rapidFailures >= MaxRapidFailures)
+                    {
+                        Log.Error(
+                            $"Backend crash-looped ({MaxRapidFailures} rapid exits). Giving up — it is "
+                            + "misconfigured, not crashing transiently. Check server-launcher.log.");
+                        _stopping = true;
+                        BackendFailedPermanently?.Invoke();
+                        break;
+                    }
+
                     Log.Warn($"Backend exited unexpectedly (code {_backend.ExitCode}). Restarting.");
                     _backend = StartBackend();
                     BackendRestarted?.Invoke();
@@ -106,6 +131,7 @@ internal sealed class BackendSupervisor
 
         var process = Process.Start(info)
             ?? throw new InvalidOperationException($"Could not start {Paths.BackendExe}.");
+        _backendStartedAt = DateTime.UtcNow;
         Log.Info($"Backend started (PID {process.Id}) on {LocalUrl}.");
         return process;
     }

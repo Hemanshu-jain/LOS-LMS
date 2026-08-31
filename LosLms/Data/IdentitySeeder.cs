@@ -298,10 +298,10 @@ public static class IdentitySeeder
             File.WriteAllText(path,
                 "LOS/LMS — first-run sign-in" + Environment.NewLine +
                 Environment.NewLine +
-                "THIS computer is the server. Run LOS-LMS.exe on ONE machine only." + Environment.NewLine +
-                "On every other device (staff, other branches), just open the address the app" + Environment.NewLine +
-                "window shows (e.g. http://THIS-PCs-IP:5037) in a web browser — do NOT run the app" + Environment.NewLine +
-                "there. All devices then share this one server's data, live." + Environment.NewLine +
+                "This computer is the server. Other staff open the LOS/LMS app (LOS-LMS.exe) on their" + Environment.NewLine +
+                "own PCs and it finds this server automatically — nothing for them to configure. You" + Environment.NewLine +
+                "can also share the link in shareable-url.txt (next to the server) to open it in a" + Environment.NewLine +
+                "web browser. They all share this one server's data, live." + Environment.NewLine +
                 Environment.NewLine +
                 "Sign in with one of these, then set your own password when prompted:" + Environment.NewLine +
                 Environment.NewLine +

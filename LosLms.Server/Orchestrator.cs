@@ -70,6 +70,12 @@ internal sealed class Orchestrator
 
         // ---- 3. Local shell works now — do this BEFORE the tunnel so local use never waits on it. ----
         _backend.BackendRestarted += () => _shell.NavigateAsync(_backend.LocalUrl);
+        _backend.BackendFailedPermanently += () => _shell.ShowError(
+            "The application server stopped",
+            "The server kept crashing on startup and has been stopped — this usually means a "
+                + "configuration problem. See server-launcher.log next to the app.",
+            "Quit",
+            QuitFromError);
         await _shell.NavigateAsync(_backend.LocalUrl);
 
         // ---- 4. Supervise (restart-on-crash + apply updates) on a background thread. ----

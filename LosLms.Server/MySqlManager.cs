@@ -57,13 +57,19 @@ internal sealed class MySqlManager
         progress("Starting the database…");
         _mysqld = StartMysqld(bootstrapFile);
 
-        await WaitUntilAcceptingConnectionsAsync(progress, ct);
+        try
+        {
+            await WaitUntilAcceptingConnectionsAsync(progress, ct);
+        }
+        finally
+        {
+            // The bootstrap file holds the generated password in clear text — never leave it behind,
+            // even if startup failed after it was written.
+            if (bootstrapFile is not null) TryDelete(bootstrapFile);
+        }
 
         if (firstRun)
         {
-            // The bootstrap file held the generated passwords in clear text — remove it now that the
-            // accounts exist, and persist the credentials for every future run.
-            TryDelete(bootstrapFile!);
             _credentials.Save();
             Log.Info("First-run database bootstrap complete; credentials saved.");
         }
@@ -93,7 +99,7 @@ internal sealed class MySqlManager
                 info.ArgumentList.Add("--protocol=tcp");
                 info.ArgumentList.Add("--host=127.0.0.1");
                 info.ArgumentList.Add($"--port={Port}");
-                info.ArgumentList.Add($"--user={_credentials.AppUser}");
+                info.ArgumentList.Add($"--user={DbCredentials.AppUser}");
                 info.ArgumentList.Add("shutdown");
                 info.Environment["MYSQL_PWD"] = _credentials.AppPassword; // keep the password off the command line
                 var admin = Process.Start(info);
@@ -155,15 +161,18 @@ internal sealed class MySqlManager
     private static string WriteBootstrapFile(DbCredentials creds)
     {
         var path = Path.Combine(Paths.InstallRoot, "_bootstrap.sql");
+        // root gets a throwaway password just so it is not left blank; it is never used again (root is
+        // unreachable over TCP here), so it is not worth storing.
+        var rootPassword = Guid.NewGuid().ToString("N");
         var sql =
-            $"ALTER USER 'root'@'localhost' IDENTIFIED BY '{creds.RootPassword}';\n" +
+            $"ALTER USER 'root'@'localhost' IDENTIFIED BY '{rootPassword}';\n" +
             $"CREATE DATABASE IF NOT EXISTS {DbCredentials.Database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n" +
             // The app connects over TCP from 127.0.0.1, so the account host must be the literal IP.
-            $"CREATE USER IF NOT EXISTS '{creds.AppUser}'@'127.0.0.1' IDENTIFIED BY '{creds.AppPassword}';\n" +
-            $"GRANT ALL PRIVILEGES ON {DbCredentials.Database}.* TO '{creds.AppUser}'@'127.0.0.1';\n" +
+            $"CREATE USER IF NOT EXISTS '{DbCredentials.AppUser}'@'127.0.0.1' IDENTIFIED BY '{creds.AppPassword}';\n" +
+            $"GRANT ALL PRIVILEGES ON {DbCredentials.Database}.* TO '{DbCredentials.AppUser}'@'127.0.0.1';\n" +
             // SHUTDOWN is global — it lets the launcher stop MySQL gracefully as the app user, so no
             // root-over-TCP connection is ever needed.
-            $"GRANT SHUTDOWN ON *.* TO '{creds.AppUser}'@'127.0.0.1';\n" +
+            $"GRANT SHUTDOWN ON *.* TO '{DbCredentials.AppUser}'@'127.0.0.1';\n" +
             "FLUSH PRIVILEGES;\n";
         File.WriteAllText(path, sql);
         return path;
