@@ -1,0 +1,122 @@
+using LosLms.Shell;
+
+namespace LosLms.Server;
+
+/// <summary>
+/// The startup sequence for the Server machine, in order, each step awaited to genuine success before
+/// the next: MySQL → backend → local shell → (additive) tunnel → publish. Owns the child services and
+/// tears them all down cleanly on shutdown. Progress is surfaced on the shell's splash overlay; the
+/// full record goes to the launcher log.
+/// </summary>
+internal sealed class Orchestrator
+{
+    private readonly ShellWindow _shell;
+    private readonly TrayController _tray;
+    private readonly ServerConfig _config;
+
+    private readonly MySqlManager _mysql = new();
+    private readonly BackendSupervisor _backend = new();
+    private readonly TunnelManager _tunnel = new();
+
+    private readonly CancellationTokenSource _cts = new();
+    private Thread? _superviseThread;
+    private bool _stopped;
+
+    public Orchestrator(ShellWindow shell, TrayController tray, ServerConfig config)
+    {
+        _shell = shell;
+        _tray = tray;
+        _config = config;
+    }
+
+    public async Task RunAsync()
+    {
+        var ct = _cts.Token;
+        void Progress(string message) => _shell.ShowConnecting("Starting LOS/LMS…", message);
+
+        // ---- 1. MySQL: fail-stop. Never start the backend against an absent database. ----
+        try
+        {
+            await _mysql.StartAsync(Progress, ct);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("MySQL failed to start", ex);
+            _shell.ShowError(
+                "The database couldn't start",
+                "LOS/LMS could not start its database, so it can't run on this machine.\n\n"
+                    + ex.Message + "\n\nSee server-launcher.log next to the app for details.",
+                "Quit",
+                QuitFromError);
+            return;
+        }
+
+        // ---- 2. Backend, pointed at local MySQL. Migrations apply automatically on this boot. ----
+        try
+        {
+            await _backend.StartAsync(_mysql.AppConnectionString, Progress, ct);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Backend failed to start", ex);
+            _shell.ShowError(
+                "The application server couldn't start",
+                "The database is running, but the application server did not come up.\n\n"
+                    + ex.Message + "\n\nSee server-launcher.log next to the app for details.",
+                "Quit",
+                QuitFromError);
+            return;
+        }
+
+        // ---- 3. Local shell works now — do this BEFORE the tunnel so local use never waits on it. ----
+        _backend.BackendRestarted += () => _shell.NavigateAsync(_backend.LocalUrl);
+        await _shell.NavigateAsync(_backend.LocalUrl);
+
+        // ---- 4. Supervise (restart-on-crash + apply updates) on a background thread. ----
+        _superviseThread = new Thread(() => _backend.RunSuperviseLoop(ct))
+        {
+            IsBackground = true,
+            Name = "backend-supervisor",
+        };
+        _superviseThread.Start();
+
+        // ---- 5. Tunnel + publish: additive. Failure here never blocks the working local machine. ----
+        var url = await _tunnel.StartAsync(_backend.Port, Progress, ct);
+        if (url is not null)
+        {
+            _tray.SetUrl(url);
+            await new UrlPublisher(_config).PublishAsync(url, ct);
+        }
+        else
+        {
+            _tray.SetUrl(null);
+            Log.Info("Running local-only (no tunnel). The operator at this machine can work normally.");
+        }
+    }
+
+    /// <summary>Stops everything in the safe order: tunnel, backend, then MySQL. Idempotent.</summary>
+    public void Shutdown()
+    {
+        if (_stopped)
+        {
+            return;
+        }
+
+        _stopped = true;
+        Log.Info("Shutting down — stopping tunnel, backend, and database.");
+        try { _cts.Cancel(); } catch { /* ignore */ }
+
+        _tunnel.Stop();
+        _backend.Stop();
+        _mysql.Stop();
+
+        try { _superviseThread?.Join(5000); } catch { /* ignore */ }
+        Log.Info("Shutdown complete.");
+    }
+
+    private void QuitFromError()
+    {
+        Shutdown();
+        _shell.BeginInvoke(() => _shell.Close());
+    }
+}

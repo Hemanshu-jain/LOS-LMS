@@ -499,3 +499,15 @@ LosLms/App_Data/los_lms.db-wal
 
 # First-run temporary sign-in credentials, written at startup. Never source control.
 LosLms/FIRST-RUN-LOGIN.txt
+
+# ---- Server / Client packaging runtime artifacts (never source) ----
+# The operator's real GitHub token lives here — never commit it (server.example.json is the template).
+server.json
+# Generated MySQL credentials, bundled MySQL, its data dir, the tunnel client, and the shareable URL.
+.db-credentials
+mysql/
+mysql-data/
+cloudflared.exe
+shareable-url.txt
+# Cache of large runtime dependencies downloaded by the publish scripts (bundled MySQL + cloudflared).
+.tools/

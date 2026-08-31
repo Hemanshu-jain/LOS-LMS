@@ -7,6 +7,7 @@ using LosLms.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -30,19 +31,23 @@ builder.Services.AddCascadingAuthenticationState();
 // Default factory, no keys, no base address — each call site passes its own URL.
 builder.Services.AddHttpClient();
 
-// The whole app runs on one self-contained SQLite database file — there is no database server to
-// install or a connection string to configure, which is what lets the product ship as a double-click
-// install. The file lives under App_Data because the updater preserves that folder across version
-// swaps: a client's data (and uploaded PII) survives every update. Every branch device connects to
-// this one server over the network; only the server ever touches the file.
-var dbPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "los_lms.db");
-Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+// The app runs against MySQL. The connection string is externally configured, never hardcoded: the
+// Server package's launcher bundles a portable MySQL and passes this string in via the
+// ConnectionStrings__LosDb environment variable (developers can set ConnectionStrings:LosDb in
+// user-secrets/appsettings instead). Only the server machine ever touches the database; other
+// machines reach it through the app, never the database port.
+var connectionString = builder.Configuration.GetConnectionString("LosDb");
 
 // A factory, not AddDbContext. In Blazor Server a scoped DbContext lives for the whole SignalR
 // circuit and is shared by every component on it, so two overlapping renders hit the same context
 // and throw. Components create a short-lived context per operation instead.
+//
+// An explicit server version (not AutoDetect) is deliberate: AutoDetect opens a connection while
+// configuring DI, which would make startup fail hard when the database is briefly unreachable. The
+// startup migrate step below is the one place that must reach the database, and it fails closed on
+// its own.
 builder.Services.AddDbContextFactory<LosDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath}"));
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 40))));
 
 // ---- Tenancy ----
 //
@@ -75,8 +80,8 @@ builder.Services.AddScoped(sp =>
 // Nothing set here may affect the MODEL — only behaviour. Identity reads Stores.MaxLengthForKeys
 // (and ProtectPersonalData) while building the model, from the application service provider, which
 // the design-time factory has no way to supply. Setting either one would make `dotnet ef migrations`
-// scaffold different column types from the ones the app actually runs against. SQLite's TEXT keys
-// index fine at the default length, so there is nothing to gain by pinning it.
+// scaffold different column types from the ones the app actually runs against. Pomelo's default
+// varchar(255) keys index fine under MySQL's utf8mb4, so there is nothing to gain by pinning it.
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.User.RequireUniqueEmail = true;
@@ -101,6 +106,19 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.AccessDeniedPath = "/account/denied";
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
+});
+
+// Remote users reach this backend through a Cloudflare tunnel that terminates HTTPS and forwards to
+// the app over plain HTTP on localhost. Without this, the app sees every request as "http" and builds
+// http:// redirect URLs (e.g. the sign-in redirect), bouncing the browser off HTTPS. Honouring the
+// X-Forwarded-Proto that the tunnel sets keeps the app on the correct external scheme. Safe here
+// because the backend binds to 127.0.0.1 only — the sole caller is the local tunnel client, so the
+// header cannot be spoofed by a remote user reaching the backend directly.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 builder.Services.AddAuthorization(options =>
@@ -130,14 +148,6 @@ try
         // new build and have its schema changes apply automatically to the existing database — no
         // manual step, and the client never loses data.
         await db.Database.MigrateAsync();
-
-        // Write-Ahead Logging is the concurrency setting that matters for the multi-branch case: many
-        // users can read while one writes, instead of readers blocking on every write. It is stored in
-        // the database file header, so setting it once here persists for every future connection.
-        // ponytail: busy_timeout is per-connection and not set here; WAL alone removes almost all lock
-        // contention at branch scale. Add a connection interceptor to set it if "database is locked"
-        // ever surfaces under real load.
-        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
     }
 
     // Roles and the two bootstrap accounts (one Admin, one SuperAdmin) with their temporary passwords.
@@ -160,8 +170,8 @@ try
 catch (Exception ex)
 {
     app.Logger.LogError(ex,
-        "Startup database step failed — could not create/migrate or seed the local database. This "
-        + "usually means the App_Data folder is not writable (permissions or disk full). The app will "
+        "Startup database step failed — could not migrate or seed the database. This usually means the "
+        + "MySQL server is not reachable yet or the ConnectionStrings:LosDb value is wrong. The app will "
         + "start, but data pages will not work until this is resolved.");
 }
 
@@ -175,6 +185,10 @@ app.Logger.LogInformation(
     "Running more than one instance needs a SignalR backplane, or admins will silently see stale data.");
 
 // Configure the HTTP request pipeline.
+// First, before anything reads the request scheme: apply the tunnel's forwarded scheme/host so
+// redirects and absolute URLs use https when the user arrived over the HTTPS tunnel.
+app.UseForwardedHeaders();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);

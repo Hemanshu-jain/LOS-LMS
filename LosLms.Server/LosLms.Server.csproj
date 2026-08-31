@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Server package's single double-clicked executable. It orchestrates the whole machine:
+       initialises and starts a bundled portable MySQL (localhost only), starts the backend against
+       it, opens a Cloudflare Quick Tunnel, publishes the tunnel URL, and hosts the local WebView2
+       shell. It also carries the supervise + self-update-swap responsibility that used to live in
+       LosLms.Watchdog — this exe sits next to app\ and is never itself swapped, so it can replace
+       app\ on update. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>LOS-LMS Server</AssemblyName>
+    <RootNamespace>LosLms.Server</RootNamespace>
+    <Version>1.1.2</Version>
+    <!-- The product logo: shown as the exe's file icon in Explorer and, at runtime, the shell window
+         + tray icon (loaded from app.ico next to the exe — see the Content copy below). -->
+    <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\branding\app.ico">
+      <Link>app.ico</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LosLms.Shell\LosLms.Shell.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For the real "is MySQL actually accepting connections" readiness poll and the first-run
+         bootstrap DDL (create database + application user). -->
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
+  </ItemGroup>
+
+</Project>

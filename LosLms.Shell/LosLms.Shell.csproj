@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The shared desktop shell used by BOTH packages: the Server's local window and the thin Client
+       window. A lightweight native WebView2 window with no address bar and no browser chrome, so the
+       app feels like a real application rather than a browser tab someone could close mid-task. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Microsoft's embeddable Chromium control — the standard .NET way to host web content in a
+         native window without pulling in Electron. Relies on the Evergreen WebView2 runtime, which
+         ships with Windows 11 (the target) and modern Windows 10. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Client Shell package's single double-clicked executable: a thin native window with no
+       database and no backend of its own. It reads the current server URL from a fixed public location
+       and opens the shared WebView2 shell against it. This is what gets installed on every user's
+       computer other than the one running the Server package. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>LOS-LMS</AssemblyName>
+    <RootNamespace>LosLms.Client</RootNamespace>
+    <Version>1.1.2</Version>
+    <!-- The product logo: the exe's file icon in Explorer and, at runtime, the shell window icon
+         (loaded from app.ico next to the exe — see the Content copy below). -->
+    <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\branding\app.ico">
+      <Link>app.ico</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LosLms.Shell\LosLms.Shell.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -21,9 +21,12 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <!-- SQLite is the one and only database: an embedded file created automatically on first run, so
-         the product installs by double-click with no database server to set up. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.29" />
+    <!-- MySQL is the database engine, via the Pomelo provider. The Server package bundles a portable,
+         no-installer MySQL and hands this app its connection string at launch; the string is never
+         hardcoded (read from ConnectionStrings:LosDb / the ConnectionStrings__LosDb env var). MySQL is
+         used, not SQLite, because this is a concurrent multi-branch system with real-time Blazor
+         circuits — SQLite's single-writer model does not fit that. -->
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
     <PackageReference Include="QuestPDF" Version="2026.7.2" />
   </ItemGroup>
 

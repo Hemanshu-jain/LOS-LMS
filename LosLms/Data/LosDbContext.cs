@@ -581,7 +581,7 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(a => a.Status).HasDefaultValue(BankStatementAnalysis.NotConfigured);
 
             // Reserved for a real provider's full response; unbounded text, nullable, never populated here.
-            entity.Property(a => a.RawResultJson).HasColumnType("TEXT");
+            entity.Property(a => a.RawResultJson).HasColumnType("longtext");
 
             // Many per application — not unique. Inherits tenant isolation through the filtered
             // Application, like every other child table.
