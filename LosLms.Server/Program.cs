@@ -4,38 +4,62 @@ using LosLms.Shell;
 namespace LosLms.Server;
 
 /// <summary>
-/// Entry point for the Server package. Shows the shared desktop shell immediately (so the user always
-/// sees a real window, never a terminal), then orchestrates MySQL → backend → tunnel behind a splash,
-/// and finally points the shell at the local backend. Everything is torn down cleanly when the window
-/// closes.
+/// Entry point for the single LOS/LMS app. On the very first launch it asks whether this computer is
+/// the host or a staff client (once per device, then remembered). From then on it runs straight into
+/// that role: the host sets up MySQL + backend + tunnel and shows the app locally; the client just
+/// finds the host and connects. Either way the user only ever double-clicks LOS-LMS.exe.
 /// </summary>
 internal static class Program
 {
-    // Guards against a second launch on the same machine — two servers sharing one MySQL data
-    // directory would corrupt it.
-    private static readonly string MutexName = "LosLms.Server.SingleInstance";
+    // Guards a second HOST launch on one machine — two hosts sharing one MySQL data dir would corrupt it.
+    private const string HostMutexName = "LosLms.Host.SingleInstance";
 
     [STAThread]
     private static void Main()
     {
-        using var mutex = new Mutex(initiallyOwned: true, MutexName, out var isNew);
+        ApplicationConfiguration.Initialize();
+
+        var role = RoleStore.Get();
+        if (role is null)
+        {
+            role = RolePicker.Ask();
+            if (role is null)
+            {
+                return; // first run, closed without choosing
+            }
+
+            RoleStore.Set(role);
+        }
+
+        if (role == RoleStore.Host)
+        {
+            RunHost();
+        }
+        else
+        {
+            RunClient();
+        }
+    }
+
+    // ---- Host role: this computer runs the whole system ----------------------------------------------
+
+    private static void RunHost()
+    {
+        using var mutex = new Mutex(initiallyOwned: true, HostMutexName, out var isNew);
         if (!isNew)
         {
             MessageBox.Show(
-                "LOS/LMS Server is already running on this machine.",
-                "LOS/LMS Server",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                "LOS/LMS is already running on this computer.",
+                "LOS/LMS", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
-        ApplicationConfiguration.Initialize();
-        Log.Info("==== LOS/LMS Server launcher starting ====");
+        Log.Info("==== LOS/LMS starting (host role) ====");
 
         var config = ServerConfig.Load();
-        var shell = new ShellWindow("LOS/LMS");
+        var shell = new ShellWindow("LOS/LMS — Server");
 
-        Orchestrator? orchestrator = null;
+        Orchestrator orchestrator = null!;
         var tray = new TrayController(
             onOpenWindow: () =>
             {
@@ -60,7 +84,7 @@ internal static class Program
                 Log.Error("Fatal error during startup", ex);
                 shell.ShowError(
                     "Something went wrong starting LOS/LMS",
-                    ex.Message + "\n\nSee server-launcher.log next to the app for details.",
+                    ex.Message + "\n\nSee LOS-LMS.log next to the app for details.",
                     "Quit",
                     () => shell.Close());
             }
@@ -68,11 +92,21 @@ internal static class Program
 
         shell.FormClosing += (_, _) =>
         {
-            orchestrator!.Shutdown();
+            orchestrator.Shutdown();
             tray.Dispose();
         };
 
         Application.Run(shell);
-        Log.Info("==== LOS/LMS Server launcher exited ====");
+        Log.Info("==== LOS/LMS exited (host role) ====");
+    }
+
+    // ---- Client role: this computer connects to the host --------------------------------------------
+
+    private static void RunClient()
+    {
+        var shell = new ShellWindow("LOS/LMS");
+        var client = new ClientRunner(shell);
+        shell.Shown += async (_, _) => await client.StartAsync();
+        Application.Run(shell);
     }
 }

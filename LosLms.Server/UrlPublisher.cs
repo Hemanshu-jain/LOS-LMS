@@ -11,7 +11,7 @@ namespace LosLms.Server;
 /// Publishes the current tunnel URL to one small, fixed, publicly-fetchable location whose own address
 /// never changes — a file in the operator's public GitHub repo — so the Client Shell always knows
 /// where to look even though the tunnel URL itself changes on every restart. Writing needs the
-/// operator's Personal Access Token (a real credential they provide in server.json), so this is a
+/// operator's Personal Access Token (a real credential they provide in server-config.json), so this is a
 /// no-op when no token is configured.
 /// </summary>
 internal sealed class UrlPublisher
@@ -29,7 +29,7 @@ internal sealed class UrlPublisher
     {
         if (!_config.CanPublish)
         {
-            Log.Warn("No GitHub token in server.json — skipping URL publish. Remote clients cannot auto-discover this server.");
+            Log.Warn("No GitHub token in server-config.json — skipping URL publish. Remote clients cannot auto-discover this server.");
             return false;
         }
 

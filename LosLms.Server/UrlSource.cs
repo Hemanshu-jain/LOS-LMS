@@ -1,6 +1,6 @@
-namespace LosLms.Client;
+namespace LosLms.Server;
 
-/// <summary>Fetches the current server URL from the fixed public location.</summary>
+/// <summary>Fetches the current server URL from the fixed public location (client role).</summary>
 internal sealed class UrlSource
 {
     private readonly ClientConfig _config;

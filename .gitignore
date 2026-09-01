@@ -501,8 +501,9 @@ LosLms/App_Data/los_lms.db-wal
 LosLms/FIRST-RUN-LOGIN.txt
 
 # ---- Server / Client packaging runtime artifacts (never source) ----
-# The operator's real GitHub token lives here — never commit it (server.example.json is the template).
+# The operator's real GitHub token lives here — never commit it (server-config.example.json is the template).
 server.json
+server-config.json
 # Generated MySQL credentials, bundled MySQL, its data dir, the tunnel client, and the shareable URL.
 .db-credentials
 mysql/

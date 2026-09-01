@@ -1,11 +1,11 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace LosLms.Client;
+namespace LosLms.Server;
 
 /// <summary>
-/// Where the Client reads the current server URL from. Defaults to the same public repo file the
-/// Server publishes to, so the shipped Client needs no configuration at all; an optional client.json
+/// Where the client role reads the current server URL from. Defaults to the same public repo file the
+/// host publishes to, so a staff machine needs no configuration at all; an optional client-config.json
 /// next to the exe can repoint it without a rebuild.
 /// </summary>
 internal sealed class ClientConfig
@@ -23,7 +23,7 @@ internal sealed class ClientConfig
     public string Branch { get; init; } = "main";
 
     /// <summary>
-    /// The raw URL, with a cache-buster so a Server restart is seen promptly instead of being masked by
+    /// The raw URL, with a cache-buster so a host restart is seen promptly instead of being masked by
     /// the raw.githubusercontent.com CDN cache.
     /// </summary>
     public string RawUrl() =>
@@ -33,7 +33,7 @@ internal sealed class ClientConfig
     {
         try
         {
-            var file = System.IO.Path.Combine(AppContext.BaseDirectory, "client.json");
+            var file = System.IO.Path.Combine(Paths.InstallRoot, "client-config.json");
             if (File.Exists(file))
             {
                 var config = JsonSerializer.Deserialize<ClientConfig>(
@@ -46,7 +46,7 @@ internal sealed class ClientConfig
         }
         catch
         {
-            // Fall back to the compiled defaults — the shipped Client works with no config file.
+            // Fall back to the compiled defaults — the shipped client works with no config file.
         }
 
         return new ClientConfig();

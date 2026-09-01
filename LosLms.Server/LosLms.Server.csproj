@@ -1,31 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The Server package's single double-clicked executable. It orchestrates the whole machine:
-       initialises and starts a bundled portable MySQL (localhost only), starts the backend against
-       it, opens a Cloudflare Quick Tunnel, publishes the tunnel URL, and hosts the local WebView2
-       shell. It also carries the supervise + self-update-swap responsibility that used to live in
-       LosLms.Watchdog — this exe sits next to app\ and is never itself swapped, so it can replace
-       app\ on update. -->
+  <!-- The single LOS/LMS executable. On first run it asks whether this computer is the host or a staff
+       client, then runs that role: the host sets up a bundled portable MySQL (localhost only), starts
+       the backend, opens a Cloudflare Quick Tunnel and publishes its URL, and shows the app locally; a
+       client just finds the host and connects. Published single-file, so the extracted folder is one
+       clean exe rather than a pile of DLLs. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
-    <AssemblyName>LOS-LMS Server</AssemblyName>
+    <AssemblyName>LOS-LMS</AssemblyName>
     <RootNamespace>LosLms.Server</RootNamespace>
     <Version>1.1.3</Version>
-    <!-- The product logo: shown as the exe's file icon in Explorer and, at runtime, the shell window
-         + tray icon (loaded from app.ico next to the exe — see the Content copy below). -->
+    <!-- The product logo as the exe's file icon in Explorer. The window/tray icon is read from the exe
+         itself at runtime, so no separate app.ico file is shipped (keeps the folder clean). -->
     <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
+    <!-- Keep the single-file publish output to just the exe: no .pdb, no NuGet .xml doc files. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyDebugSymbolFilesFromPackages>false</CopyDebugSymbolFilesFromPackages>
+    <CopyDocumentationFilesFromPackages>false</CopyDocumentationFilesFromPackages>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Content Include="..\branding\app.ico">
-      <Link>app.ico</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\LosLms.Shell\LosLms.Shell.csproj" />

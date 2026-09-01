@@ -341,10 +341,10 @@ public sealed class ShellWindow : Form
 
     private static Icon? TryLoadIcon()
     {
+        // Read the exe's own embedded icon — works under single-file and needs no shipped .ico file.
         try
         {
-            var path = Path.Combine(AppContext.BaseDirectory, "app.ico");
-            return File.Exists(path) ? new Icon(path) : null;
+            return Environment.ProcessPath is { } exe ? Icon.ExtractAssociatedIcon(exe) : null;
         }
         catch
         {

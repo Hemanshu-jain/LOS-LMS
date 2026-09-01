@@ -1,66 +1,80 @@
-# Builds the self-contained Windows release of LOS/LMS and packages the update artifact.
+# Builds the ONE LOS/LMS package. First run asks host-vs-client; the same exe is both.
 #
 #   .\publish.ps1
 #
-# Produces, under .\publish\ :
-#   app\                                 the main server (self-contained, single-file LosLms.exe)
-#   LOS-LMS.exe                          the launcher the operator double-clicks (starts the server,
-#                                        opens the browser, applies updates) — never self-updated
-#   los-lms-v<version>-SETUP-win-x64.zip first-install bundle: LOS-LMS.exe + app\ (send to the client)
-#   los-lms-v<version>-win-x64.zip       the update artifact: attach this to a GitHub Release so the
-#                                        in-app System Updates page can download and apply it
+# The extracted folder is deliberately tidy:
 #
-# The update zip contains ONLY the app folder's contents (that is what an update swaps in).
-# No database to install and no connection string to set — the app uses an embedded SQLite file.
+#   LOS-LMS\
+#     LOS-LMS.exe                 <- the only thing to double-click (single-file)
+#     READ ME FIRST.txt
+#     server-config.example.json  <- only the host operator ever touches this
+#     server\                     <- host bits (ignored on staff PCs)
+#       backend\  mysql\  cloudflared.exe
+#
+# Produces under .\publish\ :
+#   LOS-LMS-v<version>-win-x64.zip   the whole app — send this to everyone
+#   los-lms-v<version>-win-x64.zip   the in-app UPDATE artifact (backend only)
 
 $ErrorActionPreference = 'Stop'
-$root = $PSScriptRoot
+$root    = $PSScriptRoot
+$appProj = Join-Path $root 'LosLms\LosLms.csproj'               # backend
+$exeProj = Join-Path $root 'LosLms.Server\LosLms.Server.csproj' # the unified launcher
+$stage   = Join-Path $root 'publish\LOS-LMS'
+$serverD = Join-Path $stage 'server'
+$backend = Join-Path $serverD 'backend'
 
-$appProj   = Join-Path $root 'LosLms\LosLms.csproj'
-$watchProj = Join-Path $root 'LosLms.Watchdog\LosLms.Watchdog.csproj'
-$outRoot   = Join-Path $root 'publish'
-$appOut    = Join-Path $outRoot 'app'
-
-# ---- Version (drives the artifact name; must match the GitHub Release tag) ----
-[xml]$xml = Get-Content $appProj
+# ---- Version ----
+[xml]$xml = Get-Content $exeProj
 $version = ($xml.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
-if (-not $version) { throw "No <Version> found in $appProj" }
-Write-Host "Publishing LOS/LMS v$version (win-x64, self-contained)..."
+if (-not $version) { throw "No <Version> found in $exeProj" }
+Write-Host "Publishing LOS/LMS v$version (single package, win-x64, self-contained)..."
+
+# ---- Bundled runtime deps (cached) ----
+$deps = & (Join-Path $root 'tools\fetch-runtime-deps.ps1')
 
 # ---- Clean ----
-if (Test-Path $outRoot) { Remove-Item $outRoot -Recurse -Force }
-New-Item -ItemType Directory -Path $appOut -Force | Out-Null
+if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+New-Item -ItemType Directory -Path $backend -Force | Out-Null
 
-# ---- Main app -> publish\app  (single-file, NOT trimmed: Blazor Server + EF Core do not trim safely) ----
+# ---- Backend -> server\backend  (single-file; Blazor + EF Core do not trim safely) ----
 dotnet publish $appProj -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:PublishTrimmed=false -o $appOut
-if ($LASTEXITCODE -ne 0) { throw "Main app publish failed." }
+    -p:PublishSingleFile=true -p:PublishTrimmed=false -o $backend
+if ($LASTEXITCODE -ne 0) { throw "Backend publish failed." }
 
-# ---- Watchdog -> publish\  (sits next to app\; this is the launcher) ----
-dotnet publish $watchProj -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:PublishTrimmed=false -o $outRoot
-if ($LASTEXITCODE -ne 0) { throw "Watchdog publish failed." }
+# ---- Unified launcher -> the folder root  (single-file: one clean LOS-LMS.exe) ----
+dotnet publish $exeProj -c Release -r win-x64 --self-contained true `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false -o $stage
+if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed." }
 
-# ---- Two artifacts, for two different jobs ----
+# Belt-and-suspenders: drop any stray debug/doc files so the root really is just the exe.
+Get-ChildItem $stage -File | Where-Object { $_.Extension -in '.pdb', '.xml' } | Remove-Item -Force
 
-# 1) FIRST-INSTALL bundle: the whole runnable install = launcher + app\ folder. This is what you send
-#    the client. They unzip it and double-click LOS-LMS.exe — no database to install, no config to
-#    edit. Unzips to a folder containing LOS-LMS.exe and app\.
-$setupZip = Join-Path $outRoot "los-lms-v$version-SETUP-win-x64.zip"
-if (Test-Path $setupZip) { Remove-Item $setupZip -Force }
-Compress-Archive -Path $appOut, (Join-Path $outRoot 'LOS-LMS.exe') -DestinationPath $setupZip
+# ---- Stage bundled MySQL + cloudflared under server\ ----
+Write-Host "Staging bundled MySQL and cloudflared..."
+Copy-Item -Path $deps.MysqlDir     -Destination (Join-Path $serverD 'mysql') -Recurse -Force
+Copy-Item -Path $deps.Cloudflared  -Destination (Join-Path $serverD 'cloudflared.exe') -Force
 
-# 2) UPDATE artifact: the CONTENTS of app\ only (no watchdog — a running watchdog can't replace
-#    itself). This is what you attach to a GitHub Release; the in-app updater downloads and the
-#    watchdog extracts it over the existing app\ folder.
-$updateZip = Join-Path $outRoot "los-lms-v$version-win-x64.zip"
+# ---- Top-level operator config template + read-me ----
+Copy-Item -Path (Join-Path $root 'server-config.example.json') -Destination (Join-Path $stage 'server-config.example.json') -Force
+Copy-Item -Path (Join-Path $root 'READ-ME-FIRST.txt')          -Destination (Join-Path $stage 'READ ME FIRST.txt') -Force
+
+# ZipFile, not Compress-Archive: Compress-Archive silently drops MySQL's deeply-nested files, leaving
+# a package with no database engine in it.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+# ---- Zip 1: the whole app (top-level LOS-LMS\ folder inside the zip; includeBaseDirectory = $true) ----
+$appZip = Join-Path $root "publish\LOS-LMS-v$version-win-x64.zip"
+if (Test-Path $appZip) { Remove-Item $appZip -Force }
+[System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $appZip, 'Optimal', $true)
+
+# ---- Zip 2: the in-app UPDATE artifact (backend contents only; the host swaps this in) ----
+$updateZip = Join-Path $root "publish\los-lms-v$version-win-x64.zip"
 if (Test-Path $updateZip) { Remove-Item $updateZip -Force }
-Compress-Archive -Path (Join-Path $appOut '*') -DestinationPath $updateZip
+[System.IO.Compression.ZipFile]::CreateFromDirectory($backend, $updateZip, 'Optimal', $false)
 
 Write-Host ""
 Write-Host "Done (v$version)."
-Write-Host "  SEND TO CLIENT (first install):   $setupZip"
-Write-Host "  ATTACH TO GITHUB RELEASE (update): $updateZip"
+Write-Host "  SEND TO EVERYONE:                 $appZip"
+Write-Host "  UPDATE ARTIFACT (GitHub Release): $updateZip"
 Write-Host ""
-Write-Host "First install: client unzips the SETUP zip and double-clicks LOS-LMS.exe."
-Write-Host "               No database to install, no configuration to edit."
+Write-Host "Everyone gets the same zip. First run asks: host this computer, or connect to it."

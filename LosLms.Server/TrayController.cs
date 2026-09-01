@@ -81,8 +81,9 @@ internal sealed class TrayController : IDisposable
     {
         try
         {
-            var path = Path.Combine(Paths.InstallRoot, "app.ico");
-            return File.Exists(path) ? new Icon(path) : SystemIcons.Application;
+            return Environment.ProcessPath is { } exe
+                ? Icon.ExtractAssociatedIcon(exe) ?? SystemIcons.Application
+                : SystemIcons.Application;
         }
         catch
         {
