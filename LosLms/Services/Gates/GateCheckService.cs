@@ -48,6 +48,14 @@ public static class GateCheckService
     /// </summary>
     public static async Task<GateResult> CanAdvanceAsync(LosDbContext db, string applicationId)
     {
+        // An Admin (or SuperAdmin) has complete authority: no stage gate blocks them, and they never
+        // raise a request for another Admin to approve. One guard here clears every server-side
+        // completion handler and the sub-header at once, because they all route through this method.
+        if (db.IsElevatedUser)
+        {
+            return GateResult.Clear;
+        }
+
         var application = await db.Applications.AsNoTracking()
             .Where(a => a.Id == applicationId)
             .Select(a => new { a.CibilGateStatus })

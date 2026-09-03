@@ -243,7 +243,7 @@
     private static string TypeClass(string requestType) => requestType switch
     {
         AdminRequest.Reject => "reject",
-        AdminRequest.MakeModelCapBypass => "cap",
+        AdminRequest.MakeModelCapBypass or AdminRequest.MakeModelCapChange => "cap",
         _ => "cibil",
     };
 }

@@ -1,0 +1,19 @@
+@using Microsoft.AspNetCore.Http
+@inject IHttpContextAccessor HttpContextAccessor
+
+@* Renders nothing. Sets a real 404 on the initial (static/prerender) request for a resource the
+   caller cannot see — a stage screen whose application was filtered away by the tenant query filter —
+   so the response matches the /files endpoint's least-disclosure stance instead of returning 200 with
+   an "Application not found" shell. On later interactive (SignalR) renders there is no HttpContext, so
+   this is a no-op and the card alone is shown. *@
+
+@code {
+    protected override void OnInitialized()
+    {
+        var response = HttpContextAccessor.HttpContext?.Response;
+        if (response is not null && !response.HasStarted)
+        {
+            response.StatusCode = StatusCodes.Status404NotFound;
+        }
+    }
+}

@@ -38,6 +38,15 @@
         }
         else
         {
+            @if (!_setupComplete)
+            {
+                <p class="setup-pending-note" role="status">
+                    Setup is not complete yet. Enter a company name and add at least one branch — until
+                    then, the rest of the app is locked for everyone in your company.
+                </p>
+                <SetupWalkthrough Visible="true" CompanyId="_company.Id" />
+            }
+
             <div class="setup-tabs" role="tablist" aria-label="Company setup sections">
                 @foreach (var tab in Tabs)
                 {
@@ -88,7 +97,7 @@
             @* ---------- Tab 2: Branches ---------- *@
             @if (_activeTab == BranchesTab)
             {
-                <BranchesTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
+                <BranchesTab CompanyId="_company.Id" OnSaved="OnBranchesSavedAsync" />
             }
 
             @* ---------- Tab 3: Policy thresholds ---------- *@
@@ -264,6 +273,7 @@
 
     private string _activeTab = ProfileTab;
     private Company? _company;
+    private bool _setupComplete;
     private bool _loading = true;
     private string? _toast;
     private CancellationTokenSource? _toastCts;
@@ -300,6 +310,10 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
         _company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
+
+        // Also stamps SetupCompletedAt if the company already meets the bar, so a returning admin is
+        // not shown the pending note or walkthrough by a stale null.
+        _setupComplete = _company is not null && await CompanySetupState.IsCompleteAsync(db, companyId);
     }
 
     private async Task SaveProfileAsync()
@@ -315,7 +329,24 @@
         stored.ContactPhone = _company.ContactPhone;
 
         await db.SaveChangesAsync();
+
+        // Saving a real name may be the second half of first-run setup; re-check so the redirect and
+        // walkthrough lift the moment name + a branch both exist.
+        _setupComplete = await CompanySetupState.IsCompleteAsync(db, _company.Id);
+
         await ShowToastAsync("Company profile saved");
+    }
+
+    /// <summary>Branches were saved (via BranchesTab). Toast, and re-check first-run completeness.</summary>
+    private async Task OnBranchesSavedAsync(string message)
+    {
+        if (_company is not null)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _setupComplete = await CompanySetupState.IsCompleteAsync(db, _company.Id);
+        }
+
+        await ShowToastAsync(message);
     }
 
     private async Task SavePolicyAsync()

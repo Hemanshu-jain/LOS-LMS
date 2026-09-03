@@ -461,6 +461,44 @@ namespace LosLms.Migrations
                     b.ToTable("BankStatements");
                 });
 
+            modelBuilder.Entity("LosLms.Models.BankStatementAnalysis", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("PartyType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("RawResultJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("NotConfigured");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationId");
+
+                    b.ToTable("BankStatementAnalyses", (string)null);
+                });
+
             modelBuilder.Entity("LosLms.Models.BankingRecord", b =>
                 {
                     b.Property<int>("Id")
@@ -539,43 +577,6 @@ namespace LosLms.Migrations
                     b.HasIndex("CompanyId");
 
                     b.ToTable("Branches");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            CompanyId = 1,
-                            IsActive = true,
-                            Name = "Nashik West"
-                        },
-                        new
-                        {
-                            Id = 2,
-                            CompanyId = 1,
-                            IsActive = true,
-                            Name = "Nashik East"
-                        },
-                        new
-                        {
-                            Id = 3,
-                            CompanyId = 1,
-                            IsActive = true,
-                            Name = "Pune Camp"
-                        },
-                        new
-                        {
-                            Id = 4,
-                            CompanyId = 1,
-                            IsActive = true,
-                            Name = "Aurangabad"
-                        },
-                        new
-                        {
-                            Id = 5,
-                            CompanyId = 1,
-                            IsActive = true,
-                            Name = "Jalgaon"
-                        });
                 });
 
             modelBuilder.Entity("LosLms.Models.Business", b =>
@@ -940,6 +941,9 @@ namespace LosLms.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<DateTime?>("SetupCompletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<int>("SlaOverdueDays")
                         .HasColumnType("int");
 
@@ -960,13 +964,13 @@ namespace LosLms.Migrations
                             CreatedAt = new DateTime(2026, 8, 11, 0, 0, 0, 0, DateTimeKind.Utc),
                             FoirCapPct = 50m,
                             FoirRiskCautionPct = 40m,
-                            FoirRiskDangerPct = 60m,
+                            FoirRiskDangerPct = 50m,
                             GstPct = 18m,
                             LtvCapPct = 85m,
                             LtvRiskCautionPct = 75m,
-                            LtvRiskDangerPct = 90m,
+                            LtvRiskDangerPct = 85m,
                             MinimumReferences = 2,
-                            Name = "Default Company — rename in Company Setup",
+                            Name = "",
                             NoteStaleTolerancePct = 0.5m,
                             SlaOverdueDays = 5,
                             UpdatedAt = new DateTime(2026, 8, 11, 0, 0, 0, 0, DateTimeKind.Utc)
@@ -980,6 +984,17 @@ namespace LosLms.Migrations
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AgreementEsignStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("NotSent");
+
+                    b.Property<string>("AgreementFilePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
 
                     b.Property<string>("ApplicationId")
                         .IsRequired()
@@ -999,8 +1014,20 @@ namespace LosLms.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("DisburseFromAccount")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<decimal?>("EmiRoundedTo")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateOnly?>("FirstEmiDate")
                         .HasColumnType("date");
+
+                    b.Property<decimal?>("FirstEmiOverride")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("GeneralDocFilePath")
                         .HasMaxLength(400)
@@ -1019,6 +1046,10 @@ namespace LosLms.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
 
+                    b.Property<decimal?>("TradeAdvance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -1033,6 +1064,20 @@ namespace LosLms.Migrations
 
                     b.Property<DateOnly?>("ValueDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("WelcomeLetterFilePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<DateTime?>("WelcomeSmsSentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("WelcomeSmsStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("NotSent");
 
                     b.HasKey("Id");
 
@@ -1878,6 +1923,10 @@ namespace LosLms.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("IdProofFilePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
                     b.Property<string>("KnownSince")
                         .HasMaxLength(60)
                         .HasColumnType("varchar(60)");
@@ -1889,6 +1938,10 @@ namespace LosLms.Migrations
                     b.Property<string>("Name")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<string>("PhotoFilePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
 
                     b.Property<string>("Relationship")
                         .HasMaxLength(100)
@@ -2548,6 +2601,17 @@ namespace LosLms.Migrations
                 });
 
             modelBuilder.Entity("LosLms.Models.BankStatement", b =>
+                {
+                    b.HasOne("LosLms.Models.Application", "Application")
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Application");
+                });
+
+            modelBuilder.Entity("LosLms.Models.BankStatementAnalysis", b =>
                 {
                     b.HasOne("LosLms.Models.Application", "Application")
                         .WithMany()

@@ -1,8 +1,13 @@
+using System.Net;
+using System.Net.Sockets;
 using LosLms.Components;
 using LosLms.Data;
 using LosLms.Models;
 using LosLms.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,32 +31,23 @@ builder.Services.AddCascadingAuthenticationState();
 // Default factory, no keys, no base address — each call site passes its own URL.
 builder.Services.AddHttpClient();
 
-// An empty or absent LosDb connection string switches the whole app onto a self-contained SQLite
-// file — this is the portable client-demo build, which needs no MySQL server. Development keeps its
-// real MySQL connection string in appsettings and behaves exactly as before.
+// The app runs against MySQL. The connection string is externally configured, never hardcoded: the
+// Server package's launcher bundles a portable MySQL and passes this string in via the
+// ConnectionStrings__LosDb environment variable (developers can set ConnectionStrings:LosDb in
+// user-secrets/appsettings instead). Only the server machine ever touches the database; other
+// machines reach it through the app, never the database port.
 var connectionString = builder.Configuration.GetConnectionString("LosDb");
-var usePortableSqlite = string.IsNullOrWhiteSpace(connectionString);
 
 // A factory, not AddDbContext. In Blazor Server a scoped DbContext lives for the whole SignalR
 // circuit and is shared by every component on it, so two overlapping renders hit the same context
 // and throw. Components create a short-lived context per operation instead.
 //
-// ponytail: the MySQL server version is pinned instead of using ServerVersion.AutoDetect(...),
-// which opens a MySQL connection during startup and would take every branch offline whenever the
-// central database is unreachable. EF opens no connection until the first query this way.
-// Bump the constant to match the central server; move it to configuration only if it ever
-// needs to differ per deployment.
-if (usePortableSqlite)
-{
-    var dbPath = Path.Combine(builder.Environment.ContentRootPath, "los_lms.db");
-    builder.Services.AddDbContextFactory<LosDbContext>(options =>
-        options.UseSqlite($"Data Source={dbPath}"));
-}
-else
-{
-    builder.Services.AddDbContextFactory<LosDbContext>(options =>
-        options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 36))));
-}
+// An explicit server version (not AutoDetect) is deliberate: AutoDetect opens a connection while
+// configuring DI, which would make startup fail hard when the database is briefly unreachable. The
+// startup migrate step below is the one place that must reach the database, and it fails closed on
+// its own.
+builder.Services.AddDbContextFactory<LosDbContext>(options =>
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 40))));
 
 // ---- Tenancy ----
 //
@@ -68,6 +64,11 @@ builder.Services.AddHttpContextAccessor();
 // that something changed. Single-server only — see the type's own remarks.
 builder.Services.AddSingleton<AdminRequestNotifier>();
 
+// One shared update-check result for the whole server, kept current by a background poller so the
+// SuperAdmin sees a "new version available" banner without opening the System Updates page.
+builder.Services.AddSingleton<UpdateNotificationService>();
+builder.Services.AddHostedService<UpdateCheckBackgroundService>();
+
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFactory>();
 
@@ -80,7 +81,7 @@ builder.Services.AddScoped(sp =>
 // (and ProtectPersonalData) while building the model, from the application service provider, which
 // the design-time factory has no way to supply. Setting either one would make `dotnet ef migrations`
 // scaffold different column types from the ones the app actually runs against. Pomelo's default
-// varchar(255) indexes fine under InnoDB's 3072-byte limit, so there is nothing to gain by pinning it.
+// varchar(255) keys index fine under MySQL's utf8mb4, so there is nothing to gain by pinning it.
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 {
     options.User.RequireUniqueEmail = true;
@@ -107,6 +108,19 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.SlidingExpiration = true;
 });
 
+// Remote users reach this backend through a Cloudflare tunnel that terminates HTTPS and forwards to
+// the app over plain HTTP on localhost. Without this, the app sees every request as "http" and builds
+// http:// redirect URLs (e.g. the sign-in redirect), bouncing the browser off HTTPS. Honouring the
+// X-Forwarded-Proto that the tunnel sets keeps the app on the correct external scheme. Safe here
+// because the backend binds to 127.0.0.1 only — the sole caller is the local tunnel client, so the
+// header cannot be spoofed by a remote user reaching the backend directly.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 builder.Services.AddAuthorization(options =>
 {
     // Fail closed. Every endpoint requires a signed-in user unless it says [AllowAnonymous] out loud,
@@ -118,36 +132,47 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// The portable SQLite build has no migrations run against it (migrations are MySQL-specific), so
-// build the schema and seed data (the HasData calls in LosDbContext) from the model on first
-// launch. No-op once los_lms.db already exists, so the client's test data survives restarts.
-if (usePortableSqlite)
+// Startup database step: bring the schema up to date, then seed. Wrapped so a database that is
+// unreachable logs a clear diagnostic and lets the app start anyway — pages then fail honestly
+// (fail-closed) rather than the whole server refusing to boot. All of it is idempotent and safe on
+// every start.
+try
 {
     // Built directly rather than resolved from DI: startup is outside any request, so there is no
-    // signed-in user for a tenant-scoped context to read, and the seeding tenant has to see
-    // everything to be able to create it.
-    await using var db = new LosDbContext(
+    // signed-in user for a tenant-scoped context to read, and the seeding tenant has to see everything.
+    await using (var db = new LosDbContext(
         app.Services.GetRequiredService<DbContextOptions<LosDbContext>>(),
-        TenantContext.ForSeeding());
+        TenantContext.ForSeeding()))
+    {
+        // Apply any pending EF Core migrations, every startup. This is what makes an update swap in a
+        // new build and have its schema changes apply automatically to the existing database — no
+        // manual step, and the client never loses data.
+        await db.Database.MigrateAsync();
+    }
 
-    await db.Database.EnsureCreatedAsync();
+    // Roles and the two bootstrap accounts (one Admin, one SuperAdmin) with their temporary passwords.
+    await IdentitySeeder.SeedAsync(app.Services, app.Logger);
+
+    // Demo data — fifteen worked-through applications and a vehicle-cap catalog — for development only.
+    // OFF by default so the shipped build is a blank slate with no seeded places, customers or figures.
+    // Turn it on in development with `dotnet run --Seed:DemoApplications=true` (or user-secrets/env).
+    if (app.Configuration.GetValue("Seed:DemoApplications", false))
+    {
+        await DemoSeedData.SeedAsync(app.Services, app.Logger, app.Environment.ContentRootPath);
+    }
+
+    // A throwaway second company, only for proving tenant isolation. Never on by default.
+    if (app.Configuration.GetValue<bool>("Seed:IsolationFixture"))
+    {
+        await IdentitySeeder.SeedIsolationFixtureAsync(app.Services, app.Logger);
+    }
 }
-
-// Roles, the initial users and their temporary passwords. Idempotent, so it is safe on every start
-// and it has to be — the SQLite path never runs a migration.
-await IdentitySeeder.SeedAsync(app.Services, app.Logger);
-
-// Fifteen worked-through applications spread across the eight stages, so every screen has real data
-// to open. Only ever runs against an empty Applications table.
-if (app.Configuration.GetValue("Seed:DemoApplications", true))
+catch (Exception ex)
 {
-    await DemoSeedData.SeedAsync(app.Services, app.Logger, app.Environment.ContentRootPath);
-}
-
-// A throwaway second company, only for proving tenant isolation. Never on by default.
-if (app.Configuration.GetValue<bool>("Seed:IsolationFixture"))
-{
-    await IdentitySeeder.SeedIsolationFixtureAsync(app.Services, app.Logger);
+    app.Logger.LogError(ex,
+        "Startup database step failed — could not migrate or seed the database. This usually means the "
+        + "MySQL server is not reachable yet or the ConnectionStrings:LosDb value is wrong. The app will "
+        + "start, but data pages will not work until this is resolved.");
 }
 
 // Said out loud at startup, not just in a code comment. The failure mode this warns about is silent:
@@ -160,6 +185,10 @@ app.Logger.LogInformation(
     "Running more than one instance needs a SignalR backplane, or admins will silently see stale data.");
 
 // Configure the HTTP request pipeline.
+// First, before anything reads the request scheme: apply the tunnel's forwarded scheme/host so
+// redirects and absolute URLs use https when the user arrived over the HTTPS tunnel.
+app.UseForwardedHeaders();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
@@ -167,16 +196,49 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-// The portable build serves plain HTTP on localhost only (no cert), so skip the redirect —
-// otherwise Kestrel just logs a "failed to determine https port" warning on every request.
-if (!usePortableSqlite)
-{
-    app.UseHttpsRedirection();
-}
+// Plain HTTP on the LAN, no certificate — branch staff reach the one server by its local address.
+// No HTTPS redirect (it would only log a "failed to determine https port" warning every request).
+// Put the server behind a reverse proxy if TLS is ever required.
 
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// First-run gate. Until a company's setup is complete — a real name and at least one branch — every
+// company-scoped user is redirected to Company Setup and can reach nothing else, because there is
+// nothing meaningful to work with yet. SuperAdmin (no company of their own) is exempt and roams
+// freely. This is the plain-HTTP half; the backstop in MainLayout covers interactive SignalR
+// navigations that never hit this pipeline. Runs after auth so the user and claims are populated.
+app.Use(async (context, next) =>
+{
+    static bool IsExempt(PathString p) =>
+        p.StartsWithSegments("/account", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/company-setup", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/files", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/system", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/_framework", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/_content", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/Error", StringComparison.OrdinalIgnoreCase);
+
+    var user = context.User;
+    if (user.Identity?.IsAuthenticated == true
+        && !user.IsInRole(TenantContext.SuperAdminRole)
+        && !IsExempt(context.Request.Path)
+        && int.TryParse(user.FindFirst(TenantContext.CompanyIdClaim)?.Value, out var companyId))
+    {
+        var factory = context.RequestServices.GetRequiredService<IDbContextFactory<LosDbContext>>();
+        await using var db = await factory.CreateDbContextAsync();
+        if (!await CompanySetupState.IsCompleteAsync(db, companyId))
+        {
+            context.Response.Redirect("/company-setup");
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.UseAntiforgery();
 
 // Streams an uploaded document back to the browser so the Document Checklist can preview it.
@@ -228,4 +290,52 @@ static string ContentTypeFor(string extension) => extension.ToLowerInvariant() s
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
+// Announce the LAN-reachable address once the server is listening, so whoever runs the server knows
+// exactly what to tell branch staff to open. Only meaningful when bound to all interfaces
+// (Urls = http://0.0.0.0:PORT in appsettings) — a localhost-only bind still logs, but only this
+// machine can reach it.
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    var addresses = app.Services.GetService<IServer>()?.Features.Get<IServerAddressesFeature>()?.Addresses;
+    var port = addresses?
+        .Select(a => Uri.TryCreate(a, UriKind.Absolute, out var u) ? u.Port : 0)
+        .FirstOrDefault(p => p > 0) ?? 0;
+    if (port == 0)
+    {
+        port = 5037;
+    }
+
+    var ip = LocalIPv4() ?? "localhost";
+    app.Logger.LogInformation(
+        "LOS/LMS is running. THIS machine is the server. On every OTHER device (staff, branches), open "
+        + "this address in a web browser — do NOT run LOS-LMS.exe there, or it starts a separate, empty "
+        + "system. They all share this one server's data, live:  http://{Ip}:{Port}",
+        ip, port);
+});
+
 app.Run();
+
+// The machine's primary LAN IPv4. The UDP socket picks the outbound interface without sending
+// anything; falls back to the first non-loopback IPv4 from DNS if that fails.
+static string? LocalIPv4()
+{
+    try
+    {
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        socket.Connect("8.8.8.8", 65530);
+        return (socket.LocalEndPoint as IPEndPoint)?.Address.ToString();
+    }
+    catch
+    {
+        try
+        {
+            return Array.Find(
+                Dns.GetHostAddresses(Dns.GetHostName()),
+                a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a))?.ToString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}

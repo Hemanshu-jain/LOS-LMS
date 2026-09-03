@@ -38,6 +38,13 @@ public static class VehicleCapCheck
         string? mfgYear,
         decimal requestedAmount)
     {
+        // An Admin bypasses the vehicle cap the same way they bypass every other gate — full
+        // authority, no request needed. See GateCheckService.CanAdvanceAsync for the same guard.
+        if (db.IsElevatedUser)
+        {
+            return GateResult.Clear;
+        }
+
         var result = await EvaluateAsync(db, assetType, makeModel, mfgYear, requestedAmount);
         if (!result.Blocked)
         {

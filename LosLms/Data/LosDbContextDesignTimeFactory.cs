@@ -14,8 +14,9 @@ namespace LosLms.Data;
 /// tenant filtering at all, and nothing would stop application code from using it by accident.
 /// Confining the unscoped construction to a design-time-only factory keeps that door shut.
 ///
-/// The connection string is a placeholder. Migration scaffolding never opens a connection, because
-/// the server version is pinned rather than auto-detected.
+/// The connection string is a throwaway — migration scaffolding builds the model, it never opens a
+/// connection (the explicit server version below is what lets it skip connecting) — but it must be the
+/// same provider (MySQL, via Pomelo) the app runs on, so the generated migrations match.
 /// </remarks>
 public sealed class LosDbContextDesignTimeFactory : IDesignTimeDbContextFactory<LosDbContext>
 {
@@ -23,8 +24,8 @@ public sealed class LosDbContextDesignTimeFactory : IDesignTimeDbContextFactory<
     {
         var options = new DbContextOptionsBuilder<LosDbContext>()
             .UseMySql(
-                "Server=localhost;Port=3306;Database=los_lms;User Id=design-time;Password=design-time;",
-                new MySqlServerVersion(new Version(8, 0, 36)))
+                "Server=localhost;Database=los_lms;User Id=root;Password=;",
+                new MySqlServerVersion(new Version(8, 0, 40)))
             .Options;
 
         return new LosDbContext(options, TenantContext.ForSeeding());

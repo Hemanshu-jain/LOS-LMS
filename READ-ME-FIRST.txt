@@ -1,0 +1,42 @@
+LOS / LMS
+=========
+
+Double-click   LOS-LMS.exe
+
+
+The first time it runs, it asks ONE question:
+
+  * "Set up the SERVER on this computer"
+        Pick this on the ONE computer that will host the system
+        (your office's main PC). It sets everything up by itself.
+
+  * "Connect to the server"
+        Pick this on every staff computer. It just opens the app
+        and finds the server automatically -- nothing to set up.
+
+That choice is remembered for this computer, so you are only asked once.
+(To change it later, delete the folder:  %LOCALAPPDATA%\LOS-LMS )
+
+
+-------------------------------------------------------------------------
+Only for the SERVER computer -- optional, one time
+-------------------------------------------------------------------------
+
+Staff on other computers connect over the internet through a link the
+server publishes. To turn that on, give the server a GitHub token once:
+
+  1. Copy   server-config.example.json   to   server-config.json
+  2. Open server-config.json, paste your GitHub token where shown, Save.
+  3. Start LOS-LMS.exe.
+
+Without a token the server still works fully for anyone sitting AT this
+computer; only remote staff auto-connect needs the token.
+
+Your first-time sign-in details are written, after the first server
+start, to:   server\backend\FIRST-RUN-LOGIN.txt
+
+The current shareable link is shown in the tray icon (bottom-right, near
+the clock) and in the file   shareable-url.txt   next to the app.
+
+
+Nothing to install. No database to set up. Windows only.

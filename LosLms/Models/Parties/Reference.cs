@@ -28,6 +28,12 @@ public class Reference
     [MaxLength(400)] public string? Address { get; set; }
     [MaxLength(60)] public string? KnownSince { get; set; }
 
+    // Server-generated paths, stored outside wwwroot — a reference's ID proof and photo are PII, the
+    // same treatment Party scans and security documents get. Carried on the row so the delete-and-
+    // reinsert save re-persists them from the in-memory form.
+    [MaxLength(400)] public string? IdProofFilePath { get; set; }
+    [MaxLength(400)] public string? PhotoFilePath { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public Application? Application { get; set; }

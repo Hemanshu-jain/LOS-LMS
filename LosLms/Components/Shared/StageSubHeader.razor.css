@@ -223,3 +223,11 @@
 .admin-deny { border: 1px solid #8a1f1f; background: #fff; color: #8a1f1f; }
 .admin-deny:hover:not(:disabled) { background: #8a1f1f; color: #fff; }
 .admin-deny:disabled { border-color: #c9ccd2; color: #9aa0aa; cursor: not-allowed; }
+
+/* Segregation-of-duties note shown in place of the Approve/Deny actions on the raiser's own request. */
+.admin-review-self {
+    margin: 0;
+    font-size: 12.5px;
+    color: #7a4b06;
+    max-width: 360px;
+}

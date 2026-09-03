@@ -122,6 +122,9 @@
                                 }
                                 else
                                 {
+                                    <button type="button" class="row-action" @onclick="() => ResetPasswordAsync(u)">
+                                        Reset password
+                                    </button>
                                     <button type="button" class="row-action" @onclick="() => ToggleActiveAsync(u)">
                                         @(u.User.IsActive ? "Deactivate" : "Reactivate")
                                     </button>
@@ -276,6 +279,51 @@
         _invite = null;
         await LoadAsync();
         await OnSaved.InvokeAsync($"Account created for {email}");
+    }
+
+    /// <summary>
+    /// Admin-mediated password reset — the only reset path in this build, since no email/SMS provider
+    /// exists to send a self-service link. Generates a fresh temporary credential the same way the
+    /// invite flow and the startup seeder do, forces a change at next sign-in, and shows the credential
+    /// exactly once for the Admin to relay directly (never stored in plain text, never emailed).
+    /// </summary>
+    /// <remarks>
+    /// <c>ResetPasswordAsync</c> rotates the target's security stamp, so any session they already have
+    /// open is invalidated — a reset takes effect immediately, not at the end of their session.
+    /// </remarks>
+    private async Task ResetPasswordAsync(UserRow row)
+    {
+        _error = null;
+        _issued = null;
+
+        var user = await UserManager.FindByIdAsync(row.User.Id);
+        if (user is null)
+        {
+            _error = "That account no longer exists.";
+            return;
+        }
+
+        var password = IdentitySeeder.GenerateTemporaryPassword();
+
+        var token = await UserManager.GeneratePasswordResetTokenAsync(user);
+        var result = await UserManager.ResetPasswordAsync(user, token, password);
+        if (!result.Succeeded)
+        {
+            _error = string.Join(" ", result.Errors.Select(x => x.Description));
+            return;
+        }
+
+        user.MustChangePassword = true;
+        await UserManager.UpdateAsync(user);
+
+        _issued = new IssuedCredential(user.Email ?? user.UserName ?? row.User.Id, password);
+
+        Logger.LogWarning(
+            "PASSWORD RESET issued for {Email} by an admin: {Password} — must be changed at first sign-in.",
+            user.Email, password);
+
+        await LoadAsync();
+        await OnSaved.InvokeAsync($"Password reset for {user.Email}");
     }
 
     private async Task ChangeRoleAsync(UserRow row, string? role)

@@ -75,13 +75,41 @@ public static class LoanMath
     /// <summary>
     /// Month-by-month amortization. Depends only on the loan terms, never on CAM recalculation.
     /// </summary>
+    /// <param name="firstEmiOverride">
+    /// When set, month 1's instalment is this figure instead of the computed EMI.
+    /// </param>
+    /// <param name="roundToNearest">
+    /// When set, months 2..N-1 use the computed EMI rounded to this nearest rupee figure (e.g. 10 or 100).
+    /// </param>
     /// <remarks>
-    /// The closing balance of the final row lands near zero rather than exactly zero — EMI is a
-    /// rounded figure, so a few paise of drift accumulate. A real disbursement schedule normally
-    /// absorbs that into the last instalment; not doing so here because the brief specifies the
-    /// formula exactly and inventing a balloon adjustment would misrepresent it.
+    /// With BOTH parameters null the result is byte-identical to the original uniform schedule: the
+    /// closing balance of the final row lands near zero (a few paise of EMI-rounding drift), exactly as
+    /// the CAM PDF and the Stage 3 modal have always shown. Those two callers pass neither and are
+    /// unaffected.
+    ///
+    /// With either set, the schedule is adjusted and the final instalment becomes a reconciling
+    /// payment — whatever principal plus that month's interest remains — so the loan closes to exactly
+    /// zero and all the override/rounding drift is absorbed in the last month, never left dangling.
     /// </remarks>
-    public static List<AmortizationRow> Schedule(decimal principal, decimal annualRatePct, int months)
+    public static List<AmortizationRow> Schedule(
+        decimal principal,
+        decimal annualRatePct,
+        int months,
+        decimal? firstEmiOverride = null,
+        decimal? roundToNearest = null)
+    {
+        // No adjustment requested → the original loop, unchanged. This is the path CamPdf and the
+        // Bank & Financial repayment modal take, so their output cannot move.
+        if (firstEmiOverride is null && roundToNearest is null)
+        {
+            return ScheduleUniform(principal, annualRatePct, months);
+        }
+
+        return ScheduleAdjusted(principal, annualRatePct, months, firstEmiOverride, roundToNearest);
+    }
+
+    /// <summary>The original uniform-EMI schedule, kept verbatim so null/null callers never shift.</summary>
+    private static List<AmortizationRow> ScheduleUniform(decimal principal, decimal annualRatePct, int months)
     {
         var rows = new List<AmortizationRow>();
 
@@ -108,22 +136,77 @@ public static class LoanMath
     }
 
     /// <summary>
-    /// The same schedule with a due date on every instalment, the first falling on
-    /// <paramref name="firstDueDate"/> and each later one a calendar month after it.
+    /// Schedule with a first-EMI override and/or rounded regular instalments, and a reconciling final
+    /// instalment that closes the loan to exactly zero.
+    /// </summary>
+    private static List<AmortizationRow> ScheduleAdjusted(
+        decimal principal, decimal annualRatePct, int months, decimal? firstEmiOverride, decimal? roundToNearest)
+    {
+        var rows = new List<AmortizationRow>();
+
+        var standardEmi = Emi(principal, annualRatePct, months);
+        if (standardEmi <= 0)
+        {
+            return rows;
+        }
+
+        var monthlyRate = annualRatePct / 12m / 100m;
+        var balance = principal;
+
+        for (var month = 1; month <= months; month++)
+        {
+            var opening = balance;
+            var interest = opening * monthlyRate;
+
+            decimal emi;
+            if (month == months)
+            {
+                // Final instalment reconciles: pay off all remaining principal plus this month's
+                // interest, so the closing balance is exactly zero however earlier months were adjusted.
+                emi = opening + interest;
+            }
+            else if (month == 1 && firstEmiOverride is { } over)
+            {
+                emi = over;
+            }
+            else if (roundToNearest is { } step && step > 0)
+            {
+                emi = Math.Round(standardEmi / step, MidpointRounding.AwayFromZero) * step;
+            }
+            else
+            {
+                emi = standardEmi;
+            }
+
+            var principalComponent = emi - interest;
+            balance = opening - principalComponent;
+
+            rows.Add(new AmortizationRow(month, opening, emi, principalComponent, interest, balance));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// The schedule with a due date on every instalment, the first on <paramref name="firstDueDate"/>
+    /// and each later one a calendar month after it. Forwards the adjustment parameters unchanged.
     /// </summary>
     /// <remarks>
-    /// Deliberately a thin wrapper rather than a second implementation: it delegates to the
-    /// three-argument <see cref="Schedule(decimal, decimal, int)"/> above and only stamps dates onto
-    /// the result, so the arithmetic the CAM PDF and the Stage 3 modal depend on cannot drift away
-    /// from what Post Sanction displays.
+    /// A thin wrapper over the arithmetic above rather than a second implementation, so what Post
+    /// Sanction shows cannot drift from the CAM PDF and the Stage 3 modal.
     ///
     /// <c>AddMonths</c> clamps a short month rather than rolling over — a 31st becomes the 30th in
     /// September, not the 1st of October. That matches how lenders actually set due dates.
     /// </remarks>
     public static List<AmortizationRow> Schedule(
-        decimal principal, decimal annualRatePct, int months, DateOnly firstDueDate)
+        decimal principal,
+        decimal annualRatePct,
+        int months,
+        DateOnly firstDueDate,
+        decimal? firstEmiOverride = null,
+        decimal? roundToNearest = null)
     {
-        var rows = Schedule(principal, annualRatePct, months);
+        var rows = Schedule(principal, annualRatePct, months, firstEmiOverride, roundToNearest);
 
         return rows
             .Select(row => row with { DueDate = firstDueDate.AddMonths(row.Month - 1) })

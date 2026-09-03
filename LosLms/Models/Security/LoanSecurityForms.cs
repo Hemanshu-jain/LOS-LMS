@@ -85,6 +85,10 @@ public sealed class ReferenceForm
     public string? Address { get; set; }
     public string? KnownSince { get; set; }
 
+    /// <summary>Server-generated paths for this reference's uploaded ID proof and photo.</summary>
+    public string? IdProofFilePath { get; set; }
+    public string? PhotoFilePath { get; set; }
+
     /// <summary>
     /// True for the row derived from the application's Co-Applicant. Its name is read-only and it can
     /// never be removed — it is not something the officer typed, so it is not theirs to edit or delete.
@@ -106,5 +110,7 @@ public sealed class ReferenceForm
         || !string.IsNullOrWhiteSpace(Relationship)
         || !string.IsNullOrWhiteSpace(Mobile)
         || !string.IsNullOrWhiteSpace(Address)
-        || !string.IsNullOrWhiteSpace(KnownSince);
+        || !string.IsNullOrWhiteSpace(KnownSince)
+        || !string.IsNullOrWhiteSpace(IdProofFilePath)
+        || !string.IsNullOrWhiteSpace(PhotoFilePath);
 }

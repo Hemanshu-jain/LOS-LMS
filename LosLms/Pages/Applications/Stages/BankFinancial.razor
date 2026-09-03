@@ -22,6 +22,7 @@
 }
 else if (_application is null)
 {
+    <NotFoundStatus />
     <div class="stage-page">
         <div class="not-found">
             <h1 class="not-found-title">Application not found</h1>
@@ -173,11 +174,19 @@ else
 
                         <Panel Title="Banking statements">
                             <Right>
+                                <button type="button" class="small-button" @onclick="FetchAndAnalyzeAsync">
+                                    Fetch &amp; Analyze (last 6 months)
+                                </button>
                                 <button type="button" class="small-button" @onclick="() => _showAddStatement = !_showAddStatement">
                                     + Add statement period
                                 </button>
                             </Right>
                             <ChildContent>
+                                @if (_analysisNotice is not null)
+                                {
+                                    <p class="inline-notice" role="status">@_analysisNotice</p>
+                                }
+
                                 @if (_showAddStatement)
                                 {
                                     <div class="add-statement">
@@ -314,7 +323,7 @@ else
                                                 <tr>
                                                     <td>Processing fee</td>
                                                     <td class="align-right">
-                                                        <span class="cam-value">@FormatInr(_application.ProcessingFee ?? 0m)</span>
+                                                        <span class="cam-value">@FormatInr(_application!.ProcessingFee ?? 0m)</span>
                                                         @if (ProcessingFeePercent is { } pct)
                                                         {
                                                             <span class="cam-extra">(@pct.ToString("0.#", CultureInfo.InvariantCulture)% of loan amount)</span>
@@ -373,7 +382,7 @@ else
 
     @if (_showSchedule)
     {
-        <RepaymentScheduleModal Principal="_application.LoanAmount"
+        <RepaymentScheduleModal Principal="_application!.LoanAmount"
                                 AnnualRatePct="@(_application.Roi ?? 0m)"
                                 Months="@(_application.Tenure ?? 0)"
                                 OnClose="() => _showSchedule = false" />
@@ -714,6 +723,27 @@ else
     // ---------------------------------------------------------------------
     // Statements
     // ---------------------------------------------------------------------
+
+    private string? _analysisNotice;
+
+    /// <summary>
+    /// Records a bank-statement analysis request and reports honestly that no provider is configured.
+    /// The write-back that maps a real result onto Viability income and Existing Loan rows lives in
+    /// <see cref="BankStatementAnalysisService"/> and is never reached here — nothing is fabricated,
+    /// and manual entry on both screens continues to work exactly as before.
+    /// </summary>
+    private async Task FetchAndAnalyzeAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await BankStatementAnalysisService.RequestAsync(db, _application.Id, "Applicant");
+
+        _analysisNotice = BankStatementAnalysisService.Unavailable;
+    }
 
     private async Task OnStatementFileSelectedAsync(InputFileChangeEventArgs e)
     {

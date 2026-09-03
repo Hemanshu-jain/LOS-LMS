@@ -4,6 +4,7 @@
 @using LosLms.Models
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<LosDbContext> DbFactory
+@inject IJSRuntime JS
 
 <Panel Title="Vehicle loan caps">
     <Right>
@@ -15,6 +16,28 @@
             may be lent against each vehicle. A vehicle missing from here cannot be selected on an
             application.
         </p>
+
+        @* Bulk load. The template fixes the exact columns so nothing is mis-mapped; import upserts on
+           make/model/year, so re-importing a corrected file simply updates the caps it changed. *@
+        <div class="setup-import">
+            <button type="button" class="add-row-button" @onclick="DownloadTemplateAsync">⬇ Download CSV template</button>
+            <label class="setup-import-file">
+                <span>Import (.csv):</span>
+                <InputFile OnChange="ImportAsync" accept=".csv,text/csv" />
+            </label>
+        </div>
+
+        @if (_importSummary is { } summary)
+        {
+            <p class="setup-note is-status" role="status">@summary</p>
+        }
+
+        @if (_importErrors.Count > 0)
+        {
+            <ul class="inline-error" role="alert">
+                @foreach (var err in _importErrors) { <li>@err</li> }
+            </ul>
+        }
 
         @if (_adding)
         {
@@ -114,6 +137,9 @@
     /// Admin's call, so this warns rather than blocks.</summary>
     private Dictionary<string, int> _usage = new(StringComparer.OrdinalIgnoreCase);
 
+    private string? _importSummary;
+    private List<string> _importErrors = new();
+
     private bool _adding;
     private string? _newMake;
     private string? _newModel;
@@ -149,6 +175,104 @@
     // count per exact year would read as zero for a vehicle plainly in use — the warning is about
     // whether this vehicle appears on live files at all.
     private int UsageFor(VehicleLoanCap cap) => _usage.GetValueOrDefault($"{cap.Make} {cap.Model}");
+
+    // Example rows show the exact shape; the header is what the parser keys off.
+    private async Task DownloadTemplateAsync()
+    {
+        var content = VehicleCapCsv.Header + "\n"
+            + "Tata,Ace Gold,2024,650000\n"
+            + "Mahindra,Bolero Pickup,2023,900000\n";
+
+        await JS.InvokeVoidAsync("downloadFile", "vehicle-caps-template.csv", content);
+    }
+
+    private const long MaxImportBytes = 2 * 1024 * 1024;
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        _importSummary = null;
+        _importErrors = new();
+
+        var file = e.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        if (file.Size > MaxImportBytes)
+        {
+            _importErrors = new() { "File is larger than 2 MB — that is not a caps list. Export a smaller CSV." };
+            return;
+        }
+
+        string content;
+        using (var reader = new StreamReader(file.OpenReadStream(MaxImportBytes)))
+        {
+            content = await reader.ReadToEndAsync();
+        }
+
+        var (rows, errors) = VehicleCapCsv.Parse(content);
+        _importErrors = errors;
+
+        if (rows.Count == 0)
+        {
+            _importSummary = "Nothing imported — no valid rows found. Check the file matches the template.";
+            return;
+        }
+
+        var (added, updated) = await UpsertAsync(rows);
+        await LoadAsync();
+
+        _importSummary = $"Imported: {added} added, {updated} updated"
+            + (errors.Count > 0 ? $", {errors.Count} skipped (see below)" : "") + ".";
+        await OnSaved.InvokeAsync("Vehicle catalog imported");
+    }
+
+    /// <summary>
+    /// Inserts vehicles not yet in the catalog and updates the cap on those already there, keyed on
+    /// make/model/year — the same key the unique index uses, so a re-import never duplicates a row.
+    /// </summary>
+    private async Task<(int Added, int Updated)> UpsertAsync(List<VehicleCapRow> rows)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Tenant-filtered, so this only ever sees the company's own catalog.
+        var existing = await db.VehicleLoanCaps.ToListAsync();
+
+        var added = 0;
+        var updated = 0;
+
+        foreach (var row in rows)
+        {
+            var match = existing.FirstOrDefault(v =>
+                string.Equals(v.Make, row.Make, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(v.Model, row.Model, StringComparison.OrdinalIgnoreCase)
+                && v.Year == row.Year);
+
+            if (match is null)
+            {
+                var cap = new VehicleLoanCap
+                {
+                    CompanyId = CompanyId,
+                    Make = row.Make,
+                    Model = row.Model,
+                    Year = row.Year,
+                    MaxLoanAmount = row.MaxLoanAmount,
+                };
+                db.VehicleLoanCaps.Add(cap);
+                existing.Add(cap); // a duplicate line later in the same file updates this, not double-inserts
+                added++;
+            }
+            else if (match.MaxLoanAmount != row.MaxLoanAmount)
+            {
+                match.MaxLoanAmount = row.MaxLoanAmount;
+                updated++;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        return (added, updated);
+    }
 
     private void StartAdd()
     {

@@ -562,3 +562,53 @@ select.field-input {
     padding: 9px 16px;
     z-index: 80;
 }
+
+/* Welcome letter / agreement / SMS actions on the Disbursement tab. */
+.doc-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0;
+    flex-wrap: wrap;
+}
+
+.doc-action {
+    height: 32px;
+    padding: 0 14px;
+    border: 1px solid #1f3a5f;
+    background: #1f3a5f;
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 600;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.doc-action:hover { background: #274a78; }
+
+.doc-action:disabled {
+    background: #c3c9d2;
+    border-color: #c3c9d2;
+    cursor: not-allowed;
+}
+
+.doc-status {
+    font-size: 12px;
+    color: #5b6472;
+}
+
+.sms-preview {
+    background: #f4f6f9;
+    border: 1px solid #dde2e9;
+    border-radius: 3px;
+    padding: 8px 10px;
+    font-size: 12.5px;
+    color: #1a1f29;
+    margin: 4px 0 6px;
+}
+
+.inline-notice {
+    font-size: 12px;
+    color: #7a4b06;
+    margin: 4px 0 0;
+}

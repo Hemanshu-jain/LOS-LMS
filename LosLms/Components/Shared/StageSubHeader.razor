@@ -20,23 +20,24 @@
            concern), and pointless once it is already Rejected — hidden entirely, not disabled. *@
         @if (_status is not "Sanctioned" and not "Rejected")
         {
-            <button type="button" class="stage-button is-reject" @onclick="() => _showReject = true">
+            <button type="button" class="stage-button is-reject" disabled="@(!_interactive)" @onclick="() => _showReject = true">
                 Reject application
             </button>
         }
 
-        <button type="button" class="stage-button" @onclick="OnSaveDraft">@SecondaryLabel</button>
+        <button type="button" class="stage-button" disabled="@(!_interactive)" @onclick="OnSaveDraft">@SecondaryLabel</button>
 
         @* A real disabled attribute, not just the blocked styling — styling alone would still
            let a keyboard or screen-reader user activate it. The gate is OR'd with the page's own
-           reason, so a screen that was already blocked stays blocked and says why. *@
+           reason, so a screen that was already blocked stays blocked and says why. Also disabled
+           until the circuit is live, so an early click is not silently lost. *@
         <button type="button"
                 class="stage-button is-primary @(EffectivelyBlocked ? "is-blocked" : null)"
-                disabled="@EffectivelyBlocked"
-                aria-disabled="@EffectivelyBlocked"
-                title="@(EffectivelyBlocked ? EffectiveBlockedReason : null)"
+                disabled="@(EffectivelyBlocked || !_interactive)"
+                aria-disabled="@(EffectivelyBlocked || !_interactive)"
+                title="@(!_interactive ? "Connecting…" : EffectivelyBlocked ? EffectiveBlockedReason : null)"
                 @onclick="OnCompleteStage">
-            @PrimaryLabel
+            @(_interactive ? PrimaryLabel : "Connecting…")
         </button>
     </div>
 </div>
@@ -60,8 +61,8 @@
         }
         else
         {
-            <button type="button" class="gate-request" @onclick="RequestBypassAsync">
-                Request admin bypass
+            <button type="button" class="gate-request" disabled="@(!_interactive)" @onclick="RequestBypassAsync">
+                @(_interactive ? "Request admin bypass" : "Connecting…")
             </button>
         }
     </div>
@@ -106,15 +107,28 @@
                     }
                 </div>
 
-                <div class="admin-review-actions">
-                    <input class="admin-review-note" placeholder="Note (required to deny)"
-                           value="@_reviewNotes.GetValueOrDefault(r.Id)"
-                           @oninput="e => _reviewNotes[r.Id] = e.Value?.ToString() ?? string.Empty" />
-                    <button type="button" class="admin-approve" @onclick="() => ReviewAsync(r, true)">Approve</button>
-                    <button type="button" class="admin-deny"
-                            disabled="@(string.IsNullOrWhiteSpace(_reviewNotes.GetValueOrDefault(r.Id)))"
-                            @onclick="() => ReviewAsync(r, false)">Deny</button>
-                </div>
+                @if (string.Equals(r.RequestedByUserId, _currentUserId, StringComparison.Ordinal))
+                {
+                    @* Segregation of duties: the raiser cannot also decide. Shown instead of the
+                       actions so it is obvious why, not just an inert pair of buttons. *@
+                    <p class="admin-review-self" role="note">@SelfReviewBlocked</p>
+                }
+                else
+                {
+                    <div class="admin-review-actions">
+                        <input class="admin-review-note" placeholder="Note (required to deny)"
+                               value="@_reviewNotes.GetValueOrDefault(r.Id)"
+                               @oninput="e => _reviewNotes[r.Id] = e.Value?.ToString() ?? string.Empty" />
+                        <button type="button" class="admin-approve" @onclick="() => ReviewAsync(r, true)">Approve</button>
+                        <button type="button" class="admin-deny"
+                                disabled="@(string.IsNullOrWhiteSpace(_reviewNotes.GetValueOrDefault(r.Id)))"
+                                @onclick="() => ReviewAsync(r, false)">Deny</button>
+                    </div>
+                    @if (_reviewErrors.GetValueOrDefault(r.Id) is { } reviewError)
+                    {
+                        <p class="admin-review-self" role="alert">@reviewError</p>
+                    }
+                }
             </div>
         }
     </div>
@@ -195,6 +209,11 @@
 
     private bool _showReject;
 
+    // False until the Blazor Server circuit has attached on the client. Until then the prerendered
+    // buttons are inert — a click in the first few seconds does nothing — so they are disabled and
+    // labelled "Connecting…" rather than silently swallowing the click. Set once, in OnAfterRender.
+    private bool _interactive;
+
     // ---- Gate + admin requests ----
     private GateResult _gate = GateResult.Clear;
     private bool _isAdmin;
@@ -205,6 +224,11 @@
     private List<AdminRequest> _pending = new();
     private Dictionary<string, string> _requesterNames = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _reviewNotes = new();
+    private readonly Dictionary<int, string> _reviewErrors = new();
+    private string? _currentUserId;
+
+    private const string SelfReviewBlocked =
+        "You cannot review your own request — another Admin or SuperAdmin must decide this one.";
 
     /// <summary>
     /// The CIBIL gate first, then any gate the page itself contributes. Loan &amp; Security passes the
@@ -234,6 +258,17 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
         await LoadGateAndRequestsAsync(db);
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // OnAfterRender only runs once the component is interactive on the client, never during the
+        // static prerender — so this is the moment the buttons actually start working.
+        if (firstRender)
+        {
+            _interactive = true;
+            StateHasChanged();
+        }
     }
 
     /// <summary>
@@ -280,6 +315,7 @@
         await LoadStatusAsync(db);
         await Tenant.EnsureLoadedAsync();
         _isAdmin = Tenant.IsSuperAdmin || Tenant.IsAdmin;
+        _currentUserId = Tenant.UserId;
 
         _gate = await GateCheckService.CanAdvanceAsync(db, ApplicationId);
 
@@ -347,6 +383,17 @@
             return;
         }
 
+        // Segregation of duties: whoever raised a request may not be the one who decides it — not even
+        // a SuperAdmin. The disabled buttons in the markup are only UX; this is the real control, so a
+        // crafted event or a stale circuit cannot get past it either. An additional guard, layered on
+        // top of the role and company checks the Inbox and page authorization already enforce.
+        await Tenant.EnsureLoadedAsync();
+        if (string.Equals(stored.RequestedByUserId, Tenant.UserId, StringComparison.Ordinal))
+        {
+            _reviewErrors[request.Id] = SelfReviewBlocked;
+            return;
+        }
+
         stored.Status = approve ? AdminRequest.Approved : AdminRequest.Denied;
         stored.ReviewedByUserId = Tenant.UserId;
         stored.ReviewedAt = DateTime.UtcNow;
@@ -369,6 +416,10 @@
                     // Loan & Security asks for it by name when it evaluates the cap.
                     break;
 
+                case AdminRequest.MakeModelCapChange:
+                    await ApplyCapChangeAsync(db, stored.SubjectKey);
+                    break;
+
                 case AdminRequest.Reject:
                     await RejectionService.ApplyAsync(
                         db, ApplicationId, stored.RequestReason ?? "Rejected by admin.");
@@ -386,14 +437,59 @@
         await OnGateChanged.InvokeAsync();
     }
 
+    /// <summary>
+    /// Applies an approved vehicle-cap change: the proposed ceiling rides in the subject key as
+    /// "Make Model|Year|NewAmount", so there is nothing for the Admin to re-enter. The catalog row is
+    /// matched the same way the cap check matches it — composed make/model plus year.
+    /// </summary>
+    private static async Task ApplyCapChangeAsync(LosDbContext db, string? subjectKey)
+    {
+        if (string.IsNullOrWhiteSpace(subjectKey))
+        {
+            return;
+        }
+
+        var parts = subjectKey.Split('|');
+        if (parts.Length < 3
+            || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var year)
+            || !decimal.TryParse(parts[2], NumberStyles.Number, CultureInfo.InvariantCulture, out var amount)
+            || amount <= 0m)
+        {
+            return;
+        }
+
+        var makeModel = parts[0].Trim();
+
+        var caps = await db.VehicleLoanCaps.ToListAsync();
+        var match = caps.FirstOrDefault(v =>
+            string.Equals($"{v.Make} {v.Model}", makeModel, StringComparison.OrdinalIgnoreCase)
+            && v.Year == year);
+
+        if (match is null)
+        {
+            return;
+        }
+
+        match.MaxLoanAmount = amount;
+        await db.SaveChangesAsync();
+    }
+
     private async Task ConfirmRejectAsync(string reason)
     {
         _showReject = false;
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        // Staff no longer reject. They ask, and an Admin decides — the application's status does not
-        // move until then, which is why this stays on the page instead of navigating away.
+        // An Admin is the authority — they reject on the spot, no request to raise. Staff ask, and an
+        // Admin decides; for them the status does not move until then, which is why this stays on the
+        // page instead of navigating away.
+        if (_isAdmin)
+        {
+            await RejectionService.ApplyAsync(db, ApplicationId, reason);
+            await LoadGateAndRequestsAsync(db);
+            return;
+        }
+
         await RejectionService.RequestAsync(db, Notifier, ApplicationId, Tenant.UserId, reason);
 
         _rejectRequested = true;

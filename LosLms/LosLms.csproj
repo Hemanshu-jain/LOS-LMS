@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>f2692832-c044-4215-bcb0-09f80019d3e7</UserSecretsId>
+
+    <!-- The running app's version. The System Updates page reads this and compares it against the
+         latest GitHub Release tag. Bump it for every release; publish.ps1 names the artifact from it. -->
+    <Version>1.1.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,9 +21,12 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- MySQL is the database engine, via the Pomelo provider. The Server package bundles a portable,
+         no-installer MySQL and hands this app its connection string at launch; the string is never
+         hardcoded (read from ConnectionStrings:LosDb / the ConnectionStrings__LosDb env var). MySQL is
+         used, not SQLite, because this is a concurrent multi-branch system with real-time Blazor
+         circuits — SQLite's single-writer model does not fit that. -->
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
-    <!-- Portable demo build uses SQLite instead of MySQL. Harmless in development (unused). -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.29" />
     <PackageReference Include="QuestPDF" Version="2026.7.2" />
   </ItemGroup>
 

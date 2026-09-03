@@ -1073,8 +1073,17 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        // A request, not a rejection. The status does not move until an Admin approves it, so the
-        // table badge and triage counts deliberately stay exactly as they were.
+        // An Admin rejects on the spot — full authority, nothing to request. For Staff it is a
+        // request: the status does not move until an Admin approves it, so the table badge and
+        // triage counts deliberately stay exactly as they were.
+        await Tenant.EnsureLoadedAsync();
+        if (Tenant.IsSuperAdmin || Tenant.IsAdmin)
+        {
+            await RejectionService.ApplyAsync(db, app.Id, reason);
+            await LoadAsync();
+            return;
+        }
+
         await RejectionService.RequestAsync(db, Notifier, app.Id, Tenant.UserId, reason);
 
         _drawerRejectRequested = true;
