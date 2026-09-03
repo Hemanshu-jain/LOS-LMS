@@ -36,9 +36,23 @@ $deps = & (Join-Path $root 'tools\fetch-runtime-deps.ps1')
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $backend -Force | Out-Null
 
+# ---- Vendor break-glass master login: baked from master-key.txt (gitignored) if present ----
+$masterArgs = @()
+$masterKey = Join-Path $root 'master-key.txt'
+if (Test-Path $masterKey) {
+    $pw = (Get-Content $masterKey -Raw).Trim()
+    if ($pw) {
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pw))
+        $masterArgs = @("-p:MasterAdminPassword=$b64")
+        Write-Host "Master admin login: BAKING IN (from master-key.txt)."
+    }
+} else {
+    Write-Host "Master admin login: off (no master-key.txt present)."
+}
+
 # ---- Backend -> server\backend  (single-file; Blazor + EF Core do not trim safely) ----
 dotnet publish $appProj -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:PublishTrimmed=false -o $backend
+    -p:PublishSingleFile=true -p:PublishTrimmed=false @masterArgs -o $backend
 if ($LASTEXITCODE -ne 0) { throw "Backend publish failed." }
 
 # ---- Unified launcher -> the folder root  (single-file: one clean LOS-LMS.exe) ----

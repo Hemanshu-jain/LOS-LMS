@@ -1,0 +1,28 @@
+HOW TO SET YOUR MASTER (BREAK-GLASS) LOGIN
+==========================================
+
+This bakes a FIXED developer SuperAdmin login into every build you publish, so
+you can always get into a client's system if they lose their own admin and
+superadmin passwords.
+
+  Login email : admin@loslms.com     (fixed, in code)
+  Password    : whatever you put in master-key.txt (this file, renamed)
+
+SETUP (one time):
+  1. Copy this file to  master-key.txt  (same folder as publish.ps1).
+  2. Put ONE line in master-key.txt: your chosen strong password.
+       - at least 10 characters, and include a symbol (e.g. ! @ # $ % & *)
+       - store it in your password manager; you cannot recover it if lost.
+  3. Run  .\publish.ps1 .  The build bakes it in and prints "Master admin login: BAKING IN".
+
+IMPORTANT
+  - master-key.txt is .gitignored on purpose. NEVER commit it. It is not in the
+    public repo, so no one browsing GitHub or building from source gets a login.
+  - Use the SAME master-key.txt for every build you ship, or the master password
+    will differ between deployments.
+  - If master-key.txt is absent at build time, NO master account is created.
+  - Trade-off you accepted: someone who obtains a shipped .exe can still decompile
+    it to read the string. The strong password is what protects the realistic
+    attack (a login attempt over the tunnel); keep it strong and private.
+  - The account re-creates itself on server restart, so a client deleting it does
+    not lock you out.
