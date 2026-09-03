@@ -1,0 +1,135 @@
+@page "/account/setup"
+@using LosLms.Data
+@using LosLms.Models
+@using Microsoft.AspNetCore.Identity
+@attribute [AllowAnonymous]
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Create administrator · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+@* First-run only. Statically rendered like the sign-in page so the created account's cookie can be
+   issued in the response. The server-side guard (OnInitializedAsync) refuses once an administrator
+   already exists, so this anonymous page cannot be used to mint extra admins. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Create your administrator account</h1>
+            <p class="auth-sub">This is the first account on this system. You'll use it to sign in and set up your company.</p>
+        </div>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="setup">
+            <DataAnnotationsValidator />
+
+            @if (_error is not null)
+            {
+                <p class="inline-error" role="alert">@_error</p>
+            }
+
+            <div class="auth-field">
+                <label class="auth-label" for="su-name">Full name</label>
+                <InputText id="su-name" class="field-input" @bind-Value="Input.DisplayName" autocomplete="name" />
+                <ValidationMessage For="() => Input.DisplayName" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="su-email">Email</label>
+                <InputText id="su-email" type="email" class="field-input"
+                           @bind-Value="Input.Email" autocomplete="username" />
+                <ValidationMessage For="() => Input.Email" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="su-password">Password</label>
+                <div class="auth-password">
+                    <InputText id="su-password" type="password" class="field-input"
+                               @bind-Value="Input.Password" autocomplete="new-password" />
+                    <button type="button" class="auth-reveal" aria-label="Show password" aria-pressed="false"
+                            onclick="losTogglePassword('su-password', this)">Show</button>
+                </div>
+                <ValidationMessage For="() => Input.Password" class="auth-validation" />
+                <span class="auth-hint">At least 10 characters, with an upper case letter, a lower case letter, a digit and a symbol.</span>
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="su-confirm">Confirm password</label>
+                <InputText id="su-confirm" type="password" class="field-input"
+                           @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+                <ValidationMessage For="() => Input.ConfirmPassword" class="auth-validation" />
+            </div>
+
+            <button type="submit" class="auth-submit">Create account</button>
+        </EditForm>
+    </div>
+</div>
+
+<script>
+    function losTogglePassword(inputId, btn) {
+        var input = document.getElementById(inputId);
+        if (!input) { return; }
+        var reveal = input.type === 'password';
+        input.type = reveal ? 'text' : 'password';
+        btn.textContent = reveal ? 'Hide' : 'Show';
+        btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+        btn.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+    }
+</script>
+
+@code {
+    [SupplyParameterFromForm] private SetupInput Input { get; set; } = new();
+
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Once an administrator exists this page is closed — sign in instead.
+        if (!await IdentitySeeder.NeedsFirstAdminAsync(UserManager))
+        {
+            Navigation.NavigateTo("/account/login", forceLoad: true);
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        var result = await IdentitySeeder.CreateFirstAdminAsync(
+            UserManager, Input.DisplayName.Trim(), Input.Email.Trim(), Input.Password);
+
+        if (!result.Succeeded)
+        {
+            _error = string.Join(" ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        // Sign the new admin in, then send them to Company Setup to finish first-run.
+        var user = await UserManager.FindByEmailAsync(Input.Email.Trim());
+        if (user is not null)
+        {
+            await SignInManager.SignInAsync(user, isPersistent: false);
+        }
+
+        Navigation.NavigateTo("/company-setup", forceLoad: true);
+    }
+
+    private sealed class SetupInput
+    {
+        [Required(ErrorMessage = "Enter your full name.")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your email address.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter a password.")]
+        [StringLength(100, MinimumLength = 10, ErrorMessage = "Use at least 10 characters.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Confirm your password.")]
+        [Compare(nameof(Password), ErrorMessage = "The two passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

@@ -24,21 +24,6 @@ namespace LosLms.Data;
 /// </remarks>
 public static class IdentitySeeder
 {
-    /// <summary>
-    /// The single bootstrap account the build ships with: one generic company Admin, enough to sign in
-    /// and complete first-run Company Setup. No demo staff — the client creates their own real staff on
-    /// the User Management tab, then deactivates this one. Generic name and email on purpose: nothing
-    /// place-, person- or client-specific is baked into the build. Id is fixed so it is stable across
-    /// rebuilds.
-    /// </summary>
-    private static readonly (string Id, string DisplayName, string Email, string Role)[] SeedUsers =
-    {
-        ("usr-admin", "Administrator", "admin@loslms.local", TenantContext.AdminRole),
-    };
-
-    private const string SuperAdminId = "usr-superadmin";
-    private const string SuperAdminEmail = "superadmin@loslms.local";
-
     public static async Task SeedAsync(IServiceProvider services, ILogger logger)
     {
         using var scope = services.CreateScope();
@@ -53,37 +38,60 @@ public static class IdentitySeeder
             }
         }
 
-        var created = new List<(string DisplayName, string Email, string Role, string Password)>();
-
-        foreach (var (id, displayName, email, role) in SeedUsers)
-        {
-            var password = await EnsureUserAsync(
-                userManager, id, displayName, email, role, LosDbContext.SeedCompanyId);
-
-            if (password is not null)
-            {
-                created.Add((displayName, email, role, password));
-            }
-        }
-
-        // The SuperAdmin belongs to no company on purpose — they operate across all of them.
-        var superAdminPassword = await EnsureUserAsync(
-            userManager, SuperAdminId, "Platform SuperAdmin", SuperAdminEmail,
-            TenantContext.SuperAdminRole, companyId: null);
-
-        if (superAdminPassword is not null)
-        {
-            created.Add(("Platform SuperAdmin", SuperAdminEmail, TenantContext.SuperAdminRole, superAdminPassword));
-        }
-
-        // The vendor break-glass account, only when a master password was baked in at build time. Its
-        // password is never printed or reported — it is the operator's, not the client's.
+        // No pre-made staff accounts are shipped. The operator creates the first administrator on first
+        // run at /account/setup (the create-your-account wizard), and admins add staff from User
+        // Management. Only the vendor break-glass master account is seeded, and only when its password
+        // was baked in at build time; its password is never printed.
         await EnsureMasterAccountAsync(userManager, logger);
 
         await LinkSeededApplicationsAsync(scope.ServiceProvider);
+    }
 
-        var contentRoot = scope.ServiceProvider.GetService<IHostEnvironment>()?.ContentRootPath;
-        ReportCredentials(logger, created, contentRoot);
+    /// <summary>True until the client has created their own administrator — i.e. no admin exists yet
+    /// other than the vendor's baked-in master. Drives the first-run "create your account" wizard.</summary>
+    public static async Task<bool> NeedsFirstAdminAsync(UserManager<ApplicationUser> userManager)
+    {
+        var admins = await userManager.GetUsersInRoleAsync(TenantContext.AdminRole);
+        return !admins.Any(u => u.Id != MasterAccount.Id);
+    }
+
+    /// <summary>
+    /// Creates the client's first administrator from the first-run wizard. Refuses once one exists, so
+    /// the anonymous setup page cannot be used to mint extra admins. The account owns the client's
+    /// company and holds both Admin and SuperAdmin, so it has full control of this deployment.
+    /// </summary>
+    public static async Task<IdentityResult> CreateFirstAdminAsync(
+        UserManager<ApplicationUser> userManager, string displayName, string email, string password)
+    {
+        if (!await NeedsFirstAdminAsync(userManager))
+        {
+            return IdentityResult.Failed(new IdentityError
+            {
+                Code = "AdminExists",
+                Description = "An administrator account already exists. Sign in instead.",
+            });
+        }
+
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            UserName = email,
+            Email = email,
+            EmailConfirmed = true,
+            DisplayName = displayName,
+            CompanyId = LosDbContext.SeedCompanyId,
+            IsActive = true,
+            MustChangePassword = false,
+        };
+
+        var result = await userManager.CreateAsync(user, password);
+        if (!result.Succeeded)
+        {
+            return result;
+        }
+
+        await userManager.AddToRolesAsync(user, new[] { TenantContext.AdminRole, TenantContext.SuperAdminRole });
+        return IdentityResult.Success;
     }
 
     /// <summary>
@@ -342,61 +350,5 @@ public static class IdentitySeeder
         }
 
         return new string(characters.ToArray());
-    }
-
-    private static void ReportCredentials(
-        ILogger logger,
-        IReadOnlyList<(string DisplayName, string Email, string Role, string Password)> created,
-        string? contentRoot)
-    {
-        if (created.Count == 0)
-        {
-            return;
-        }
-
-        var lines = created.Select(c => $"  {c.Role,-10}  {c.Email,-32}  {c.Password}");
-        var body = string.Join(Environment.NewLine, lines);
-
-        logger.LogWarning(
-            """
-            ================================================================
-             TEMPORARY SIGN-IN CREDENTIALS — shown once, at first start only
-             Every one of these must be changed at first sign-in; the app
-             will force it. They are NOT stored anywhere in the database.
-            ----------------------------------------------------------------
-            {Credentials}
-            ================================================================
-            """,
-            body);
-
-        // Also drop them in a plain file next to the app, because whoever double-clicks the launcher
-        // may never look at the console window. The app forces a password change on first sign-in, so
-        // this file is only useful until they log in — it tells them to delete it once they have.
-        if (contentRoot is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var path = Path.Combine(contentRoot, "FIRST-RUN-LOGIN.txt");
-            File.WriteAllText(path,
-                "LOS/LMS — first-run sign-in" + Environment.NewLine +
-                Environment.NewLine +
-                "This computer is the server. Other staff open the LOS/LMS app (LOS-LMS.exe) on their" + Environment.NewLine +
-                "own PCs and it finds this server automatically — nothing for them to configure. You" + Environment.NewLine +
-                "can also share the link in shareable-url.txt (next to the server) to open it in a" + Environment.NewLine +
-                "web browser. They all share this one server's data, live." + Environment.NewLine +
-                Environment.NewLine +
-                "Sign in with one of these, then set your own password when prompted:" + Environment.NewLine +
-                Environment.NewLine +
-                body + Environment.NewLine +
-                Environment.NewLine +
-                "Delete this file once you have signed in and changed the password.");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Could not write FIRST-RUN-LOGIN.txt; the credentials above are still valid.");
-        }
     }
 }

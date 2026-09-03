@@ -1,4 +1,5 @@
 ﻿@page "/account/login"
+@using LosLms.Data
 @using LosLms.Models
 @using Microsoft.AspNetCore.Identity
 @attribute [AllowAnonymous]
@@ -22,6 +23,14 @@
             <p class="auth-sub">Loan Origination &amp; Management System</p>
         </div>
 
+        @if (_needsSetup)
+        {
+            <div class="auth-setup-prompt">
+                <p>No accounts exist on this system yet.</p>
+                <a class="auth-setup-link" href="/account/setup">Create your administrator account →</a>
+            </div>
+        }
+
         <EditForm Model="Input" method="post" OnValidSubmit="SignInAsync" FormName="login">
             <DataAnnotationsValidator />
 
@@ -39,8 +48,12 @@
 
             <div class="auth-field">
                 <label class="auth-label" for="login-password">Password</label>
-                <InputText id="login-password" type="password" class="field-input"
-                           @bind-Value="Input.Password" autocomplete="current-password" />
+                <div class="auth-password">
+                    <InputText id="login-password" type="password" class="field-input"
+                               @bind-Value="Input.Password" autocomplete="current-password" />
+                    <button type="button" class="auth-reveal" aria-label="Show password" aria-pressed="false"
+                            onclick="losTogglePassword('login-password', this)">Show</button>
+                </div>
                 <ValidationMessage For="() => Input.Password" class="auth-validation" />
             </div>
 
@@ -63,18 +76,40 @@
     </div>
 </div>
 
+@* Vanilla toggle for the password field. The page is statically rendered (no Blazor circuit), so a
+   plain global function on a type="button" is the whole mechanism — nothing to hydrate. *@
+<script>
+    function losTogglePassword(inputId, btn) {
+        var input = document.getElementById(inputId);
+        if (!input) { return; }
+        var reveal = input.type === 'password';
+        input.type = reveal ? 'text' : 'password';
+        btn.textContent = reveal ? 'Hide' : 'Show';
+        btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
+        btn.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+    }
+</script>
+
 @code {
     [SupplyParameterFromForm] private LoginInput Input { get; set; } = new();
 
     [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
 
     private string? _error;
+    private bool _needsSetup;
 
     /// <summary>
     /// One message for every failure mode. A wrong password and an email that was never registered
     /// must be indistinguishable, otherwise the form becomes a way to enumerate who has an account.
     /// </summary>
     private const string FailureMessage = "Those details are not correct. Check your email and password and try again.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // On a brand-new system (no admin yet) point the operator at the create-account wizard. The
+        // form stays usable so the vendor master account can still sign in.
+        _needsSetup = await IdentitySeeder.NeedsFirstAdminAsync(UserManager);
+    }
 
     private async Task SignInAsync()
     {

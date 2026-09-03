@@ -32,8 +32,10 @@ server publishes. To turn that on, give the server a GitHub token once:
 Without a token the server still works fully for anyone sitting AT this
 computer; only remote staff auto-connect needs the token.
 
-Your first-time sign-in details are written, after the first server
-start, to:   server\backend\FIRST-RUN-LOGIN.txt
+Signing in for the first time: the app opens to a "Create your
+administrator account" screen. Enter your name, email, and a password you
+choose (10+ characters, with a symbol) — that's your login. After that you
+add your staff from Company Setup -> User Management.
 
 The current shareable link is shown in the tray icon (bottom-right, near
 the clock) and in the file   shareable-url.txt   next to the app.

@@ -121,6 +121,59 @@ h1:focus {
     background: #fff;
 }
 
+/* Password field with an inline Show/Hide toggle. */
+.auth-password {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.auth-password .field-input {
+    padding-right: 50px;
+}
+
+.auth-reveal {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 24px;
+    padding: 0 8px;
+    border: none;
+    background: transparent;
+    color: #1f3a5f;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.auth-reveal:hover { text-decoration: underline; }
+
+.auth-reveal:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: 1px;
+}
+
+/* First-run "create your administrator account" prompt on the sign-in page. */
+.auth-setup-prompt {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: #eef3fb;
+    border: 1px solid #cdddf3;
+    font-size: 12px;
+    color: #1f3a5f;
+}
+
+.auth-setup-prompt p { margin: 0 0 6px; }
+
+.auth-setup-link {
+    font-weight: 600;
+    color: #1f3a5f;
+    text-decoration: none;
+}
+
+.auth-setup-link:hover { text-decoration: underline; }
+
 .auth-hint {
     font-size: 9.5px;
     line-height: 1.4;
