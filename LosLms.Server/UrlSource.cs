@@ -3,12 +3,13 @@ namespace LosLms.Server;
 /// <summary>Fetches the current server URL from the fixed public location (client role).</summary>
 internal sealed class UrlSource
 {
-    private readonly ClientConfig _config;
+    // The client reads the same repo file the host publishes to. Fixed — it is the app's own repo.
+    private const string RawUrlBase = "https://raw.githubusercontent.com/Hemanshu-jain/LOS-LMS/main/url.txt";
+
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
-    public UrlSource(ClientConfig config)
+    public UrlSource()
     {
-        _config = config;
         _http.DefaultRequestHeaders.CacheControl = new System.Net.Http.Headers.CacheControlHeaderValue
         {
             NoCache = true,
@@ -23,7 +24,9 @@ internal sealed class UrlSource
     {
         try
         {
-            var raw = (await _http.GetStringAsync(_config.RawUrl(), ct)).Trim();
+            // Cache-buster so a host restart is seen promptly, past the raw.githubusercontent CDN.
+            var url = $"{RawUrlBase}?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+            var raw = (await _http.GetStringAsync(url, ct)).Trim();
             if (raw.StartsWith("http", StringComparison.OrdinalIgnoreCase)
                 && Uri.TryCreate(raw, UriKind.Absolute, out _))
             {

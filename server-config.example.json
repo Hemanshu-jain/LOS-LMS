@@ -1,10 +1,4 @@
 {
-  "_comment": "SERVER computer only. Copy this file to 'server-config.json' (next to LOS-LMS.exe) and paste your GitHub token below. This lets the server publish its address so remote staff auto-connect. Without it, the server still works for anyone at this computer. The token needs write access to the repo below.",
-  "GitHubToken": "",
-  "UrlPublish": {
-    "Owner": "Hemanshu-jain",
-    "Repo": "LOS-LMS",
-    "Path": "url.txt",
-    "Branch": "main"
-  }
+  "_comment": "SERVER computer only. Copy this file to 'server-config.json' (next to LOS-LMS.exe) and paste your GitHub token below. This lets the server publish its address so remote staff auto-connect. Without it, the server still works for anyone at this computer. The token needs write access to the Hemanshu-jain/LOS-LMS repo.",
+  "GitHubToken": ""
 }

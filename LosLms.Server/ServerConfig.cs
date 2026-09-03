@@ -13,9 +13,6 @@ internal sealed class ServerConfig
     [JsonPropertyName("GitHubToken")]
     public string? GitHubToken { get; init; }
 
-    [JsonPropertyName("UrlPublish")]
-    public UrlPublishConfig UrlPublish { get; init; } = new();
-
     public bool CanPublish => !string.IsNullOrWhiteSpace(GitHubToken);
 
     public static ServerConfig Load()
@@ -44,19 +41,4 @@ internal sealed class ServerConfig
     {
         PropertyNameCaseInsensitive = true,
     };
-
-    internal sealed class UrlPublishConfig
-    {
-        [JsonPropertyName("Owner")]
-        public string Owner { get; init; } = "Hemanshu-jain";
-
-        [JsonPropertyName("Repo")]
-        public string Repo { get; init; } = "LOS-LMS";
-
-        [JsonPropertyName("Path")]
-        public string Path { get; init; } = "url.txt";
-
-        [JsonPropertyName("Branch")]
-        public string Branch { get; init; } = "main";
-    }
 }

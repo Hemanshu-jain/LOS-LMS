@@ -16,6 +16,12 @@ namespace LosLms.Server;
 /// </summary>
 internal sealed class UrlPublisher
 {
+    // The app's own public repo file the client reads — fixed, so no config knob for it.
+    private const string Owner = "Hemanshu-jain";
+    private const string Repo = "LOS-LMS";
+    private const string FilePath = "url.txt";
+    private const string Branch = "main";
+
     private readonly ServerConfig _config;
 
     public UrlPublisher(ServerConfig config) => _config = config;
@@ -33,8 +39,7 @@ internal sealed class UrlPublisher
             return false;
         }
 
-        var p = _config.UrlPublish;
-        var apiUrl = $"https://api.github.com/repos/{p.Owner}/{p.Repo}/contents/{p.Path}";
+        var apiUrl = $"https://api.github.com/repos/{Owner}/{Repo}/contents/{FilePath}";
 
         try
         {
@@ -44,20 +49,20 @@ internal sealed class UrlPublisher
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _config.GitHubToken);
 
             // The Contents API needs the current blob sha to update an existing file.
-            var existingSha = await GetExistingShaAsync(http, $"{apiUrl}?ref={p.Branch}", ct);
+            var existingSha = await GetExistingShaAsync(http, $"{apiUrl}?ref={Branch}", ct);
 
             var body = new PutContentsRequest
             {
                 Message = $"tunnel url {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}Z",
                 Content = Convert.ToBase64String(Encoding.UTF8.GetBytes(url)),
-                Branch = p.Branch,
+                Branch = Branch,
                 Sha = existingSha,
             };
 
             using var response = await http.PutAsJsonAsync(apiUrl, body, JsonOpts, ct);
             if (response.IsSuccessStatusCode)
             {
-                Log.Info($"Published tunnel URL to {p.Owner}/{p.Repo}/{p.Path}.");
+                Log.Info($"Published tunnel URL to {Owner}/{Repo}/{FilePath}.");
                 return true;
             }
 

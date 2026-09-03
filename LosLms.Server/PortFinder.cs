@@ -14,9 +14,9 @@ internal static class PortFinder
     /// Returns <paramref name="preferred"/> if it is free, otherwise the next free port scanning
     /// upward. Bound to 127.0.0.1 only, matching how the services themselves bind.
     /// </summary>
-    public static int FindFree(int preferred, int maxAttempts = 200)
+    public static int FindFree(int preferred)
     {
-        for (var port = preferred; port < preferred + maxAttempts; port++)
+        for (var port = preferred; port < preferred + 200; port++)
         {
             if (IsFree(port))
             {
@@ -24,8 +24,7 @@ internal static class PortFinder
             }
         }
 
-        throw new InvalidOperationException(
-            $"No free port found in the range {preferred}-{preferred + maxAttempts}.");
+        throw new InvalidOperationException($"No free port found in the range {preferred}-{preferred + 200}.");
     }
 
     private static bool IsFree(int port)

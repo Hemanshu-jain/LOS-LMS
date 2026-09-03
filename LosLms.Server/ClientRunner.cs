@@ -12,7 +12,7 @@ internal sealed class ClientRunner
     private static readonly TimeSpan ReconnectPollInterval = TimeSpan.FromSeconds(30);
 
     private readonly ShellWindow _shell;
-    private readonly UrlSource _urlSource = new(ClientConfig.Load());
+    private readonly UrlSource _urlSource = new();
     private readonly CancellationTokenSource _cts = new();
     private string? _currentUrl;
 

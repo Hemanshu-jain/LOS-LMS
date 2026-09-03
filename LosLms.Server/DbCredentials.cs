@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text.Json;
 
 namespace LosLms.Server;
 
@@ -25,22 +24,16 @@ internal sealed record DbCredentials(string AppPassword)
         $"Server=127.0.0.1;Port={port};Database={Database};User Id={AppUser};Password={AppPassword};" +
         "AllowPublicKeyRetrieval=True;";
 
-    public void Save()
-    {
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(Paths.CredentialsFile, json);
-    }
+    // One secret, one line — no JSON envelope for a single string.
+    public void Save() => File.WriteAllText(Paths.CredentialsFile, AppPassword);
 
     public static DbCredentials? TryLoad()
     {
         try
         {
-            if (!File.Exists(Paths.CredentialsFile))
-            {
-                return null;
-            }
-
-            return JsonSerializer.Deserialize<DbCredentials>(File.ReadAllText(Paths.CredentialsFile));
+            return File.Exists(Paths.CredentialsFile)
+                ? new DbCredentials(File.ReadAllText(Paths.CredentialsFile).Trim())
+                : null;
         }
         catch (Exception ex)
         {
@@ -49,12 +42,11 @@ internal sealed record DbCredentials(string AppPassword)
         }
     }
 
-    // URL-safe, no shell-special characters, so it is safe inside a connection string and a command line.
+    // Hex is already connection-string- and shell-safe (no +/=), so no character replacement is needed.
     private static string RandomToken()
     {
         Span<byte> bytes = stackalloc byte[24];
         RandomNumberGenerator.Fill(bytes);
-        return Convert.ToBase64String(bytes)
-            .Replace('+', 'A').Replace('/', 'B').Replace('=', 'C');
+        return Convert.ToHexString(bytes);
     }
 }
