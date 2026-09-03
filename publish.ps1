@@ -82,7 +82,9 @@ if (Test-Path $appZip) { Remove-Item $appZip -Force }
 [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $appZip, 'Optimal', $true)
 
 # ---- Zip 2: the in-app UPDATE artifact (backend contents only; the host swaps this in) ----
-$updateZip = Join-Path $root "publish\los-lms-v$version-win-x64.zip"
+# Name must NOT collide case-insensitively with the app zip above, or on Windows one overwrites the
+# other (LOS-LMS-v… vs los-lms-v… are the same file on a case-insensitive filesystem).
+$updateZip = Join-Path $root "publish\LOS-LMS-Update-v$version-win-x64.zip"
 if (Test-Path $updateZip) { Remove-Item $updateZip -Force }
 [System.IO.Compression.ZipFile]::CreateFromDirectory($backend, $updateZip, 'Optimal', $false)
 
