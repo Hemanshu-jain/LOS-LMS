@@ -30,4 +30,14 @@
     <PackageReference Include="QuestPDF" Version="2026.7.2" />
   </ItemGroup>
 
+  <!-- Vendor break-glass master account. publish.ps1 passes the base64 of master-key.txt (gitignored)
+       as this property; it is baked into the assembly so the fixed developer login exists on every
+       deployment. Absent property (dev builds, or a build with no master-key.txt) = no master account. -->
+  <ItemGroup Condition="'$(MasterAdminPassword)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>MasterAdminPassword</_Parameter1>
+      <_Parameter2>$(MasterAdminPassword)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

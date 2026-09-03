@@ -504,6 +504,8 @@ LosLms/FIRST-RUN-LOGIN.txt
 # The operator's real GitHub token lives here — never commit it (server-config.example.json is the template).
 server.json
 server-config.json
+# The vendor master password baked into builds — never commit it (master-key.example.txt is the doc).
+master-key.txt
 # Generated MySQL credentials, bundled MySQL, its data dir, the tunnel client, and the shareable URL.
 .db-credentials
 mysql/

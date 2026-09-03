@@ -76,6 +76,10 @@ public static class IdentitySeeder
             created.Add(("Platform SuperAdmin", SuperAdminEmail, TenantContext.SuperAdminRole, superAdminPassword));
         }
 
+        // The vendor break-glass account, only when a master password was baked in at build time. Its
+        // password is never printed or reported — it is the operator's, not the client's.
+        await EnsureMasterAccountAsync(userManager, logger);
+
         await LinkSeededApplicationsAsync(scope.ServiceProvider);
 
         var contentRoot = scope.ServiceProvider.GetService<IHostEnvironment>()?.ContentRootPath;
@@ -186,6 +190,76 @@ public static class IdentitySeeder
 
         await userManager.AddToRoleAsync(user, role);
         return password;
+    }
+
+    /// <summary>
+    /// Ensures the vendor break-glass SuperAdmin (<see cref="MasterAccount"/>) when a master password
+    /// was baked in at build time. Unlike the seeded accounts this is re-asserted on every start — its
+    /// password, active state and role are restored if a client ever changes or removes it — so it is
+    /// effectively fixed. Does nothing when no password is baked (the safe default).
+    /// </summary>
+    private static async Task EnsureMasterAccountAsync(UserManager<ApplicationUser> userManager, ILogger logger)
+    {
+        var password = MasterAccount.Password;
+        if (password is null)
+        {
+            return;
+        }
+
+        var user = await userManager.FindByIdAsync(MasterAccount.Id);
+        if (user is null)
+        {
+            user = new ApplicationUser
+            {
+                Id = MasterAccount.Id,
+                UserName = MasterAccount.Email,
+                Email = MasterAccount.Email,
+                EmailConfirmed = true,
+                DisplayName = MasterAccount.DisplayName,
+                CompanyId = null,           // SuperAdmin roams every company
+                IsActive = true,
+                MustChangePassword = false, // fixed — never prompted to change
+                LockoutEnabled = false,     // break-glass: a strong password defeats guessing; do not let anyone lock it out
+            };
+
+            var result = await userManager.CreateAsync(user, password);
+            if (!result.Succeeded)
+            {
+                logger.LogError("Could not create the master account: {Errors} "
+                    + "(the master password must meet the policy: 10+ chars incl. a symbol).",
+                    string.Join("; ", result.Errors.Select(e => e.Description)));
+                return;
+            }
+
+            await userManager.AddToRoleAsync(user, TenantContext.SuperAdminRole);
+            // CreateAsync forces LockoutEnabled from Options.Lockout.AllowedForNewUsers (true), so turn
+            // it off explicitly — a break-glass account must not be lock-out-able by a guesser.
+            await userManager.SetLockoutEnabledAsync(user, false);
+            logger.LogInformation("Master administrator account created.");
+            return;
+        }
+
+        // Re-assert the fixed state; only touch the password when it has actually drifted, to avoid
+        // churning the security stamp on every boot.
+        if (!await userManager.CheckPasswordAsync(user, password))
+        {
+            await userManager.RemovePasswordAsync(user);
+            await userManager.AddPasswordAsync(user, password);
+        }
+
+        if (user.MustChangePassword || !user.IsActive || user.LockoutEnabled || user.CompanyId is not null)
+        {
+            user.MustChangePassword = false;
+            user.IsActive = true;
+            user.LockoutEnabled = false;
+            user.CompanyId = null;
+            await userManager.UpdateAsync(user);
+        }
+
+        if (!await userManager.IsInRoleAsync(user, TenantContext.SuperAdminRole))
+        {
+            await userManager.AddToRoleAsync(user, TenantContext.SuperAdminRole);
+        }
     }
 
     /// <summary>
