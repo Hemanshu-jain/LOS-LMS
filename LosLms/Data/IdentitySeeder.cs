@@ -193,10 +193,13 @@ public static class IdentitySeeder
     }
 
     /// <summary>
-    /// Ensures the vendor break-glass SuperAdmin (<see cref="MasterAccount"/>) when a master password
-    /// was baked in at build time. Unlike the seeded accounts this is re-asserted on every start — its
-    /// password, active state and role are restored if a client ever changes or removes it — so it is
-    /// effectively fixed. Does nothing when no password is baked (the safe default).
+    /// Ensures the vendor break-glass master account (<see cref="MasterAccount"/>) when a master
+    /// password was baked in at build time. It holds BOTH the Admin and SuperAdmin roles and is scoped
+    /// to the client's own company, so it can do everything a company Admin can (including the Company
+    /// Setup tabs) while the SuperAdmin role also lets it see every company's data. Unlike the seeded
+    /// accounts it is re-asserted on every start — password, active state, company and roles are
+    /// restored if a client ever changes or removes them — so it is effectively fixed. Does nothing when
+    /// no password is baked (the safe default).
     /// </summary>
     private static async Task EnsureMasterAccountAsync(UserManager<ApplicationUser> userManager, ILogger logger)
     {
@@ -216,7 +219,10 @@ public static class IdentitySeeder
                 Email = MasterAccount.Email,
                 EmailConfirmed = true,
                 DisplayName = MasterAccount.DisplayName,
-                CompanyId = null,           // SuperAdmin roams every company
+                // Scoped to the client's own company so the company-scoped Company Setup tabs (profile,
+                // branches, vehicle caps) have a company to show/edit. The SuperAdmin role still bypasses
+                // the tenant query filter, so the master also sees every company's data regardless.
+                CompanyId = LosDbContext.SeedCompanyId,
                 IsActive = true,
                 MustChangePassword = false, // fixed — never prompted to change
                 LockoutEnabled = false,     // break-glass: a strong password defeats guessing; do not let anyone lock it out
@@ -231,7 +237,8 @@ public static class IdentitySeeder
                 return;
             }
 
-            await userManager.AddToRoleAsync(user, TenantContext.SuperAdminRole);
+            // Both roles: Admin (company administration) and SuperAdmin (platform + see-all-data).
+            await userManager.AddToRolesAsync(user, new[] { TenantContext.AdminRole, TenantContext.SuperAdminRole });
             // CreateAsync forces LockoutEnabled from Options.Lockout.AllowedForNewUsers (true), so turn
             // it off explicitly — a break-glass account must not be lock-out-able by a guesser.
             await userManager.SetLockoutEnabledAsync(user, false);
@@ -247,18 +254,22 @@ public static class IdentitySeeder
             await userManager.AddPasswordAsync(user, password);
         }
 
-        if (user.MustChangePassword || !user.IsActive || user.LockoutEnabled || user.CompanyId is not null)
+        if (user.MustChangePassword || !user.IsActive || user.LockoutEnabled
+            || user.CompanyId != LosDbContext.SeedCompanyId)
         {
             user.MustChangePassword = false;
             user.IsActive = true;
             user.LockoutEnabled = false;
-            user.CompanyId = null;
+            user.CompanyId = LosDbContext.SeedCompanyId;
             await userManager.UpdateAsync(user);
         }
 
-        if (!await userManager.IsInRoleAsync(user, TenantContext.SuperAdminRole))
+        foreach (var role in new[] { TenantContext.AdminRole, TenantContext.SuperAdminRole })
         {
-            await userManager.AddToRoleAsync(user, TenantContext.SuperAdminRole);
+            if (!await userManager.IsInRoleAsync(user, role))
+            {
+                await userManager.AddToRoleAsync(user, role);
+            }
         }
     }
 
