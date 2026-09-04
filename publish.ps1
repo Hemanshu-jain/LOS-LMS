@@ -82,11 +82,22 @@ if (Test-Path $appZip) { Remove-Item $appZip -Force }
 [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $appZip, 'Optimal', $true)
 
 # ---- Zip 2: the in-app UPDATE artifact (backend contents only; the host swaps this in) ----
-# Name must NOT collide case-insensitively with the app zip above, or on Windows one overwrites the
-# other (LOS-LMS-v… vs los-lms-v… are the same file on a case-insensitive filesystem).
+# Built WITHOUT the master password on purpose: this artifact is attached to a PUBLIC GitHub Release,
+# so it must never carry the baked master secret (the release asset is downloadable + decompilable). An
+# install that applies it keeps whatever master account it already has. The full app zip above keeps the
+# master because it is shared privately with the operator, not released.
+# Name must NOT collide case-insensitively with the app zip (LOS-LMS-v… vs los-lms-v… are the same file
+# on Windows).
+$updateBackend = Join-Path $root 'publish\_update-backend'
+if (Test-Path $updateBackend) { Remove-Item $updateBackend -Recurse -Force }
+dotnet publish $appProj -c Release -r win-x64 --self-contained true `
+    -p:PublishSingleFile=true -p:PublishTrimmed=false -o $updateBackend
+if ($LASTEXITCODE -ne 0) { throw "Update-artifact backend publish failed." }
+
 $updateZip = Join-Path $root "publish\LOS-LMS-Update-v$version-win-x64.zip"
 if (Test-Path $updateZip) { Remove-Item $updateZip -Force }
-[System.IO.Compression.ZipFile]::CreateFromDirectory($backend, $updateZip, 'Optimal', $false)
+[System.IO.Compression.ZipFile]::CreateFromDirectory($updateBackend, $updateZip, 'Optimal', $false)
+Remove-Item $updateBackend -Recurse -Force
 
 Write-Host ""
 Write-Host "Done (v$version)."
