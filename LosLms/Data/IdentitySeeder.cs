@@ -233,7 +233,12 @@ public static class IdentitySeeder
                 CompanyId = LosDbContext.SeedCompanyId,
                 IsActive = true,
                 MustChangePassword = false, // fixed — never prompted to change
-                LockoutEnabled = false,     // break-glass: a strong password defeats guessing; do not let anyone lock it out
+                // Lockout ON, like every other account. It is reachable over the public tunnel, so it must
+                // not be the one login you can guess forever: after the standard 5 failures it locks for 15
+                // minutes (with per-IP rate limiting on top). The strong baked password is still the primary
+                // defence; the worst a locker can do is delay break-glass by 15 minutes, which is acceptable
+                // for a rarely used recovery login.
+                LockoutEnabled = true,
             };
 
             var result = await userManager.CreateAsync(user, password);
@@ -247,9 +252,6 @@ public static class IdentitySeeder
 
             // Both roles: Admin (company administration) and SuperAdmin (platform + see-all-data).
             await userManager.AddToRolesAsync(user, new[] { TenantContext.AdminRole, TenantContext.SuperAdminRole });
-            // CreateAsync forces LockoutEnabled from Options.Lockout.AllowedForNewUsers (true), so turn
-            // it off explicitly — a break-glass account must not be lock-out-able by a guesser.
-            await userManager.SetLockoutEnabledAsync(user, false);
             logger.LogInformation("Master administrator account created.");
             return;
         }
@@ -262,12 +264,12 @@ public static class IdentitySeeder
             await userManager.AddPasswordAsync(user, password);
         }
 
-        if (user.MustChangePassword || !user.IsActive || user.LockoutEnabled
+        if (user.MustChangePassword || !user.IsActive || !user.LockoutEnabled
             || user.CompanyId != LosDbContext.SeedCompanyId)
         {
             user.MustChangePassword = false;
             user.IsActive = true;
-            user.LockoutEnabled = false;
+            user.LockoutEnabled = true;
             user.CompanyId = LosDbContext.SeedCompanyId;
             await userManager.UpdateAsync(user);
         }

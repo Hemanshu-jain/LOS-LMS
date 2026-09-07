@@ -68,17 +68,7 @@
     </div>
 </div>
 
-<script>
-    function losTogglePassword(inputId, btn) {
-        var input = document.getElementById(inputId);
-        if (!input) { return; }
-        var reveal = input.type === 'password';
-        input.type = reveal ? 'text' : 'password';
-        btn.textContent = reveal ? 'Hide' : 'Show';
-        btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
-        btn.setAttribute('aria-pressed', reveal ? 'true' : 'false');
-    }
-</script>
+<script src="js/auth.js"></script>
 
 @code {
     [SupplyParameterFromForm] private SetupInput Input { get; set; } = new();

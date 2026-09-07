@@ -205,6 +205,12 @@
             return;
         }
 
+        if (!Path.GetExtension(file.Name).Equals(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            _importErrors = new() { "The caps list must be a .csv file." };
+            return;
+        }
+
         string content;
         using (var reader = new StreamReader(file.OpenReadStream(MaxImportBytes)))
         {

@@ -932,6 +932,12 @@ else
             _application.Id, party.PartyType);
         Directory.CreateDirectory(folder);
 
+        if (!FileSignature.Matches(extension, bytes))
+        {
+            _uploadError = "This file's contents don't match its type. Upload a genuine JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
         var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
         var fullPath = Path.Combine(folder, fileName);
         await File.WriteAllBytesAsync(fullPath, bytes);
