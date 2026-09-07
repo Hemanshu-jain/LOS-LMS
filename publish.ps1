@@ -99,9 +99,25 @@ if (Test-Path $updateZip) { Remove-Item $updateZip -Force }
 [System.IO.Compression.ZipFile]::CreateFromDirectory($updateBackend, $updateZip, 'Optimal', $false)
 Remove-Item $updateBackend -Recurse -Force
 
+# ---- Sign the update artifact ----
+# Clients verify this signature against the baked public key (UpdateSigning.cs) BEFORE applying an
+# update, so an unsigned or tampered zip on the public release is refused. The private key is local and
+# gitignored; without it, ship without the .sig only if you have also removed the client-side check.
+$updateSig = "$updateZip.sig"
+$signingKey = Join-Path $root 'update-signing-private.pem'
+if (Test-Path $signingKey) {
+    if (Test-Path $updateSig) { Remove-Item $updateSig -Force }
+    & openssl dgst -sha256 -sign $signingKey -out $updateSig $updateZip
+    if ($LASTEXITCODE -ne 0) { throw "Signing the update artifact failed (is openssl on PATH?)." }
+} else {
+    throw "update-signing-private.pem not found at repo root. Restore the vendor signing key before publishing — clients reject unsigned updates."
+}
+
 Write-Host ""
 Write-Host "Done (v$version)."
 Write-Host "  SEND TO EVERYONE:                 $appZip"
 Write-Host "  UPDATE ARTIFACT (GitHub Release): $updateZip"
+Write-Host "  UPLOAD ALONGSIDE IT (signature):  $updateSig"
 Write-Host ""
+Write-Host "Attach BOTH the update zip and its .sig to the GitHub Release."
 Write-Host "Everyone gets the same zip. First run asks: host this computer, or connect to it."

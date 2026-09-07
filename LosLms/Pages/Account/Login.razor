@@ -6,6 +6,8 @@
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
+@inject LosLms.Services.TurnstileVerifier Turnstile
+@inject IHttpContextAccessor HttpContextAccessor
 
 <PageTitle>Sign in · LOS/LMS</PageTitle>
 
@@ -62,6 +64,13 @@
                 <span>Remember me on this device</span>
             </label>
 
+            @if (Turnstile.Options.Enabled)
+            {
+                @* Turnstile injects a hidden cf-turnstile-response field into this form; the server reads
+                   it in SignInAsync. Only enforced for tunnel requests — LAN staff are not challenged. *@
+                <div class="cf-turnstile" data-sitekey="@Turnstile.Options.SiteKey"></div>
+            }
+
             <button type="submit" class="auth-submit">Sign in</button>
         </EditForm>
 
@@ -77,18 +86,14 @@
 </div>
 
 @* Vanilla toggle for the password field. The page is statically rendered (no Blazor circuit), so a
-   plain global function on a type="button" is the whole mechanism — nothing to hydrate. *@
-<script>
-    function losTogglePassword(inputId, btn) {
-        var input = document.getElementById(inputId);
-        if (!input) { return; }
-        var reveal = input.type === 'password';
-        input.type = reveal ? 'text' : 'password';
-        btn.textContent = reveal ? 'Hide' : 'Show';
-        btn.setAttribute('aria-label', reveal ? 'Hide password' : 'Show password');
-        btn.setAttribute('aria-pressed', reveal ? 'true' : 'false');
-    }
-</script>
+   plain global function on a type="button" is the whole mechanism — nothing to hydrate. Served from a
+   file, not inlined, so the Content-Security-Policy can keep script-src 'self' with no 'unsafe-inline'. *@
+<script src="js/auth.js"></script>
+
+@if (Turnstile.Options.Enabled)
+{
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+}
 
 @code {
     [SupplyParameterFromForm] private LoginInput Input { get; set; } = new();
@@ -113,6 +118,22 @@
 
     private async Task SignInAsync()
     {
+        // Bot check, but only for requests that arrived over the public Cloudflare tunnel (they carry
+        // CF-Connecting-IP). LAN staff on the trusted network are never challenged. No-op unless
+        // Turnstile is configured; fails closed when it is.
+        var http = HttpContextAccessor.HttpContext;
+        var tunnelIp = http?.Request.Headers["CF-Connecting-IP"].FirstOrDefault();
+        if (Turnstile.Options.Enabled && !string.IsNullOrEmpty(tunnelIp) && http is not null)
+        {
+            var form = await http.Request.ReadFormAsync();
+            var token = form["cf-turnstile-response"].FirstOrDefault();
+            if (!await Turnstile.VerifyAsync(token, tunnelIp))
+            {
+                _error = "Bot verification failed. Please complete the challenge and try again.";
+                return;
+            }
+        }
+
         var result = await SignInManager.PasswordSignInAsync(
             Input.Email,
             Input.Password,

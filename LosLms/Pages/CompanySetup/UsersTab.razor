@@ -357,7 +357,8 @@
         stored.IsActive = !stored.IsActive;
 
         // Rotating the stamp invalidates the cookie of anyone already signed in, so deactivating takes
-        // effect immediately rather than at the end of their session.
+        // effect at the next security-stamp check (SecurityStampValidator interval, 5 min) rather than
+        // at the end of their 8-hour session.
         stored.SecurityStamp = Guid.NewGuid().ToString();
 
         await db.SaveChangesAsync();

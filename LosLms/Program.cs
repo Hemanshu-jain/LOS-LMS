@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.RateLimiting;
 using LosLms.Components;
 using LosLms.Data;
 using LosLms.Models;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 // UNVERIFIED LICENCE DECLARATION — see OPEN-QUESTIONS-FOR-ARUN.md, item 1.
 // QuestPDF's Community licence is only valid for organisations under $1M USD annual gross revenue.
@@ -72,6 +74,11 @@ builder.Services.AddHostedService<UpdateCheckBackgroundService>();
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFactory>();
 
+// Cloudflare Turnstile bot protection on sign-in. Off unless both keys are set under Security:Turnstile
+// (see TurnstileOptions), so LAN-only installs are unaffected.
+builder.Services.Configure<TurnstileOptions>(builder.Configuration.GetSection(TurnstileOptions.Section));
+builder.Services.AddScoped<TurnstileVerifier>();
+
 // Identity's UserStore and RoleStore resolve LosDbContext directly rather than through the factory,
 // so hand them one built the same way.
 builder.Services.AddScoped(sp =>
@@ -96,6 +103,15 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     .AddEntityFrameworkStores<LosDbContext>()
     .AddClaimsPrincipalFactory<AppUserClaimsPrincipalFactory>()
     .AddDefaultTokenProviders();
+
+// How often a live cookie is re-checked against the user's current security stamp. Deactivating a user
+// (UsersTab) rotates that stamp; without a short interval the change would not bite for up to Identity's
+// default 30 minutes. Five minutes keeps "deactivate" close to immediate while a signed-in user is
+// active, and also re-runs the claims factory so a changed role/company is picked up without re-login.
+builder.Services.Configure<SecurityStampValidatorOptions>(options =>
+{
+    options.ValidationInterval = TimeSpan.FromMinutes(5);
+});
 
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -128,6 +144,43 @@ builder.Services.AddAuthorization(options =>
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
+});
+
+// HSTS only bites over the HTTPS tunnel (the LAN is plain HTTP); a one-year max-age with subdomains
+// is the standard production value once a browser has seen the app over HTTPS at least once.
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
+
+// Rate-limit the sign-in POST per client IP. The per-account lockout (5 fails / 15 min, above) stops
+// guessing at ONE account; this caps the request rate from one source across ALL accounts, which is
+// what credential-stuffing needs. Over the Cloudflare tunnel every request arrives from 127.0.0.1, so
+// key off CF-Connecting-IP (set by the tunnel edge) when present and fall back to the socket IP on the
+// LAN. Only POST /account/login is limited; everything else is unrestricted.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var isLoginPost = HttpMethods.IsPost(context.Request.Method)
+            && context.Request.Path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase);
+        if (!isLoginPost)
+        {
+            return RateLimitPartition.GetNoLimiter("unlimited");
+        }
+
+        var clientIp = context.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
+            ?? context.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        });
+    });
 });
 
 var app = builder.Build();
@@ -200,7 +253,42 @@ if (!app.Environment.IsDevelopment())
 // No HTTPS redirect (it would only log a "failed to determine https port" warning every request).
 // Put the server behind a reverse proxy if TLS is ever required.
 
+// Security response headers on every response (static files included, so this runs before UseStaticFiles).
+// The CSP is tuned for Blazor Server: same-origin scripts (blazor.server.js under /_framework),
+// same-origin SignalR websocket ('self' covers the ws/wss upgrade of this origin), inline styles that
+// Razor components emit as style="…" attributes, and data: image URIs for the base64 document previews
+// on the Customer Details stage. If the circuit ever fails to connect under a stricter browser, widen
+// connect-src to 'self' ws: wss:.
+// Turnstile, when enabled, loads a script and an iframe from Cloudflare, so the CSP has to allow that
+// one origin for scripts and frames. When it is off the policy stays fully self-only.
+var turnstileEnabled = app.Services.GetRequiredService<IOptions<TurnstileOptions>>().Value.Enabled;
+var scriptSrc = turnstileEnabled ? "script-src 'self' https://challenges.cloudflare.com; " : "script-src 'self'; ";
+var frameSrc = turnstileEnabled ? "frame-src https://challenges.cloudflare.com; " : "frame-src 'none'; ";
+var csp =
+    "default-src 'self'; " +
+    "base-uri 'self'; " +
+    "object-src 'none'; " +
+    "frame-ancestors 'none'; " +
+    "img-src 'self' data:; " +
+    "style-src 'self' 'unsafe-inline'; " +
+    scriptSrc +
+    frameSrc +
+    "connect-src 'self'; " +
+    "form-action 'self'";
+
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["Content-Security-Policy"] = csp;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "no-referrer";
+    headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    await next();
+});
+
 app.UseStaticFiles();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

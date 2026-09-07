@@ -693,6 +693,12 @@ else
             bytes = buffer.ToArray();
         }
 
+        if (!FileSignature.Matches(".pdf", bytes))
+        {
+            _uploadError = "The RCU report must be a genuine PDF.";
+            return;
+        }
+
         // Outside wwwroot, like every other upload in this project; served by the /files endpoint.
         var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
             _application.Id, "rcu");

@@ -113,21 +113,67 @@ public static class UpdateService
         }
     }
 
-    /// <summary>Streams the release asset zip into the staging folder; returns the saved file path.</summary>
+    /// <summary>
+    /// Streams the release asset zip into the staging folder, then verifies it was signed by the vendor.
+    /// Returns the saved file path on success; throws (and deletes the staged zip) if the signature is
+    /// missing or does not match, so an unverified update is never handed on to be applied.
+    /// </summary>
     public static async Task<string> DownloadAsync(
         HttpClient http, string assetUrl, string assetName, string stagingFolder, CancellationToken ct = default)
     {
         Directory.CreateDirectory(stagingFolder);
         var destination = Path.Combine(stagingFolder, assetName);
 
-        using var response = await http.GetAsync(assetUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
+        using (var response = await http.GetAsync(assetUrl, HttpCompletionOption.ResponseHeadersRead, ct))
+        {
+            response.EnsureSuccessStatusCode();
+            await using var source = await response.Content.ReadAsStreamAsync(ct);
+            await using var file = File.Create(destination);
+            await source.CopyToAsync(file, ct);
+        }
 
-        await using var source = await response.Content.ReadAsStreamAsync(ct);
-        await using var file = File.Create(destination);
-        await source.CopyToAsync(file, ct);
+        // The detached signature is published as "<asset>.sig" alongside the zip on the same release.
+        // Refuse to keep anything we cannot prove came from the vendor: a tampered download, or a zip
+        // swapped onto the public release by someone with write access, fails here — before the caller
+        // can ever signal the watchdog to apply it.
+        var signature = await TryDownloadBytesAsync(http, assetUrl + ".sig", ct);
+        if (signature is null || !UpdateSigning.VerifyFile(destination, signature))
+        {
+            TryDelete(destination);
+            throw new InvalidOperationException(
+                "Update signature check failed — this download was not signed by the vendor or was altered "
+                + "after signing. The update was NOT applied.");
+        }
 
         return destination;
+    }
+
+    private static async Task<byte[]?> TryDownloadBytesAsync(HttpClient http, string url, CancellationToken ct)
+    {
+        try
+        {
+            using var response = await http.GetAsync(url, ct);
+            return response.IsSuccessStatusCode ? await response.Content.ReadAsByteArrayAsync(ct) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Best effort — the throw that follows is what matters, not the leftover file.
+        }
     }
 
     /// <summary>

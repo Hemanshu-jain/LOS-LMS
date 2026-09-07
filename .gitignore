@@ -506,6 +506,9 @@ server.json
 server-config.json
 # The vendor master password baked into builds — never commit it (master-key.example.txt is the doc).
 master-key.txt
+# The vendor's update-signing PRIVATE key — signs release zips in publish.ps1. Only the PUBLIC half is
+# baked into the app (UpdateSigning.cs); this half must never be committed or forging updates is trivial.
+update-signing-private.pem
 # Generated MySQL credentials, bundled MySQL, its data dir, the tunnel client, and the shareable URL.
 .db-credentials
 mysql/

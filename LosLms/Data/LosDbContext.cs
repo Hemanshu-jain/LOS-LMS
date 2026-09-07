@@ -856,6 +856,52 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
         // requires an authenticated user for every endpoint except the /account pages.
         modelBuilder.Entity<ApplicationUser>()
             .HasQueryFilter(u => !_hasUser || _isSuperAdmin || u.CompanyId == _companyId);
+
+        // ---- Child-table filters: isolation is structural, not conventional ----
+        //
+        // Every table below belongs to an Application and used to be isolated ONLY because the screens
+        // always resolved that Application (which IS filtered) first — a convention a future query could
+        // silently break, leaking another company's PII. Filtering each child through its own
+        // Application navigation makes the guarantee independent of how the query is written: a direct
+        // `db.Parties.Where(...)` that never touches Applications is now scoped just the same. The
+        // `_isSuperAdmin` short-circuit matches the parent filters (and the seeding tenant, which is
+        // SuperAdmin), so cross-company administration and startup seeding are unaffected. A companion
+        // test (LosLms.Tests/TenantIsolationTests) asserts this holds across every DbSet.
+        modelBuilder.Entity<Party>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<SecurityDetail>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Reference>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Viability>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankDetail>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankStatement>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankStatementAnalysis>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<CamCostBreakdown>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<ChecklistDocument>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RcuInitiation>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RcuOutcome>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RcuReport>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Classification>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<ExistingLoan>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankingRecord>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<EligibilityDecision>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Business>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Partner>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Tvr>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<ApprovalDecision>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Charge>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<SendBackLog>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Disbursement>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<EnachMandate>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<SecurityNachMandate>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<DownPaymentRecord>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<PostSanctionChecklist>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Pdd>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RejectionLog>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<AdminRequest>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+
+        // DocumentRemark is a grandchild: it hangs off a ChecklistDocument, which hangs off the
+        // Application. Scope it through both hops.
+        modelBuilder.Entity<DocumentRemark>()
+            .HasQueryFilter(x => _isSuperAdmin || x.Document!.Application!.CompanyId == _companyId);
     }
 
     /// <summary>Id of the single company created by <c>HasData</c> and owned by every seeded row.</summary>

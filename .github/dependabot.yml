@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # NuGet dependencies across every project in the solution. Weekly PRs for security and version updates.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
+  # Keep the GitHub Actions in the CI workflow current too.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

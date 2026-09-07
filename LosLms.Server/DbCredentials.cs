@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 
 namespace LosLms.Server;
 
@@ -24,16 +25,40 @@ internal sealed record DbCredentials(string AppPassword)
         $"Server=127.0.0.1;Port={port};Database={Database};User Id={AppUser};Password={AppPassword};" +
         "AllowPublicKeyRetrieval=True;";
 
-    // One secret, one line — no JSON envelope for a single string.
-    public void Save() => File.WriteAllText(Paths.CredentialsFile, AppPassword);
+    // Encrypted at rest with Windows DPAPI at LocalMachine scope: the ciphertext is bound to THIS
+    // machine, so a copied credentials file is useless on any other. (LocalMachine, not CurrentUser, so
+    // it still decrypts if the launcher later runs under a different account — e.g. a service.)
+    public void Save()
+    {
+        var cipher = ProtectedData.Protect(
+            Encoding.UTF8.GetBytes(AppPassword), optionalEntropy: null, DataProtectionScope.LocalMachine);
+        File.WriteAllBytes(Paths.CredentialsFile, cipher);
+    }
 
     public static DbCredentials? TryLoad()
     {
         try
         {
-            return File.Exists(Paths.CredentialsFile)
-                ? new DbCredentials(File.ReadAllText(Paths.CredentialsFile).Trim())
-                : null;
+            if (!File.Exists(Paths.CredentialsFile))
+            {
+                return null;
+            }
+
+            var raw = File.ReadAllBytes(Paths.CredentialsFile);
+            try
+            {
+                var plain = ProtectedData.Unprotect(raw, optionalEntropy: null, DataProtectionScope.LocalMachine);
+                return new DbCredentials(Encoding.UTF8.GetString(plain).Trim());
+            }
+            catch (CryptographicException)
+            {
+                // A file written before at-rest encryption (or restored from a machine's own older
+                // install) is plaintext. Read it as text, then rewrite it encrypted so the upgrade
+                // happens transparently on the next start.
+                var legacy = new DbCredentials(Encoding.UTF8.GetString(raw).Trim());
+                legacy.Save();
+                return legacy;
+            }
         }
         catch (Exception ex)
         {

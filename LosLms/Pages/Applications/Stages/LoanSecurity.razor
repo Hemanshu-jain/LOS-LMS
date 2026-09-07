@@ -1138,6 +1138,12 @@ else
             bytes = buffer.ToArray();
         }
 
+        if (!FileSignature.Matches(extension, bytes))
+        {
+            _uploadError = "This file's contents don't match its type. Upload a genuine JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
         // Outside wwwroot, same as Customer Details: these are customer financial documents and
         // anything under wwwroot is downloadable by anyone who guesses the URL. The client's
         // filename is never used in the path — only its whitelisted extension.
@@ -1195,6 +1201,12 @@ else
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
             bytes = buffer.ToArray();
+        }
+
+        if (!FileSignature.Matches(extension, bytes))
+        {
+            _uploadError = "This file's contents don't match its type. Upload a genuine JPG, PNG, WEBP or PDF.";
+            return;
         }
 
         var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",

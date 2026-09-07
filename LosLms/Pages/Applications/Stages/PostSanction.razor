@@ -1075,6 +1075,12 @@ else
             bytes = buffer.ToArray();
         }
 
+        if (!FileSignature.Matches(extension, bytes))
+        {
+            _uploadError = "This file's contents don't match its type. Upload a genuine PDF, JPG or PNG.";
+            return;
+        }
+
         var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
             _application.Id, "postsanction");
         Directory.CreateDirectory(folder);

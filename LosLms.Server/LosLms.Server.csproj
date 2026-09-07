@@ -13,7 +13,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>LOS-LMS</AssemblyName>
     <RootNamespace>LosLms.Server</RootNamespace>
-    <Version>1.1.4</Version>
+    <Version>1.1.5</Version>
     <!-- The product logo as the exe's file icon in Explorer. The window/tray icon is read from the exe
          itself at runtime, so no separate app.ico file is shipped (keeps the folder clean). -->
     <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
@@ -33,6 +33,9 @@
     <!-- For the real "is MySQL actually accepting connections" readiness poll and the first-run
          bootstrap DDL (create database + application user). -->
     <PackageReference Include="MySqlConnector" Version="2.6.2" />
+    <!-- Windows DPAPI (ProtectedData) to encrypt the stored MySQL credential at rest. On .NET this
+         lives in a small official package rather than the BCL, even on Windows. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

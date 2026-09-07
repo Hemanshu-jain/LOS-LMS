@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- Applies to every project in the solution. Lockfiles (packages.lock.json, committed next to each
+       csproj) pin the exact resolved versions of direct and transitive dependencies, so a restore can
+       be reproduced and audited (the CI vulnerability scan reads them). -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+</Project>

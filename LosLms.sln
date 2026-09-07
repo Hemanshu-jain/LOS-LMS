@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LosLms.Shell", "LosLms.Shel
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LosLms.Server", "LosLms.Server\LosLms.Server.csproj", "{80639F9E-75BF-4EE7-A2E0-6157818F4671}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LosLms.Tests", "LosLms.Tests\LosLms.Tests.csproj", "{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{80639F9E-75BF-4EE7-A2E0-6157818F4671}.Release|x64.Build.0 = Release|Any CPU
 		{80639F9E-75BF-4EE7-A2E0-6157818F4671}.Release|x86.ActiveCfg = Release|Any CPU
 		{80639F9E-75BF-4EE7-A2E0-6157818F4671}.Release|x86.Build.0 = Release|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Debug|x64.Build.0 = Debug|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Debug|x86.Build.0 = Debug|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Release|x64.ActiveCfg = Release|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Release|x64.Build.0 = Release|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Release|x86.ActiveCfg = Release|Any CPU
+		{4CB219B1-8609-47A7-85DB-B9E888FBEDAB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
