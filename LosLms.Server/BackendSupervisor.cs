@@ -26,6 +26,10 @@ internal sealed class BackendSupervisor
     private static readonly TimeSpan RapidFailureWindow = TimeSpan.FromSeconds(15);
     private const int MaxRapidFailures = 5;
 
+    /// <summary>The fixed local port the backend binds. Must match the Cloudflare tunnel's public-hostname
+    /// service mapping (http://localhost:5037).</summary>
+    private const int LocalPort = 5037;
+
     private string _connectionString = "";
     private Process? _backend;
     private DateTime _backendStartedAt;
@@ -51,7 +55,10 @@ internal sealed class BackendSupervisor
         }
 
         _connectionString = connectionString;
-        Port = PortFinder.FindFree(5037);
+        // Fixed, not free-scanned: the named tunnel's hostname → http://localhost:5037 mapping (set once
+        // in the Cloudflare dashboard) has to keep matching, so the backend must always bind the same
+        // local port across restarts.
+        Port = LocalPort;
         Log.Info($"Backend will use port {Port}.");
 
         progress("Starting the application server…");

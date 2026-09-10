@@ -17,6 +17,7 @@ internal sealed class Orchestrator
     private readonly MySqlManager _mysql = new();
     private readonly BackendSupervisor _backend = new();
     private readonly TunnelManager _tunnel = new();
+    private BackupManager? _backup;
 
     private readonly CancellationTokenSource _cts = new();
     private Thread? _superviseThread;
@@ -86,17 +87,23 @@ internal sealed class Orchestrator
         };
         _superviseThread.Start();
 
-        // ---- 5. Tunnel + publish: additive. Failure here never blocks the working local machine. ----
-        var url = await _tunnel.StartAsync(_backend.Port, Progress, ct);
-        if (url is not null)
+        // ---- 5. Automatic database backups (local + optional offsite). Additive. ----
+        _backup = new BackupManager(_mysql.Port, _mysql.Credentials, _config);
+        _backup.Start();
+
+        // ---- 6. Named tunnel: additive. Failure here never blocks the working local machine. The public
+        //          URL is fixed (config), so there is nothing to publish or discover. ----
+        if (_config.HasTunnel)
         {
-            _tray.SetUrl(url);
-            await new UrlPublisher(_config).PublishAsync(url, ct);
+            var started = await _tunnel.StartAsync(_config.TunnelToken!, Progress, ct);
+            _tray.SetUrl(started ? _config.HostedUrl : null);
         }
         else
         {
             _tray.SetUrl(null);
-            Log.Info("Running local-only (no tunnel). The operator at this machine can work normally.");
+            Log.Info(
+                "No tunnel token configured — running LAN-only. Add TunnelToken to server-config.json to "
+                + $"publish this machine at {_config.HostedUrl}.");
         }
     }
 
@@ -109,10 +116,11 @@ internal sealed class Orchestrator
         }
 
         _stopped = true;
-        Log.Info("Shutting down — stopping tunnel, backend, and database.");
+        Log.Info("Shutting down — stopping tunnel, backups, backend, and database.");
         try { _cts.Cancel(); } catch { /* ignore */ }
 
         _tunnel.Stop();
+        _backup?.Stop();
         _backend.Stop();
         _mysql.Stop();
 

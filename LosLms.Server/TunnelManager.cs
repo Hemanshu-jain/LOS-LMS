@@ -1,32 +1,28 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 
 namespace LosLms.Server;
 
 /// <summary>
-/// Runs a Cloudflare Quick Tunnel (no account, no domain) that exposes the local backend at a
-/// generated <c>https://xxxxx.trycloudflare.com</c> URL, and captures that URL from cloudflared's
-/// output. The tunnel is purely additive: if it cannot be established the launcher carries on and the
-/// machine's own operator keeps working locally.
+/// Runs the named Cloudflare tunnel that exposes the local backend at the fixed public URL
+/// (e.g. https://los-lms.bhodhix.com). Unlike a Quick Tunnel, the hostname is permanent and the
+/// hostname → localhost:port mapping is configured once in the Cloudflare Zero Trust dashboard; here we
+/// only run <c>cloudflared tunnel run --token &lt;token&gt;</c>. The tunnel is additive: if it cannot
+/// start, the operator at this machine keeps working locally.
 /// </summary>
-internal sealed partial class TunnelManager
+internal sealed class TunnelManager
 {
     private const string DownloadUrl =
         "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
 
-    private static readonly TimeSpan UrlTimeout = TimeSpan.FromSeconds(45);
-
     private Process? _cloudflared;
 
-    /// <summary>The captured public URL, or null if the tunnel is not up.</summary>
-    public string? PublicUrl { get; private set; }
-
     /// <summary>
-    /// Ensures cloudflared is present (bundled, or downloaded and cached on first run), starts it
-    /// windowless against the backend port, and waits for the trycloudflare URL. Returns null on any
-    /// failure — the caller treats that as "local only", never as fatal.
+    /// Ensures cloudflared is present (bundled, or downloaded and cached on first run) and starts it
+    /// windowless against the configured named tunnel. Returns true when the process started. The public
+    /// URL is fixed and known from config, so there is nothing to capture. Never throws — a failure is
+    /// logged and treated as "local only".
     /// </summary>
-    public async Task<string?> StartAsync(int backendPort, Action<string> progress, CancellationToken ct)
+    public async Task<bool> StartAsync(string tunnelToken, Action<string> progress, CancellationToken ct)
     {
         try
         {
@@ -36,25 +32,47 @@ internal sealed partial class TunnelManager
                 await DownloadCloudflaredAsync(ct);
             }
 
-            progress("Opening the shareable tunnel…");
-            PublicUrl = await StartAndCaptureUrlAsync(backendPort, ct);
+            progress("Connecting the tunnel…");
 
-            if (PublicUrl is null)
+            var info = new ProcessStartInfo
             {
-                Log.Warn("Tunnel started but no trycloudflare URL was captured in time. Continuing local-only.");
-            }
-            else
+                FileName = Paths.CloudflaredExe,
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+            };
+            info.ArgumentList.Add("tunnel");
+            info.ArgumentList.Add("run");
+            info.ArgumentList.Add("--token");
+            info.ArgumentList.Add(tunnelToken);
+            // Force the TCP-based http2 edge protocol instead of the default QUIC (UDP 7844): http2 is
+            // markedly more stable on networks that throttle or block UDP.
+            info.ArgumentList.Add("--protocol");
+            info.ArgumentList.Add("http2");
+            info.ArgumentList.Add("--no-autoupdate");
+
+            _cloudflared = new Process { StartInfo = info, EnableRaisingEvents = true };
+            _cloudflared.ErrorDataReceived += (_, e) => LogLine(e.Data);
+            _cloudflared.OutputDataReceived += (_, e) => LogLine(e.Data);
+
+            if (!_cloudflared.Start())
             {
-                Log.Info($"Tunnel URL: {PublicUrl}");
+                throw new InvalidOperationException("Could not start cloudflared.");
             }
 
-            return PublicUrl;
+            _cloudflared.BeginErrorReadLine();
+            _cloudflared.BeginOutputReadLine();
+
+            Log.Info("Named tunnel starting (cloudflared launched). Remote users reach the fixed hosted URL.");
+            return true;
         }
         catch (Exception ex)
         {
-            Log.Error("Could not establish the Cloudflare tunnel. Continuing local-only.", ex);
+            Log.Error("Could not start the Cloudflare tunnel. Continuing local-only.", ex);
             Stop();
-            return null;
+            return false;
         }
     }
 
@@ -75,62 +93,13 @@ internal sealed partial class TunnelManager
         }
     }
 
-    private async Task<string?> StartAndCaptureUrlAsync(int backendPort, CancellationToken ct)
+    // cloudflared is chatty; keep its lines in the launcher log at info level for diagnosis.
+    private static void LogLine(string? line)
     {
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var info = new ProcessStartInfo
+        if (!string.IsNullOrWhiteSpace(line))
         {
-            FileName = Paths.CloudflaredExe,
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            WindowStyle = ProcessWindowStyle.Hidden,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-        };
-        info.ArgumentList.Add("tunnel");
-        info.ArgumentList.Add("--url");
-        info.ArgumentList.Add($"http://127.0.0.1:{backendPort}");
-        info.ArgumentList.Add("--no-autoupdate");
-        // Force the TCP-based http2 edge protocol instead of the default QUIC (UDP 7844). Quick Tunnels
-        // over QUIC drop frequently on networks that throttle or block UDP; http2 is markedly more
-        // stable for a long-lived tunnel. cloudflared still logs the trycloudflare URL to stderr, which
-        // is what we scrape below.
-        info.ArgumentList.Add("--protocol");
-        info.ArgumentList.Add("http2");
-
-        void OnData(string? line)
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                return;
-            }
-
-            var match = TryCloudflareUrl().Match(line);
-            if (match.Success)
-            {
-                tcs.TrySetResult(match.Value);
-            }
+            Log.Info($"[tunnel] {line}");
         }
-
-        _cloudflared = new Process { StartInfo = info, EnableRaisingEvents = true };
-        _cloudflared.ErrorDataReceived += (_, e) => OnData(e.Data);
-        _cloudflared.OutputDataReceived += (_, e) => OnData(e.Data);
-
-        if (!_cloudflared.Start())
-        {
-            throw new InvalidOperationException("Could not start cloudflared.");
-        }
-
-        _cloudflared.BeginErrorReadLine();
-        _cloudflared.BeginOutputReadLine();
-
-        using var timeout = new CancellationTokenSource(UrlTimeout);
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
-        using var _ = linked.Token.Register(() => tcs.TrySetResult(string.Empty));
-
-        var url = await tcs.Task;
-        return string.IsNullOrEmpty(url) ? null : url;
     }
 
     private static async Task DownloadCloudflaredAsync(CancellationToken ct)
@@ -146,7 +115,4 @@ internal sealed partial class TunnelManager
         File.Move(temp, Paths.CloudflaredExe, overwrite: true);
         Log.Info("cloudflared downloaded and cached.");
     }
-
-    [GeneratedRegex(@"https://[a-z0-9-]+\.trycloudflare\.com")]
-    private static partial Regex TryCloudflareUrl();
 }

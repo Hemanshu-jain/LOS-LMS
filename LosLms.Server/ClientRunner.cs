@@ -3,80 +3,42 @@ using LosLms.Shell;
 namespace LosLms.Server;
 
 /// <summary>
-/// The client role: no database, no backend. Reads the current server URL from the fixed public
-/// location, opens the shared shell against it, shows a friendly retry panel when the server can't be
-/// reached, and prompts a reconnect when the host restarts (its tunnel URL changes).
+/// The staff (client) role: no database, no backend. Opens the shared shell at the fixed hosted URL
+/// (e.g. https://los-lms.bhodhix.com) and shows a friendly retry panel when it can't be reached. The URL
+/// is permanent now, so there is no discovery or reconnect-on-URL-change to do — a restart of the host
+/// keeps the very same address.
 /// </summary>
 internal sealed class ClientRunner
 {
-    private static readonly TimeSpan ReconnectPollInterval = TimeSpan.FromSeconds(30);
-
     private readonly ShellWindow _shell;
-    private readonly UrlSource _urlSource = new();
-    private readonly CancellationTokenSource _cts = new();
-    private string? _currentUrl;
+    private readonly string _hostedUrl;
 
-    public ClientRunner(ShellWindow shell)
+    public ClientRunner(ShellWindow shell, string hostedUrl)
     {
         _shell = shell;
-        // A navigation that fails (published URL not responding) gets the friendly panel, never a raw
+        _hostedUrl = hostedUrl;
+        // A navigation that fails (server briefly down, no internet) gets the friendly panel, not a raw
         // browser error page.
         _shell.NavigationFailed += ShowCantReach;
-        _shell.FormClosing += (_, _) => _cts.Cancel();
     }
 
     public async Task StartAsync()
     {
         await _shell.InitializeAsync();
         await ConnectAsync();
-        _ = PollForServerRestartAsync();
     }
 
     private async Task ConnectAsync()
     {
-        _shell.ShowConnecting("Connecting…", "Finding the server.");
-
-        var url = await _urlSource.FetchAsync(_cts.Token);
-        if (url is null)
-        {
-            ShowCantReach();
-            return;
-        }
-
-        _currentUrl = url;
-        await _shell.NavigateAsync(url);
+        _shell.ShowConnecting("Connecting…", "Opening LOS/LMS.");
+        await _shell.NavigateAsync(_hostedUrl);
     }
 
     private void ShowCantReach() =>
         _shell.ShowError(
             "Can't reach the server right now",
             "Check your internet connection, or contact your admin.\n\n"
-                + "The server may be starting up or temporarily offline — try again in a moment.",
+                + "The server may be restarting or temporarily offline — try again in a moment.",
             "Retry",
             () => _ = ConnectAsync());
-
-    // Detect the host having restarted (which mints a new tunnel URL) and offer a reconnect rather than
-    // leaving the user on a dead circuit with no explanation.
-    private async Task PollForServerRestartAsync()
-    {
-        try
-        {
-            while (!_cts.IsCancellationRequested)
-            {
-                await Task.Delay(ReconnectPollInterval, _cts.Token);
-
-                var latest = await _urlSource.FetchAsync(_cts.Token);
-                if (latest is not null && _currentUrl is not null && latest != _currentUrl)
-                {
-                    _shell.ShowReconnectBar(
-                        "The server restarted. Reconnect to continue.",
-                        () => _ = ConnectAsync());
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Window closing — stop quietly.
-        }
-    }
 }

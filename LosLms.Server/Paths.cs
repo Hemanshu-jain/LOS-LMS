@@ -29,8 +29,13 @@ internal static class Paths
 
     public static string MysqladminExe { get; } = Path.Combine(MysqlDir, "bin", "mysqladmin.exe");
 
+    public static string MysqldumpExe { get; } = Path.Combine(MysqlDir, "bin", "mysqldump.exe");
+
     /// <summary>MySQL data dir — created on first host run, preserved forever.</summary>
     public static string MysqlDataDir { get; } = Path.Combine(ServerDir, "mysql-data");
+
+    /// <summary>Nightly database dumps (gzipped), rotated locally and optionally uploaded offsite.</summary>
+    public static string BackupsDir { get; } = Path.Combine(ServerDir, "backups");
 
     /// <summary>Generated database credentials, written once on the first host run.</summary>
     public static string CredentialsFile { get; } = Path.Combine(ServerDir, ".db-credentials");
