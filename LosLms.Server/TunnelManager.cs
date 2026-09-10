@@ -43,15 +43,14 @@ internal sealed class TunnelManager
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
             };
+            // Order matters for cloudflared's parser: --no-autoupdate is a GLOBAL flag (before the
+            // subcommand); --token belongs to `tunnel run`. Putting the global flag after `run` makes
+            // cloudflared reject it and dump its help instead of connecting.
+            info.ArgumentList.Add("--no-autoupdate");
             info.ArgumentList.Add("tunnel");
             info.ArgumentList.Add("run");
             info.ArgumentList.Add("--token");
             info.ArgumentList.Add(tunnelToken);
-            // Force the TCP-based http2 edge protocol instead of the default QUIC (UDP 7844): http2 is
-            // markedly more stable on networks that throttle or block UDP.
-            info.ArgumentList.Add("--protocol");
-            info.ArgumentList.Add("http2");
-            info.ArgumentList.Add("--no-autoupdate");
 
             _cloudflared = new Process { StartInfo = info, EnableRaisingEvents = true };
             _cloudflared.ErrorDataReceived += (_, e) => LogLine(e.Data);
