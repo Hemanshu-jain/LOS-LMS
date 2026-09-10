@@ -95,15 +95,15 @@ internal sealed class Orchestrator
         //          URL is fixed (config), so there is nothing to publish or discover. ----
         if (_config.HasTunnel)
         {
-            var started = await _tunnel.StartAsync(_config.TunnelToken!, Progress, ct);
+            var started = await _tunnel.StartAsync(_config.EffectiveTunnelToken!, Progress, ct);
             _tray.SetUrl(started ? _config.HostedUrl : null);
         }
         else
         {
             _tray.SetUrl(null);
             Log.Info(
-                "No tunnel token configured — running LAN-only. Add TunnelToken to server-config.json to "
-                + $"publish this machine at {_config.HostedUrl}.");
+                "No tunnel token available — running LAN-only. A baked token (tunnel-token.txt at build) or "
+                + $"a server-config.json TunnelToken publishes this machine at {_config.HostedUrl}.");
         }
     }
 

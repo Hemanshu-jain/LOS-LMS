@@ -7,12 +7,19 @@ namespace LosLms.Server;
 /// Entry point for the single LOS/LMS app. On the very first launch it asks whether this computer is
 /// the host or a staff client (once per device, then remembered). From then on it runs straight into
 /// that role: the host sets up MySQL + backend + tunnel and shows the app locally; the client just
-/// finds the host and connects. Either way the user only ever double-clicks LOS-LMS.exe.
+/// opens the fixed address. Either way the user only ever double-clicks LOS-LMS.exe.
 /// </summary>
 internal static class Program
 {
     // Guards a second HOST launch on one machine — two hosts sharing one MySQL data dir would corrupt it.
     private const string HostMutexName = "LosLms.Host.SingleInstance";
+
+    // A second launch of the host sets this so the already-running instance brings its window back.
+    private const string ShowEventName = "LosLms.Host.ShowWindow";
+
+    // Set only by tray "Quit" (or a fatal error): tells the close handler to really shut down rather
+    // than hide to the tray.
+    private static bool _reallyQuit;
 
     [STAThread]
     private static void Main()
@@ -48,9 +55,17 @@ internal static class Program
         using var mutex = new Mutex(initiallyOwned: true, HostMutexName, out var isNew);
         if (!isNew)
         {
-            MessageBox.Show(
-                "LOS/LMS is already running on this computer.",
-                "LOS/LMS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // Already running (most likely minimised to the tray). Signal that instance to show its
+            // window, then exit quietly — reopening is instant because nothing was ever stopped.
+            try
+            {
+                if (EventWaitHandle.TryOpenExisting(ShowEventName, out var existing))
+                {
+                    existing.Set();
+                    existing.Dispose();
+                }
+            }
+            catch { /* best effort */ }
             return;
         }
 
@@ -61,16 +76,37 @@ internal static class Program
 
         Orchestrator orchestrator = null!;
         var tray = new TrayController(
-            onOpenWindow: () =>
+            onOpenWindow: () => ShowWindow(shell),
+            onQuit: () =>
             {
-                shell.Show();
-                shell.WindowState = FormWindowState.Normal;
-                shell.BringToFront();
-                shell.Activate();
-            },
-            onQuit: () => shell.Close());
+                _reallyQuit = true;
+                shell.Close();
+            });
 
         orchestrator = new Orchestrator(shell, tray, config);
+
+        // Bring the window back when a second launch signals it. Background waiter; dies with the process.
+        using var showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+        var showThread = new Thread(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    showEvent.WaitOne();
+                    shell.BeginInvoke(() => ShowWindow(shell));
+                }
+                catch
+                {
+                    break; // window/event disposed on shutdown
+                }
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "show-window-waiter",
+        };
+        showThread.Start();
 
         shell.Shown += async (_, _) =>
         {
@@ -84,14 +120,23 @@ internal static class Program
                 Log.Error("Fatal error during startup", ex);
                 shell.ShowError(
                     "Something went wrong starting LOS/LMS",
-                    ex.Message + "\n\nSee LOS-LMS.log next to the app for details.",
+                    ex.Message + "\n\nSee LOS-LMS.log inside the app folder for details.",
                     "Quit",
-                    () => shell.Close());
+                    () => { _reallyQuit = true; shell.Close(); });
             }
         };
 
-        shell.FormClosing += (_, _) =>
+        shell.FormClosing += (_, e) =>
         {
+            if (!_reallyQuit)
+            {
+                // Closing the window hides it to the tray and leaves MySQL, the backend, and the tunnel
+                // running — so opening it again is instant. Only tray "Quit" (or a reboot) really stops.
+                e.Cancel = true;
+                shell.Hide();
+                return;
+            }
+
             orchestrator.Shutdown();
             tray.Dispose();
         };
@@ -109,5 +154,13 @@ internal static class Program
         var client = new ClientRunner(shell, config.HostedUrl);
         shell.Shown += async (_, _) => await client.StartAsync();
         Application.Run(shell);
+    }
+
+    private static void ShowWindow(ShellWindow shell)
+    {
+        shell.Show();
+        shell.WindowState = FormWindowState.Normal;
+        shell.BringToFront();
+        shell.Activate();
     }
 }

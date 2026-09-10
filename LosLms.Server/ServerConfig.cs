@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -32,7 +34,15 @@ internal sealed class ServerConfig
 
     public const string DefaultHostedUrl = "https://los-lms.bhodhix.com";
 
-    public bool HasTunnel => !string.IsNullOrWhiteSpace(TunnelToken);
+    /// <summary>
+    /// The token actually used to start the tunnel: an explicit one in server-config.json wins, otherwise
+    /// the token baked into the build (from tunnel-token.txt). This is what lets a plain install just work
+    /// — the operator pastes nothing.
+    /// </summary>
+    public string? EffectiveTunnelToken =>
+        !string.IsNullOrWhiteSpace(TunnelToken) ? TunnelToken : BakedTunnelToken.Value;
+
+    public bool HasTunnel => !string.IsNullOrWhiteSpace(EffectiveTunnelToken);
 
     public bool HasBackupUpload =>
         !string.IsNullOrWhiteSpace(BackupFtpHost)
@@ -65,4 +75,26 @@ internal sealed class ServerConfig
     {
         PropertyNameCaseInsensitive = true,
     };
+
+    /// <summary>The tunnel token baked into the exe at publish time (base64 in assembly metadata), or null.</summary>
+    private static readonly Lazy<string?> BakedTunnelToken = new(() =>
+    {
+        var encoded = Assembly.GetExecutingAssembly()
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "TunnelToken")?.Value;
+
+        if (string.IsNullOrEmpty(encoded))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Encoding.UTF8.GetString(Convert.FromBase64String(encoded)).Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    });
 }

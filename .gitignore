@@ -506,6 +506,8 @@ server.json
 server-config.json
 # The vendor master password baked into builds — never commit it (master-key.example.txt is the doc).
 master-key.txt
+# The named-tunnel token baked into builds so the operator pastes nothing — never commit it.
+tunnel-token.txt
 # The vendor's update-signing PRIVATE key — signs release zips in publish.ps1. Only the PUBLIC half is
 # baked into the app (UpdateSigning.cs); this half must never be committed or forging updates is trivial.
 update-signing-private.pem

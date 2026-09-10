@@ -2,9 +2,9 @@
 
   <!-- The single LOS/LMS executable. On first run it asks whether this computer is the host or a staff
        client, then runs that role: the host sets up a bundled portable MySQL (localhost only), starts
-       the backend, opens a Cloudflare Quick Tunnel and publishes its URL, and shows the app locally; a
-       client just finds the host and connects. Published single-file, so the extracted folder is one
-       clean exe rather than a pile of DLLs. -->
+       the backend, opens the named Cloudflare tunnel at the fixed address, and shows the app locally; a
+       client just opens that same address. Published single-file, so the extracted folder is one clean
+       exe next to an app\ folder rather than a pile of DLLs. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -27,6 +27,17 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LosLms.Shell\LosLms.Shell.csproj" />
+  </ItemGroup>
+
+  <!-- The named-tunnel token, baked in at publish from tunnel-token.txt (gitignored), so the operator
+       never pastes anything: the host just runs and connects at the fixed address. Absent property (dev
+       builds, or no tunnel-token.txt) = no baked token, and the host falls back to LAN-only unless a
+       server-config.json supplies one. Base64 so the token survives the build command unharmed. -->
+  <ItemGroup Condition="'$(TunnelToken)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>TunnelToken</_Parameter1>
+      <_Parameter2>$(TunnelToken)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
