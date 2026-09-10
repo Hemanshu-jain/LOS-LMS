@@ -96,14 +96,14 @@ internal sealed class Orchestrator
         if (_config.HasTunnel)
         {
             var started = await _tunnel.StartAsync(_config.EffectiveTunnelToken!, Progress, ct);
-            _tray.SetUrl(started ? _config.HostedUrl : null);
+            _tray.SetUrl(started ? _config.EffectiveHostedUrl : null);
         }
         else
         {
             _tray.SetUrl(null);
             Log.Info(
                 "No tunnel token available — running LAN-only. A baked token (tunnel-token.txt at build) or "
-                + $"a server-config.json TunnelToken publishes this machine at {_config.HostedUrl}.");
+                + $"a server-config.json TunnelToken publishes this machine at {_config.EffectiveHostedUrl}.");
         }
     }
 

@@ -40,6 +40,15 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!-- The client's public URL, baked at publish (base64). One build per client carries its own address,
+       so the same source produces client1.bhodhix.com, client2.bhodhix.com, … each fully separate. -->
+  <ItemGroup Condition="'$(HostedUrl)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>HostedUrl</_Parameter1>
+      <_Parameter2>$(HostedUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <ItemGroup>
     <!-- For the real "is MySQL actually accepting connections" readiness poll and the first-run
          bootstrap DDL (create database + application user). -->

@@ -151,7 +151,7 @@ internal static class Program
     {
         var config = ServerConfig.Load();
         var shell = new ShellWindow("LOS/LMS");
-        var client = new ClientRunner(shell, config.HostedUrl);
+        var client = new ClientRunner(shell, config.EffectiveHostedUrl);
         shell.Shown += async (_, _) => await client.StartAsync();
         Application.Run(shell);
     }

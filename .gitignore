@@ -508,6 +508,8 @@ server-config.json
 master-key.txt
 # The named-tunnel token baked into builds so the operator pastes nothing — never commit it.
 tunnel-token.txt
+# Per-client tunnel tokens (one file per client) — never commit.
+tunnel-tokens/
 # The vendor's update-signing PRIVATE key — signs release zips in publish.ps1. Only the PUBLIC half is
 # baked into the app (UpdateSigning.cs); this half must never be committed or forging updates is trivial.
 update-signing-private.pem

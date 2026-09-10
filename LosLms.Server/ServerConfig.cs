@@ -6,21 +6,21 @@ using System.Text.Json.Serialization;
 namespace LosLms.Server;
 
 /// <summary>
-/// Operator-provided configuration, read from server-config.json next to the exe (gitignored). Holds the
-/// fixed public URL every machine opens and the named Cloudflare tunnel token the host runs, plus
-/// optional offsite-backup (FTP) credentials. Absent file ⇒ sensible defaults: a host with no tunnel
-/// token simply runs LAN-only; a machine with no URL override uses the built-in default.
+/// Per-deployment configuration. The public URL and the tunnel token are normally BAKED into the build
+/// (one build per client — see publish.ps1), so a client install pastes nothing. A server-config.json
+/// next to the exe can still override either value and supply optional offsite-backup (FTP) details.
+/// With nothing baked and no config, the host runs LAN-only at the built-in default URL.
 /// </summary>
 internal sealed class ServerConfig
 {
-    /// <summary>The permanent public address staff open, e.g. https://los-lms.bhodhix.com.</summary>
+    /// <summary>Override for the permanent public address (e.g. https://client1.bhodhix.com). Normally baked.</summary>
     [JsonPropertyName("HostedUrl")]
-    public string HostedUrl { get; init; } = DefaultHostedUrl;
+    public string? HostedUrl { get; init; }
 
     /// <summary>
-    /// The named Cloudflare tunnel token (Zero Trust → Networks → Tunnels). The host runs
+    /// Override for the named Cloudflare tunnel token. Normally baked. The host runs
     /// <c>cloudflared tunnel run --token</c> with it; the hostname → localhost mapping is set once in the
-    /// Cloudflare dashboard. Absent ⇒ no tunnel is started (LAN-only host).
+    /// Cloudflare dashboard.
     /// </summary>
     [JsonPropertyName("TunnelToken")]
     public string? TunnelToken { get; init; }
@@ -34,13 +34,15 @@ internal sealed class ServerConfig
 
     public const string DefaultHostedUrl = "https://los-lms.bhodhix.com";
 
+    /// <summary>The address this build opens: a config override wins, else the baked URL, else the default.</summary>
+    public string EffectiveHostedUrl =>
+        FirstNonBlank(HostedUrl, Baked("HostedUrl").Value) ?? DefaultHostedUrl;
+
     /// <summary>
-    /// The token actually used to start the tunnel: an explicit one in server-config.json wins, otherwise
-    /// the token baked into the build (from tunnel-token.txt). This is what lets a plain install just work
-    /// — the operator pastes nothing.
+    /// The token used to start the tunnel: a config override wins, else the token baked into this build.
+    /// This is what lets a per-client install just work — nobody pastes anything.
     /// </summary>
-    public string? EffectiveTunnelToken =>
-        !string.IsNullOrWhiteSpace(TunnelToken) ? TunnelToken : BakedTunnelToken.Value;
+    public string? EffectiveTunnelToken => FirstNonBlank(TunnelToken, Baked("TunnelToken").Value);
 
     public bool HasTunnel => !string.IsNullOrWhiteSpace(EffectiveTunnelToken);
 
@@ -56,8 +58,7 @@ internal sealed class ServerConfig
             if (File.Exists(Paths.ServerConfigFile))
             {
                 var json = File.ReadAllText(Paths.ServerConfigFile);
-                var config = JsonSerializer.Deserialize<ServerConfig>(json, Options);
-                if (config is not null && !string.IsNullOrWhiteSpace(config.HostedUrl))
+                if (JsonSerializer.Deserialize<ServerConfig>(json, Options) is { } config)
                 {
                     return config;
                 }
@@ -65,7 +66,7 @@ internal sealed class ServerConfig
         }
         catch (Exception ex)
         {
-            Log.Warn($"Could not read server-config.json ({ex.Message}). Using defaults (LAN-only, default URL).");
+            Log.Warn($"Could not read server-config.json ({ex.Message}). Using the baked/default values.");
         }
 
         return new ServerConfig();
@@ -76,12 +77,31 @@ internal sealed class ServerConfig
         PropertyNameCaseInsensitive = true,
     };
 
-    /// <summary>The tunnel token baked into the exe at publish time (base64 in assembly metadata), or null.</summary>
-    private static readonly Lazy<string?> BakedTunnelToken = new(() =>
+    private static string? FirstNonBlank(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a) ? a : (!string.IsNullOrWhiteSpace(b) ? b : null);
+
+    // Values baked into the exe at publish time as base64 assembly metadata (publish.ps1). Cached per key.
+    private static readonly Dictionary<string, Lazy<string?>> BakedCache = new();
+
+    private static Lazy<string?> Baked(string key)
+    {
+        lock (BakedCache)
+        {
+            if (!BakedCache.TryGetValue(key, out var value))
+            {
+                value = new Lazy<string?>(() => ReadBaked(key));
+                BakedCache[key] = value;
+            }
+
+            return value;
+        }
+    }
+
+    private static string? ReadBaked(string key)
     {
         var encoded = Assembly.GetExecutingAssembly()
             .GetCustomAttributes<AssemblyMetadataAttribute>()
-            .FirstOrDefault(a => a.Key == "TunnelToken")?.Value;
+            .FirstOrDefault(a => a.Key == key)?.Value;
 
         if (string.IsNullOrEmpty(encoded))
         {
@@ -96,5 +116,5 @@ internal sealed class ServerConfig
         {
             return null;
         }
-    });
+    }
 }
