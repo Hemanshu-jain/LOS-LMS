@@ -12,33 +12,36 @@ The first time it runs, it asks ONE question:
 
   * "Connect to the server"
         Pick this on every staff computer. It just opens the app
-        and finds the server automatically -- nothing to set up.
+        at your permanent address -- nothing to set up.
 
 That choice is remembered for this computer, so you are only asked once.
 (To change it later, delete the folder:  %LOCALAPPDATA%\LOS-LMS )
 
 
 -------------------------------------------------------------------------
-Only for the SERVER computer -- optional, one time
+Only for the SERVER computer -- one time
 -------------------------------------------------------------------------
 
-Staff on other computers connect over the internet through a link the
-server publishes. To turn that on, give the server a GitHub token once:
+Staff on other computers connect over the internet at your permanent
+address (for example  https://los-lms.bhodhix.com ). To turn that on,
+give the server its Cloudflare tunnel token once:
 
   1. Copy   server-config.example.json   to   server-config.json
-  2. Open server-config.json, paste your GitHub token where shown, Save.
+  2. Open server-config.json, paste your TunnelToken where shown, Save.
+     (Optional: fill the BackupFtp* fields to also copy nightly database
+      backups offsite. Left blank, backups are kept locally only.)
   3. Start LOS-LMS.exe.
 
-Without a token the server still works fully for anyone sitting AT this
-computer; only remote staff auto-connect needs the token.
+Without a token the server still works fully for anyone on the local
+network; only the internet address needs the tunnel token.
 
 Signing in for the first time: the app opens to a "Create your
 administrator account" screen. Enter your name, email, and a password you
 choose (10+ characters, with a symbol) — that's your login. After that you
 add your staff from Company Setup -> User Management.
 
-The current shareable link is shown in the tray icon (bottom-right, near
-the clock) and in the file   shareable-url.txt   next to the app.
+Your permanent address is shown in the tray icon (bottom-right, near the
+clock) and in the file   shareable-url.txt   next to the app.
 
 
 Nothing to install. No database to set up. Windows only.

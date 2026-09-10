@@ -1,4 +1,9 @@
 {
-  "_comment": "SERVER computer only. Copy this file to 'server-config.json' (next to LOS-LMS.exe) and paste your GitHub token below. This lets the server publish its address so remote staff auto-connect. Without it, the server still works for anyone at this computer. The token needs write access to the Hemanshu-jain/LOS-LMS repo.",
-  "GitHubToken": ""
+  "_comment": "SERVER computer only. Copy this file to 'server-config.json' (next to LOS-LMS.exe) and fill in the tunnel token. That publishes THIS machine at the fixed HostedUrl so remote staff reach it at a permanent address. Without a token, the server still works for anyone on the local network. The optional BackupFtp* fields, when set, upload each nightly database backup offsite (e.g. your Hostinger FTP); leave them blank to keep backups local only.",
+  "HostedUrl": "https://los-lms.bhodhix.com",
+  "TunnelToken": "",
+  "BackupFtpHost": "",
+  "BackupFtpUser": "",
+  "BackupFtpPassword": "",
+  "BackupFtpDir": ""
 }

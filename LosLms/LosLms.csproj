@@ -40,4 +40,16 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <!-- The client's signed subscription licence, baked at publish (base64). One build per client carries
+       its own licence + expiry; absent (dev builds) = unlicensed, and enforcement is off. -->
+  <ItemGroup Condition="'$(License)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>License</_Parameter1>
+      <_Parameter2>$(License)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LosLms.Licensing\LosLms.Licensing.csproj" />
+  </ItemGroup>
+
 </Project>

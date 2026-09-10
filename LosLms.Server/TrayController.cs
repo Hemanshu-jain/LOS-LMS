@@ -69,7 +69,7 @@ internal sealed class TrayController : IDisposable
         try
         {
             File.WriteAllText(Paths.ShareableUrlFile,
-                $"LOS/LMS shareable link (changes each restart):{Environment.NewLine}{url}{Environment.NewLine}");
+                $"LOS/LMS address (permanent — share with staff):{Environment.NewLine}{url}{Environment.NewLine}");
         }
         catch (Exception ex)
         {
