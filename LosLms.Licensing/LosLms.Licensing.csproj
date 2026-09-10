@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The license format + sign/verify, shared by the app (which VERIFIES with the baked public key)
+       and the vendor's license tool (which SIGNS with the private key). No dependencies — just the BCL
+       RSA + System.Text.Json. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Vendor-only internal tool (never shipped to clients). Onboards a client: creates their Cloudflare
+       tunnel + DNS via the API, signs their licence, writes the token + licence files the build bakes,
+       and records everything in clients-registry.json. Also renews and lists. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LosLms.LicenseTool</RootNamespace>
+    <AssemblyName>loslms-license</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LosLms.Licensing\LosLms.Licensing.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -521,3 +521,9 @@ cloudflared.exe
 shareable-url.txt
 # Cache of large runtime dependencies downloaded by the publish scripts (bundled MySQL + cloudflared).
 .tools/
+license-signing-private.pem
+# Licensing (vendor-only) — never commit
+license.txt
+clients/
+clients-registry.json
+cloudflare-config.json

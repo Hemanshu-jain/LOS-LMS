@@ -1,0 +1,8 @@
+{
+  "_comment": "Vendor-only, for the licence tool's Cloudflare automation. Copy to cloudflare-config.json (gitignored) and fill in. ApiToken needs: Account > Cloudflare Tunnel = Edit, and Zone (bhodhix.com) > DNS = Edit. AccountId and ZoneId are on the Cloudflare dashboard (Overview/API section). Service is where the app listens on each host.",
+  "AccountId": "",
+  "ZoneId": "",
+  "ApiToken": "",
+  "Zone": "bhodhix.com",
+  "Service": "http://localhost:5037"
+}

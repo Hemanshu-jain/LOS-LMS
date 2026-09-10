@@ -20,6 +20,7 @@
 param(
     [string]$Subdomain       = 'los-lms.bhodhix.com',   # this client's subdomain -> https://<subdomain>
     [string]$TunnelTokenFile = 'tunnel-token.txt',      # repo-relative file holding this client's tunnel token
+    [string]$LicenseFile     = 'license.txt',           # repo-relative file holding this client's signed licence
     [string]$Label           = '',                       # names the output zip (e.g. 'client1'); blank = default
     [switch]$SkipUpdateArtifact                          # per-client builds skip the public update artifact + signing
 )
@@ -82,9 +83,23 @@ if (Test-Path $tunnelKey) {
     Write-Host "Tunnel token: none (no $TunnelTokenFile) — the host will run LAN-only."
 }
 
+# ---- This client's signed subscription licence, baked into the BACKEND ----
+$licenseArgs = @()
+$licenseKeyFile = Join-Path $root $LicenseFile
+if (Test-Path $licenseKeyFile) {
+    $lic = (Get-Content $licenseKeyFile -Raw).Trim()
+    if ($lic) {
+        $licB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($lic))
+        $licenseArgs = @("-p:License=$licB64")
+        Write-Host "Licence: BAKING IN (from $LicenseFile)."
+    }
+} else {
+    Write-Host "Licence: none (no $LicenseFile) — unlicensed build (enforcement off). Fine for testing."
+}
+
 # ---- Backend -> app\backend  (single-file; Blazor + EF Core do not trim safely) ----
 dotnet publish $appProj -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -p:PublishTrimmed=false @masterArgs -o $backend
+    -p:PublishSingleFile=true -p:PublishTrimmed=false @masterArgs @licenseArgs -o $backend
 if ($LASTEXITCODE -ne 0) { throw "Backend publish failed." }
 
 # ---- Unified launcher -> the folder root  (single clean LOS-LMS.exe, tunnel token baked) ----

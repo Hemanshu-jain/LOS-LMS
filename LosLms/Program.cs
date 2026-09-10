@@ -71,6 +71,10 @@ builder.Services.AddSingleton<AdminRequestNotifier>();
 builder.Services.AddSingleton<UpdateNotificationService>();
 builder.Services.AddHostedService<UpdateCheckBackgroundService>();
 
+// Subscription licensing: verifies the baked/renewed license, warns near expiry, and freezes the app
+// once expired (see MainLayout + the /account/renew page).
+builder.Services.AddSingleton<LicenseService>();
+
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFactory>();
 
