@@ -4,18 +4,20 @@ using Microsoft.Extensions.Hosting;
 namespace LosLms.Services;
 
 /// <summary>
-/// Checks GitHub Releases for a newer build on startup and every few hours, storing the outcome in
-/// <see cref="UpdateNotificationService"/> so the SuperAdmin gets a banner without opening the System
-/// Updates page.
+/// Checks GitHub Releases for a newer build on startup and every few hours, stores the outcome for the
+/// SuperAdmin banner, and — unless disabled — AUTO-APPLIES a newer signed release so a single published
+/// release reaches every install hands-free.
 /// </summary>
 /// <remarks>
-/// Read-only: it never downloads or applies an update — that stays an explicit SuperAdmin action. A
-/// failed check (offline, rate-limited) is swallowed and the previous result is kept, so no banner
-/// flickers away just because one poll could not reach GitHub.
+/// Auto-apply reuses the same verified path as the manual button: <see cref="UpdateService.DownloadAsync"/>
+/// checks the vendor signature before staging, and the watchdog's swap rolls back on any failure — so an
+/// unsigned or broken release is never applied. Set <c>Updates:AutoApply=false</c> to fall back to the
+/// notify-only, one-click behaviour. A failed check or apply is swallowed; the previous state is kept.
 /// </remarks>
 public sealed class UpdateCheckBackgroundService(
     IHttpClientFactory httpClientFactory,
     IConfiguration config,
+    IHostEnvironment env,
     UpdateNotificationService notifications) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
@@ -43,12 +45,42 @@ public sealed class UpdateCheckBackgroundService(
             if (result.Checked)
             {
                 notifications.Set(result);
+
+                if (config.GetValue("Updates:AutoApply", true)
+                    && result.UpdateAvailable
+                    && result.AssetDownloadUrl is { } url
+                    && result.AssetName is { } name)
+                {
+                    await TryAutoApplyAsync(http, url, name, result.LatestTag, stoppingToken);
+                }
             }
 
             if (!await DelayAsync(Interval, stoppingToken))
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>
+    /// Downloads the newer release (verifying the vendor signature) and signals the watchdog to swap it
+    /// in. The watchdog stops the backend, applies, and restarts — so a new version reaches this install
+    /// with no one clicking anything. A failure here just leaves the current version running.
+    /// </summary>
+    private async Task TryAutoApplyAsync(
+        HttpClient http, string url, string name, string? tag, CancellationToken ct)
+    {
+        try
+        {
+            var stagingFolder = Path.Combine(env.ContentRootPath, config["Updates:StagingFolder"] ?? "updates");
+            var zip = await UpdateService.DownloadAsync(http, url, name, stagingFolder, ct);
+            await UpdateService.WriteApplySignal(stagingFolder, zip, ct);
+            // The watchdog will now stop this process to apply; nothing more to do.
+        }
+        catch (Exception)
+        {
+            // Signature mismatch, download error, or disk issue — keep running the current version.
+            // The SuperAdmin still has the manual button, and the next poll will retry.
         }
     }
 

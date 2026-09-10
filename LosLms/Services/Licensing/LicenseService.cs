@@ -173,6 +173,14 @@ public sealed class LicenseService : IDisposable
             _license = baked;
             _token = bakedToken;
         }
+
+        // Persist the active licence into App_Data so it survives an app update — the update artifact
+        // carries no baked licence, so without this the freshly-swapped backend would read none and stop
+        // enforcing. App_Data is preserved across the swap, so the licence (and its expiry) carries over.
+        if (_token is not null && !string.Equals(_token, stored?.Token, StringComparison.Ordinal))
+        {
+            Persist();
+        }
     }
 
     private void Persist()
