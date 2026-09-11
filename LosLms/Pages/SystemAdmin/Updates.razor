@@ -5,6 +5,8 @@
 @inject IHttpClientFactory HttpClientFactory
 @inject IConfiguration Config
 @inject IWebHostEnvironment Environment
+@inject IJSRuntime JS
+@inject LicenseService License
 @inject UpdateNotificationService Notifications
 
 @* Server-lifecycle management, SuperAdmin only — not a per-company Admin concern. Checks a public
@@ -15,6 +17,52 @@
 <PageTitle>System Updates · LOS/LMS</PageTitle>
 
 <div class="updates-page">
+
+    @* ---------- Your app address ---------- *@
+    <div class="updates-card">
+        <div class="updates-head">
+            <div>
+                <span class="updates-eyebrow">Your app</span>
+                <h1 class="updates-title">App address</h1>
+            </div>
+            <a class="updates-back" href="/applications">← Applications</a>
+        </div>
+
+        <p class="updates-current">
+            This is where your staff sign in. It is fixed — share it with them once and it never changes.
+        </p>
+
+        @if (!string.IsNullOrWhiteSpace(_publicUrl))
+        {
+            <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+                <input class="field-input" style="flex:1; min-width:240px;" readonly value="@_publicUrl"
+                       @onfocus="SelectAllAsync" @ref="_urlInput" />
+                <button type="button" class="updates-button" @onclick="CopyUrlAsync">
+                    @(_copied ? "Copied ✓" : "Copy")
+                </button>
+                <a class="updates-button" href="@_publicUrl" target="_blank" rel="noopener noreferrer">Open</a>
+            </div>
+        }
+        else
+        {
+            <p class="updates-message" role="status">
+                This machine is running on the local network only — no public address is set for it yet.
+            </p>
+        }
+    </div>
+
+    @* ---------- Subscription ---------- *@
+    <div class="updates-card">
+        <div class="updates-head">
+            <div>
+                <span class="updates-eyebrow">Subscription</span>
+                <h1 class="updates-title">Licence</h1>
+            </div>
+        </div>
+        <p class="updates-current">@SubscriptionText</p>
+    </div>
+
+    @* ---------- Software updates ---------- *@
     <div class="updates-card">
         <div class="updates-head">
             <div>
@@ -26,10 +74,6 @@
 
         <p class="updates-current">
             Running version <strong>@_currentVersion</strong>
-            @if (!string.IsNullOrWhiteSpace(_source))
-            {
-                <span class="updates-source"> · update source: @_source</span>
-            }
         </p>
 
         <div class="updates-actions">
@@ -120,7 +164,26 @@
 
 @code {
     private string _currentVersion = "unknown";
-    private string? _source;
+
+    // The client's public address. Set by the launcher as LOSLMS_PUBLIC_URL; when that is absent
+    // (older launcher, or LAN-only), OnAfterRender falls back to the address this page was reached on.
+    private string _publicUrl = string.Empty;
+    private bool _copied;
+    private ElementReference _urlInput;
+
+    private string SubscriptionText => License.State switch
+    {
+        LicenseState.Unlicensed => "No subscription key is present (development build) — enforcement is off.",
+        LicenseState.Licensed => $"Active{ClientSuffix} — valid until {License.ExpiresUtc?.ToLocalTime():d MMM yyyy}.",
+        LicenseState.ExpiringSoon =>
+            $"Active{ClientSuffix} — ends in {License.DaysRemaining} day{(License.DaysRemaining == 1 ? "" : "s")} "
+            + $"({License.ExpiresUtc?.ToLocalTime():d MMM yyyy}). Renew soon to avoid interruption.",
+        LicenseState.Expired => $"Expired on {License.ExpiresUtc?.ToLocalTime():d MMM yyyy}.",
+        _ => "",
+    };
+
+    private string ClientSuffix => string.IsNullOrEmpty(License.Client) ? "" : $" for {License.Client}";
+
     private string StagingFolder =>
         Path.Combine(Environment.ContentRootPath, Config["Updates:StagingFolder"] ?? "updates");
 
@@ -139,13 +202,43 @@
         var version = Assembly.GetEntryAssembly()?.GetName().Version;
         _currentVersion = version is null ? "unknown" : version.ToString(3);
 
-        var owner = Config["Updates:GitHubOwner"];
-        var repo = Config["Updates:GitHubRepo"];
-        _source = string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo)
-            ? null
-            : $"{owner}/{repo}";
+        _publicUrl = (Config["LOSLMS_PUBLIC_URL"] ?? string.Empty).Trim();
 
         await CheckAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Fallback when the launcher did not supply the public URL: use the address this page was
+        // actually reached on. Only meaningful once interactive, hence here rather than OnInitialized.
+        if (firstRender && string.IsNullOrWhiteSpace(_publicUrl))
+        {
+            var origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
+            if (!string.IsNullOrWhiteSpace(origin) && !origin.Contains("127.0.0.1") && !origin.Contains("localhost"))
+            {
+                _publicUrl = origin;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task SelectAllAsync() =>
+        await JS.InvokeVoidAsync("eval", "document.activeElement && document.activeElement.select && document.activeElement.select()");
+
+    private async Task CopyUrlAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _publicUrl);
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+        }
+        catch
+        {
+            // Clipboard API can be blocked; the Open link and manual selection still work.
+        }
     }
 
     private async Task CheckAsync()

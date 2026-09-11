@@ -31,6 +31,7 @@ internal sealed class BackendSupervisor
     private const int LocalPort = 5037;
 
     private string _connectionString = "";
+    private string _publicUrl = "";
     private Process? _backend;
     private DateTime _backendStartedAt;
     private int _rapidFailures;
@@ -46,7 +47,7 @@ internal sealed class BackendSupervisor
     /// <summary>Raised when the backend crash-loops and the supervisor gives up, so the shell can say so.</summary>
     public event Action? BackendFailedPermanently;
 
-    public async Task StartAsync(string connectionString, Action<string> progress, CancellationToken ct)
+    public async Task StartAsync(string connectionString, string publicUrl, Action<string> progress, CancellationToken ct)
     {
         if (!File.Exists(Paths.BackendExe))
         {
@@ -55,6 +56,7 @@ internal sealed class BackendSupervisor
         }
 
         _connectionString = connectionString;
+        _publicUrl = publicUrl;
         // Fixed, not free-scanned: the named tunnel's hostname → http://localhost:5037 mapping (set once
         // in the Cloudflare dashboard) has to keep matching, so the backend must always bind the same
         // local port across restarts.
@@ -135,6 +137,13 @@ internal sealed class BackendSupervisor
         info.ArgumentList.Add("--urls");
         info.ArgumentList.Add(LocalUrl); // bind 127.0.0.1 only — the tunnel, not the LAN, carries remote users
         info.Environment["ConnectionStrings__LosDb"] = _connectionString;
+
+        // The client's fixed public address, so the app can show "share this URL with your staff"
+        // without the backend having to know how it was reached. Empty on a LAN-only host.
+        if (!string.IsNullOrWhiteSpace(_publicUrl))
+        {
+            info.Environment["LOSLMS_PUBLIC_URL"] = _publicUrl;
+        }
 
         var process = Process.Start(info)
             ?? throw new InvalidOperationException($"Could not start {Paths.BackendExe}.");

@@ -10,7 +10,7 @@
 }
 
 .filter-field-label {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -21,7 +21,7 @@
     height: 30px;
     border: 1px solid var(--los-border, #d8dbe1);
     border-radius: 0;
-    font-size: 12px;
+    font-size: 14px;
     background: #fff;
     padding: 0 8px;
     color: var(--los-text-primary, #1a1f29);

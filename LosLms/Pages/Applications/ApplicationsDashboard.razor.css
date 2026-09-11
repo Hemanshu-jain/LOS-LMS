@@ -24,7 +24,7 @@
     font-family: 'IBM Plex Sans', Arial, sans-serif;
     background: var(--los-page);
     color: var(--los-text-primary);
-    font-size: 12px;
+    font-size: 14px;
     min-height: 100vh;
 }
 
@@ -61,7 +61,7 @@
 }
 
 .system-label {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: .12em;
     text-transform: uppercase;
@@ -75,7 +75,7 @@
 }
 
 .user-name {
-    font-size: 12px;
+    font-size: 14px;
     color: var(--los-text-secondary);
 }
 
@@ -129,7 +129,7 @@
     border: 1px solid var(--los-border);
     background: #fafbfc;
     padding: 0 10px 0 30px;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--los-text-primary);
 }
 
@@ -143,7 +143,7 @@
     border: 1px solid var(--los-border);
     background: #fff;
     padding: 0 11px;
-    font-size: 12px;
+    font-size: 14px;
     color: #3b4453;
     display: flex;
     align-items: center;
@@ -159,7 +159,7 @@
     border: none;
     background: var(--los-accent);
     padding: 0 14px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 500;
     color: #fff;
     display: flex;
@@ -183,7 +183,7 @@
     background: #fff;
     color: #3b4453;
     padding: 0 9px;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 .density-toggle button + button {
@@ -213,7 +213,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: 14px;
     color: #3b4453;
     cursor: pointer;
 }
@@ -235,7 +235,7 @@
 }
 
 .field-label {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -253,7 +253,7 @@
     min-width: 0;
     height: 30px;
     border: 1px solid var(--los-border);
-    font-size: 12px;
+    font-size: 14px;
     padding: 0 6px;
     color: var(--los-text-primary);
     background: #fff;
@@ -274,7 +274,7 @@
 .link-button {
     background: none;
     border: none;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--los-text-secondary);
     padding: 0;
 }
@@ -289,7 +289,7 @@
     border: none;
     background: var(--los-accent);
     padding: 0 12px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 500;
     color: #fff;
 }
@@ -310,12 +310,12 @@
 }
 
 .chip-row-label {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--los-text-muted);
 }
 
 .chip-button {
-    font-size: 11.5px;
+    font-size: 13.5px;
     padding: 4px 9px;
     border: 1px solid var(--los-border);
     background: #fff;
@@ -355,17 +355,17 @@
 }
 
 .triage-count {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
 }
 
 .triage-label {
-    font-size: 10.5px;
+    font-size: 12.5px;
     color: var(--los-text-secondary);
 }
 
 .triage-clear {
-    font-size: 11px;
+    font-size: 13px;
     align-self: center;
 }
 
@@ -379,7 +379,7 @@
 
 .tab {
     padding: 10px 2px;
-    font-size: 12.5px;
+    font-size: 14.5px;
     font-weight: 400;
     color: var(--los-text-secondary);
     background: none;
@@ -401,14 +401,14 @@
 
 .tab-placeholder-title {
     margin: 0 0 6px;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 500;
     color: var(--los-text-primary);
 }
 
 .tab-placeholder-body {
     margin: 0;
-    font-size: 12px;
+    font-size: 14px;
     color: var(--los-text-secondary);
 }
 
@@ -425,7 +425,7 @@
 }
 
 .bulk-count {
-    font-size: 12px;
+    font-size: 14px;
 }
 
 .bulk-actions {
@@ -497,13 +497,13 @@
 
 .status-badge {
     display: inline-block;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 500;
     padding: 2px 7px;
 }
 
 .cell-stage {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--los-text-muted);
     margin-top: 3px;
     white-space: nowrap;
@@ -550,7 +550,7 @@
 }
 
 .footer-count {
-    font-size: 11.5px;
+    font-size: 13.5px;
     color: var(--los-text-secondary);
 }
 
@@ -558,14 +558,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11.5px;
+    font-size: 13.5px;
     color: var(--los-text-secondary);
 }
 
 .rows-per-page select {
     height: 26px;
     border: 1px solid var(--los-border);
-    font-size: 11.5px;
+    font-size: 13.5px;
     background: #fff;
     color: var(--los-text-primary);
 }
@@ -581,7 +581,7 @@
     height: 26px;
     border: 1px solid var(--los-border);
     background: #fff;
-    font-size: 11.5px;
+    font-size: 13.5px;
     color: #3b4453;
     display: flex;
     align-items: center;
@@ -600,7 +600,7 @@
 }
 
 .page-gap {
-    font-size: 11.5px;
+    font-size: 13.5px;
     color: var(--los-text-muted);
     padding: 0 4px;
 }
@@ -637,7 +637,7 @@
 }
 
 .drawer-id {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 500;
     color: var(--los-accent);
 }
@@ -659,7 +659,7 @@
 }
 
 .drawer-stage {
-    font-size: 11px;
+    font-size: 13px;
     color: var(--los-text-muted);
     margin-bottom: 16px;
 }
@@ -671,7 +671,7 @@
     border: none;
     background: var(--los-accent);
     color: #fff;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 500;
 }
 
@@ -683,7 +683,7 @@
     border: 1px solid #e6b3b3;
     background: #f8d7d7;
     color: #8a1f1f;
-    font-size: 11.5px;
+    font-size: 13.5px;
     font-weight: 600;
     line-height: 1.5;
     padding: 9px 10px;
@@ -700,7 +700,7 @@
 }
 
 .drawer-assign-label {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: .09em;
     text-transform: uppercase;
@@ -718,7 +718,7 @@
     height: 30px;
     border: 1px solid var(--los-border);
     background: #fafbfc;
-    font-size: 12px;
+    font-size: 14px;
     padding: 0 6px;
     border-radius: 0;
     color: var(--los-text);
@@ -731,7 +731,7 @@
 }
 
 .drawer-saved {
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     color: #1f5c2a;
     white-space: nowrap;
@@ -744,7 +744,7 @@
     border: 1px solid #e6b3b3;
     background: #fff;
     color: #8a1f1f;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: .05em;
     text-transform: uppercase;
@@ -765,6 +765,6 @@
     border-left: 3px solid #2f5d9e;
     background: #f2f6fc;
     border-radius: 3px;
-    font-size: 11.5px;
+    font-size: 13.5px;
     color: #24405f;
 }

@@ -55,7 +55,7 @@ internal sealed class Orchestrator
         // ---- 2. Backend, pointed at local MySQL. Migrations apply automatically on this boot. ----
         try
         {
-            await _backend.StartAsync(_mysql.AppConnectionString, Progress, ct);
+            await _backend.StartAsync(_mysql.AppConnectionString, _config.EffectiveHostedUrl, Progress, ct);
         }
         catch (Exception ex)
         {

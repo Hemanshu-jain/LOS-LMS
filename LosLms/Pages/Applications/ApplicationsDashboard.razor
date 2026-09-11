@@ -58,15 +58,6 @@
                     <Icon Name="columns" Size="14" /> Columns
                 </button>
 
-                <div class="density-toggle" role="group" aria-label="Row density">
-                    <button type="button" class="@(_density == "compact" ? "is-active" : null)"
-                            aria-pressed="@(_density == "compact")"
-                            @onclick='() => _density = "compact"'>Compact</button>
-                    <button type="button" class="@(_density == "comfortable" ? "is-active" : null)"
-                            aria-pressed="@(_density == "comfortable")"
-                            @onclick='() => _density = "comfortable"'>Comfortable</button>
-                </div>
-
                 <button type="button" class="ghost-button" @onclick="() => ExportCsvAsync(filtered)">
                     <Icon Name="download" Size="14" /> Export
                 </button>
@@ -201,10 +192,11 @@
         @if (!IsDataTab)
         {
             <div class="tab-placeholder">
-                <p class="tab-placeholder-title">“@_activeTab” is not yet wired up.</p>
+                <p class="tab-placeholder-title">No migrated records yet.</p>
                 <p class="tab-placeholder-body">
-                    This tab needs its own server-side query against the applications table.
-                    Only “Assigned to me” has data in this build.
+                    This is where loan records brought over from your previous system will appear,
+                    kept separate from applications created here. Bulk import isn't switched on in this
+                    build yet — until it is, there is nothing to show.
                 </p>
             </div>
         }
@@ -226,7 +218,7 @@
 
             @* ---------- Table ---------- *@
             <div class="table-scroll">
-                <table class="applications-table @(_density == "comfortable" ? "density-comfortable" : "density-compact")">
+                <table class="applications-table density-compact">
                     <thead>
                         <tr>
                             <th class="checkbox-header" scope="col">
@@ -320,17 +312,24 @@
                     <span class="footer-count">
                         Showing @firstShown–@lastShown of @filtered.Count applications
                     </span>
-                    <label class="rows-per-page">
-                        Rows per page
-                        <select value="@_pageSize" @onchange="HandlePageSizeChanged">
-                            @foreach (var size in PageSizes)
-                            {
-                                <option value="@size">@size</option>
-                            }
-                        </select>
-                    </label>
+                    @* The rows-per-page control only earns its place once there is more than one page;
+                       when everything already fits, it is noise. *@
+                    @if (totalPages > 1)
+                    {
+                        <label class="rows-per-page">
+                            Rows per page
+                            <select value="@_pageSize" @onchange="HandlePageSizeChanged">
+                                @foreach (var size in PageSizes)
+                                {
+                                    <option value="@size">@size</option>
+                                }
+                            </select>
+                        </label>
+                    }
                 </div>
 
+                @if (totalPages > 1)
+                {
                 <div class="pagination">
                     <button type="button" class="page-btn" aria-label="Previous page"
                             disabled="@(currentPage == 1)"
@@ -362,6 +361,7 @@
                         <Icon Name="chevron-right" Size="13" />
                     </button>
                 </div>
+                }
             </div>
         }
 
@@ -482,9 +482,11 @@
     private const string AllChannelsOption = "All channels";
     private const string AllOfficersOption = "All officers";
 
+    private const string AllApplicationsTab = "All applications";
     private const string AssignedToMeTab = "Assigned to me";
+    private const string MigratedTab = "Migrated data";
 
-    private static readonly string[] Tabs = { AssignedToMeTab, "All applications", "Migrated data" };
+    private static readonly string[] Tabs = { AllApplicationsTab, AssignedToMeTab, MigratedTab };
     private static readonly string[] StatusOrder = { "New", "In progress", "Sanctioned", "Rejected" };
     private static readonly string[] SavedViews = { "My open cases", "Rejected only" };
     private static readonly int[] PageSizes = { 25, 50, 100 };
@@ -574,11 +576,10 @@
 
     private bool _showFilterPanel;
     private bool _showColumnPanel;
-    private string _activeTab = AssignedToMeTab;
+    private string _activeTab = AllApplicationsTab;
     private string? _statusFilter;
     private string _sortKey = "queueDate";
     private string _sortDir = "desc";
-    private string _density = "compact";
     private int _page = 1;
     private int _pageSize = 25;
     private string? _drawerId;
@@ -633,6 +634,9 @@
     /// </remarks>
     private async Task LoadAsync()
     {
+        // Needed for the "Assigned to me" tab, which filters on the signed-in officer's id.
+        await Tenant.EnsureLoadedAsync();
+
         await using var db = await DbFactory.CreateDbContextAsync();
 
         _allRows = await db.Applications.AsNoTracking().ToListAsync();
@@ -705,7 +709,9 @@
     // Derived data
     // ---------------------------------------------------------------------
 
-    private bool IsDataTab => _activeTab == AssignedToMeTab;
+    // All applications and Assigned to me both show real rows (the latter filtered to the signed-in
+    // officer in FilteredRows). Migrated data is the one tab still awaiting the import feature.
+    private bool IsDataTab => _activeTab == AllApplicationsTab || _activeTab == AssignedToMeTab;
 
     private Application? DrawerApp =>
         _drawerId is null ? null : _allRows.FirstOrDefault(row => row.Id == _drawerId);
@@ -715,6 +721,13 @@
         get
         {
             IEnumerable<Application> rows = _allRows;
+
+            // "Assigned to me" narrows to the signed-in officer's own files; "All applications" shows
+            // the whole company list (already company-scoped by the DbContext query filter).
+            if (_activeTab == AssignedToMeTab)
+            {
+                rows = rows.Where(row => row.AssignedOfficerId == Tenant.UserId);
+            }
 
             if (_applied.Product != AllProductsOption)
             {
