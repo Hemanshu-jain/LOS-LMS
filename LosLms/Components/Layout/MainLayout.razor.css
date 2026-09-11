@@ -1,6 +1,7 @@
 /* Global app bar. Deliberately thinner and quieter than the card headers below it: it is chrome,
    not content, and must not compete with the stage sub-header for attention. */
 .app-bar {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -9,6 +10,24 @@
     padding: 0 16px;
     background: #1a1f29;
     color: #e8e9ec;
+}
+
+/* The tenant's company name, centred in the bar. Absolutely positioned so it sits dead-centre
+   regardless of how many nav links the left side has, and ignores pointer events so it never
+   intercepts a click meant for a link behind it. Truncates rather than pushing the layout around. */
+.app-company {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: 38%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    color: #c3c7cf;
+    pointer-events: none;
 }
 
 .app-brand {

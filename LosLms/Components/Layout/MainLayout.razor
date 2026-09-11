@@ -51,6 +51,14 @@ else
         <header class="app-bar">
             <a class="app-brand" href="/applications">LOS/LMS</a>
 
+            @* The signed-in user's own company, centred — so the app reads as theirs, and someone with
+               two firms open in two tabs can tell them apart at a glance. Empty for a SuperAdmin (the
+               vendor), who belongs to no single company. *@
+            @if (!string.IsNullOrEmpty(_companyName))
+            {
+                <span class="app-company" title="@_companyName">@_companyName</span>
+            }
+
             @* Cosmetic only. The page itself carries [Authorize(Roles = …)], so hiding the link is
                convenience, not the control — Staff typing the URL still get the access-denied card. *@
             <AuthorizeView Roles="@TenantContext.AdminRoles" Context="admin">
@@ -118,6 +126,7 @@ else
 
     private string _displayName = string.Empty;
     private string _role = string.Empty;
+    private string _companyName = string.Empty;
     private bool _updateDismissed;
 
     private string _licClient = string.Empty;
@@ -189,11 +198,18 @@ else
             || relative.StartsWith("company-setup", StringComparison.OrdinalIgnoreCase);
 
         if (!isSuperAdmin
-            && !setupExempt
             && int.TryParse(user.FindFirst(TenantContext.CompanyIdClaim)?.Value, out var companyId))
         {
             await using var db = await DbFactory.CreateDbContextAsync();
-            if (!await CompanySetupState.IsCompleteAsync(db, companyId))
+
+            // The company name shown in the bar. One indexed lookup; refreshes on each navigation so a
+            // rename in Company Setup shows up without a re-login.
+            _companyName = await db.Companies
+                .Where(c => c.Id == companyId)
+                .Select(c => c.Name)
+                .FirstOrDefaultAsync() ?? string.Empty;
+
+            if (!setupExempt && !await CompanySetupState.IsCompleteAsync(db, companyId))
             {
                 Navigation.NavigateTo("/company-setup", forceLoad: true);
             }

@@ -7,10 +7,12 @@ namespace LosLms.Services;
 /// Whether a company's first-run setup is done, and the one place that decides it.
 /// </summary>
 /// <remarks>
-/// "Done" means the two things a company cannot meaningfully operate without: a real
-/// <see cref="Models.Company.Name"/> and at least one <see cref="Models.Branch"/>. Until then every
-/// company-scoped user is redirected to Company Setup (see the middleware in Program.cs and the
-/// backstop in MainLayout) and can reach nothing else.
+/// "Done" means a complete company profile — <see cref="Models.Company.Name"/>,
+/// <see cref="Models.Company.ContactEmail"/>, <see cref="Models.Company.ContactPhone"/> and
+/// <see cref="Models.Company.Address"/> — plus at least one <see cref="Models.Branch"/>. The profile
+/// fields are what lets each company be told apart at the vendor's back end, so onboarding captures
+/// them up front. Until setup is done every company-scoped user is redirected to Company Setup (see the
+/// middleware in Program.cs and the backstop in MainLayout) and can reach nothing else.
 ///
 /// <see cref="Models.Company.SetupCompletedAt"/> is stamped lazily the first time both conditions
 /// hold — from whichever call notices first — so completion persists without every save path having to
@@ -38,10 +40,13 @@ public static class CompanySetupState
             return true;
         }
 
-        var hasName = !string.IsNullOrWhiteSpace(company.Name);
+        var hasProfile = !string.IsNullOrWhiteSpace(company.Name)
+            && !string.IsNullOrWhiteSpace(company.ContactEmail)
+            && !string.IsNullOrWhiteSpace(company.ContactPhone)
+            && !string.IsNullOrWhiteSpace(company.Address);
         var hasBranch = await db.Branches.IgnoreQueryFilters().AnyAsync(b => b.CompanyId == companyId);
 
-        if (!hasName || !hasBranch)
+        if (!hasProfile || !hasBranch)
         {
             return false;
         }

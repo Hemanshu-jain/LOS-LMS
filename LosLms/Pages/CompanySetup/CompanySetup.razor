@@ -1,4 +1,5 @@
 @page "/company-setup"
+@using System.ComponentModel.DataAnnotations
 @using LosLms.Components.Shared
 @using LosLms.Data
 @using LosLms.Models
@@ -41,8 +42,9 @@
             @if (!_setupComplete)
             {
                 <p class="setup-pending-note" role="status">
-                    Setup is not complete yet. Enter a company name and add at least one branch — until
-                    then, the rest of the app is locked for everyone in your company.
+                    Setup is not complete yet. Fill in the company profile — name, contact email, phone
+                    and registered address — and add at least one branch. Until then, the rest of the app
+                    is locked for everyone in your company.
                 </p>
                 <SetupWalkthrough Visible="true" CompanyId="_company.Id" />
             }
@@ -66,6 +68,10 @@
             @if (_activeTab == ProfileTab)
             {
                 <Panel Title="Company profile">
+                    <p class="setup-note">
+                        All four fields are required — they identify your company across the system.
+                    </p>
+
                     <div class="field-grid">
                         <FormField Label="Company name" For="cs-name">
                             <input id="cs-name" class="field-input" maxlength="200" @bind="_company.Name" />
@@ -87,6 +93,11 @@
                                       @bind="_company.Address"></textarea>
                         </FormField>
                     </div>
+
+                    @if (_profileError is not null)
+                    {
+                        <p class="inline-error" role="alert">@_profileError</p>
+                    }
 
                     <div class="setup-actions">
                         <button type="button" class="setup-save" @onclick="SaveProfileAsync">Save profile</button>
@@ -275,6 +286,7 @@
     private Company? _company;
     private bool _setupComplete;
     private bool _loading = true;
+    private string? _profileError;
     private string? _toast;
     private CancellationTokenSource? _toastCts;
 
@@ -320,13 +332,17 @@
     {
         if (_company is null) { return; }
 
+        _profileError = ValidateProfile(_company);
+        if (_profileError is not null) { return; }
+
         await using var db = await DbFactory.CreateDbContextAsync();
         var stored = await db.Companies.FirstAsync(c => c.Id == _company.Id);
 
-        stored.Name = _company.Name;
-        stored.Address = _company.Address;
-        stored.ContactEmail = _company.ContactEmail;
-        stored.ContactPhone = _company.ContactPhone;
+        // Trim on the way in so a stray space never reads as "filled" against the required-field gate.
+        stored.Name = _company.Name.Trim();
+        stored.Address = _company.Address?.Trim();
+        stored.ContactEmail = _company.ContactEmail?.Trim();
+        stored.ContactPhone = _company.ContactPhone?.Trim();
 
         await db.SaveChangesAsync();
 
@@ -335,6 +351,21 @@
         _setupComplete = await CompanySetupState.IsCompleteAsync(db, _company.Id);
 
         await ShowToastAsync("Company profile saved");
+    }
+
+    /// <summary>
+    /// The company profile is the identity record, so every field is required and the email must be
+    /// well-formed. Returns the first problem to show, or null when the profile is good to save. Kept in
+    /// step with <see cref="CompanySetupState"/>, which gates the whole app on the same four fields.
+    /// </summary>
+    private static string? ValidateProfile(Company c)
+    {
+        if (string.IsNullOrWhiteSpace(c.Name)) { return "Enter the company name."; }
+        if (string.IsNullOrWhiteSpace(c.ContactEmail)) { return "Enter a contact email."; }
+        if (!new EmailAddressAttribute().IsValid(c.ContactEmail.Trim())) { return "Enter a valid contact email."; }
+        if (string.IsNullOrWhiteSpace(c.ContactPhone)) { return "Enter a contact phone number."; }
+        if (string.IsNullOrWhiteSpace(c.Address)) { return "Enter the registered address."; }
+        return null;
     }
 
     /// <summary>Branches were saved (via BranchesTab). Toast, and re-check first-run completeness.</summary>
