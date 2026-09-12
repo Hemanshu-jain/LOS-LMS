@@ -6,7 +6,7 @@
 
 .stage-page {
     font-family: 'IBM Plex Sans', Arial, sans-serif;
-    font-size: 14px;
+    font-size: 12px;
     color: #1a1f29;
     background: #f4f5f7;
     min-height: 100vh;
@@ -41,13 +41,13 @@
 
 .not-found-title {
     margin: 0 0 10px;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
 }
 
 .not-found-body {
     margin: 0 0 18px;
-    font-size: 14.5px;
+    font-size: 12.5px;
     line-height: 1.6;
     color: #5b6472;
 }
@@ -58,7 +58,7 @@
     background: #1f3a5f;
     color: #fff;
     padding: 0 14px;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
 }
@@ -103,18 +103,18 @@
 }
 
 .stage-title-number {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
     letter-spacing: .08em;
 }
 
 .stage-title-text {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
 }
 
 .stage-title-of {
-    font-size: 12.5px;
+    font-size: 10.5px;
     font-weight: 500;
     letter-spacing: .09em;
     text-transform: uppercase;
@@ -123,7 +123,7 @@
 
 /* ---------- Aggregate line ---------- */
 .aggregate-line {
-    font-size: 13px;
+    font-size: 11px;
     color: #5b6472;
     padding: 6px 0;
 }
@@ -146,7 +146,7 @@
     border: 1px solid #dcdcdc;
     border-bottom: none;
     background: #f4f4f4;
-    font-size: 13.5px;
+    font-size: 11.5px;
     font-weight: 500;
     color: #8b8b8b;
     white-space: nowrap;
@@ -171,7 +171,7 @@
 
 .complete-tick {
     color: #1f5c2a;
-    font-size: 13px;
+    font-size: 11px;
 }
 
 /* ---------- Counter strip ---------- */
@@ -192,7 +192,7 @@
 }
 
 .counter-label {
-    font-size: 10.5px;
+    font-size: 8.5px;
     font-weight: 600;
     letter-spacing: .1em;
     text-transform: uppercase;
@@ -200,7 +200,7 @@
 }
 
 .counter-value {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
     color: #1f1f1f;
 }
@@ -223,7 +223,7 @@
 }
 
 .link-action {
-    font-size: 12px;
+    font-size: 10px;
     color: #6f6f6f;
     background: none;
     border: none;
@@ -239,7 +239,7 @@
 
 .bulk-progress {
     margin: 0 0 10px;
-    font-size: 12.5px;
+    font-size: 10.5px;
     color: #7a4b06;
     background: #fbe8c9;
     border: 1px solid #e0c48d;
@@ -260,7 +260,7 @@
 .kyc-table th {
     text-align: left;
     padding: 7px 8px;
-    font-size: 11.5px;
+    font-size: 9.5px;
     font-weight: 600;
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -272,7 +272,7 @@
 
 .kyc-table td {
     padding: 7px 8px;
-    font-size: 13.5px;
+    font-size: 11.5px;
     border-bottom: 1px solid #eceef1;
     vertical-align: top;
 }
@@ -307,7 +307,7 @@
 
 .chip {
     display: inline-block;
-    font-size: 12.5px;
+    font-size: 10.5px;
     font-weight: 500;
     padding: 2px 7px;
     white-space: nowrap;
@@ -336,7 +336,7 @@
 .target-input {
     height: 26px;
     border: 1px solid #d8dbe1;
-    font-size: 13px;
+    font-size: 11px;
     padding: 0 5px;
     color: #1a1f29;
 }
@@ -352,7 +352,7 @@
 }
 
 .remark-entry {
-    font-size: 12px;
+    font-size: 10px;
     color: #93999a;
     line-height: 1.4;
     margin-bottom: 2px;
@@ -373,7 +373,7 @@
     flex: 1;
     min-width: 90px;
     border: 1px solid #d8dbe1;
-    font-size: 12.5px;
+    font-size: 10.5px;
     padding: 0 6px;
     color: #1a1f29;
 }
@@ -387,7 +387,7 @@
     height: 24px;
     border: 1px solid #9e9e9e;
     background: #ebebeb;
-    font-size: 11.5px;
+    font-size: 9.5px;
     padding: 0 7px;
     cursor: pointer;
 }
@@ -398,7 +398,7 @@
 
 /* ---------- Row actions ---------- */
 .view-link {
-    font-size: 12.5px;
+    font-size: 10.5px;
     color: #1f3a5f;
     background: none;
     border: none;
@@ -410,7 +410,7 @@
 .upload-button {
     display: inline-flex;
     align-items: center;
-    font-size: 12.5px;
+    font-size: 10.5px;
     color: #3d3d3d;
     background: #ebebeb;
     border: 1px solid #9e9e9e;
@@ -440,7 +440,7 @@
 }
 
 .other-label {
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 600;
     letter-spacing: .09em;
     text-transform: uppercase;
@@ -454,7 +454,7 @@
     display: flex;
     align-items: center;
     padding: 0 9px;
-    font-size: 12px;
+    font-size: 10px;
     color: #9a9a9a;
     cursor: pointer;
     width: 100%;
@@ -491,7 +491,7 @@
 /* ---------- Notices ---------- */
 .inline-error {
     margin: 10px 0 0;
-    font-size: 12.5px;
+    font-size: 10.5px;
     line-height: 1.4;
     color: #8a1f1f;
     background: #f8d7d7;
@@ -506,7 +506,7 @@
     transform: translateX(-50%);
     background: #1a1f29;
     color: #fff;
-    font-size: 14px;
+    font-size: 12px;
     padding: 9px 16px;
     z-index: 80;
 }

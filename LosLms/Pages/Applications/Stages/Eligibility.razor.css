@@ -6,7 +6,7 @@
 
 .stage-page {
     font-family: 'IBM Plex Sans', Arial, sans-serif;
-    font-size: 14px;
+    font-size: 12px;
     color: #1a1f29;
     background: #f4f5f7;
     min-height: 100vh;
@@ -42,13 +42,13 @@
 
 .not-found-title {
     margin: 0 0 10px;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
 }
 
 .not-found-body {
     margin: 0 0 18px;
-    font-size: 14.5px;
+    font-size: 12.5px;
     line-height: 1.6;
     color: #5b6472;
 }
@@ -59,7 +59,7 @@
     background: #1f3a5f;
     color: #fff;
     padding: 0 14px;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
 }
@@ -104,18 +104,18 @@
 }
 
 .stage-title-number {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
     letter-spacing: .08em;
 }
 
 .stage-title-text {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
 }
 
 .stage-title-of {
-    font-size: 12.5px;
+    font-size: 10.5px;
     font-weight: 500;
     letter-spacing: .09em;
     text-transform: uppercase;
@@ -136,7 +136,7 @@
     border: 1px solid #dcdcdc;
     border-bottom: none;
     background: #f4f4f4;
-    font-size: 13.5px;
+    font-size: 11.5px;
     font-weight: 500;
     color: #8b8b8b;
     cursor: pointer;
@@ -175,7 +175,7 @@
 .field-input {
     height: 29px;
     border: 1px solid #d8dbe1;
-    font-size: 14px;
+    font-size: 12px;
     background: #fafbfc;
     padding: 0 8px;
     width: 100%;
@@ -198,7 +198,7 @@ select.field-input {
 }
 
 .currency-symbol {
-    font-size: 13px;
+    font-size: 11px;
     color: #5b6472;
 }
 
@@ -223,7 +223,7 @@ select.field-input {
 .row-table th {
     text-align: left;
     padding: 6px 7px;
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 600;
     letter-spacing: .05em;
     text-transform: uppercase;
@@ -244,7 +244,7 @@ select.field-input {
 
 .group-header td {
     background: #fafbfc;
-    font-size: 11.5px;
+    font-size: 9.5px;
     font-weight: 700;
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -259,7 +259,7 @@ select.field-input {
 
 .subtotal-row td {
     border-bottom: 2px solid #d4d4d4;
-    font-size: 12.5px;
+    font-size: 10.5px;
     color: #93999a;
 }
 
@@ -275,7 +275,7 @@ select.field-input {
 .empty-row {
     padding: 14px 8px;
     text-align: center;
-    font-size: 13.5px;
+    font-size: 11.5px;
     color: #93999a;
 }
 
@@ -283,7 +283,7 @@ select.field-input {
 .cell-select {
     height: 26px;
     border: 1px solid #d8dbe1;
-    font-size: 12.5px;
+    font-size: 10.5px;
     padding: 0 5px;
     background: #fafbfc;
     color: #1a1f29;
@@ -316,7 +316,7 @@ select.field-input {
     border: 1px solid #d8dbe1;
     background: #fff;
     color: #8a1f1f;
-    font-size: 14px;
+    font-size: 12px;
     cursor: pointer;
 }
 
@@ -325,7 +325,7 @@ select.field-input {
 }
 
 .add-row-button {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     color: #3d3d3d;
     background: #ebebeb;
@@ -340,7 +340,7 @@ select.field-input {
 
 .informational-note {
     margin: 0 0 10px;
-    font-size: 12.5px;
+    font-size: 10.5px;
     color: #93999a;
     font-style: italic;
 }
@@ -360,7 +360,7 @@ select.field-input {
 
 .cam-table td {
     padding: 6px 8px;
-    font-size: 13.5px;
+    font-size: 11.5px;
     color: #3b4453;
     border-bottom: 1px solid #eceef1;
 }
@@ -387,7 +387,7 @@ select.field-input {
 }
 
 .tile-label {
-    font-size: 10.5px;
+    font-size: 8.5px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -395,13 +395,13 @@ select.field-input {
 }
 
 .tile-value {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
     color: #1f1f1f;
 }
 
 .link-button {
-    font-size: 12px;
+    font-size: 10px;
     color: #6f6f6f;
     background: none;
     border: none;
@@ -426,7 +426,7 @@ select.field-input {
     padding: 8px 11px;
     border-bottom: 1px solid #d4d4d4;
     background: #f2f2f2;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: .13em;
     text-transform: uppercase;
@@ -438,13 +438,13 @@ select.field-input {
 }
 
 .eligible-amount {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     color: #1f1f1f;
 }
 
 .eligible-capped {
-    font-size: 12px;
+    font-size: 10px;
     color: #8a1f1f;
     margin-top: 2px;
 }
@@ -465,7 +465,7 @@ select.field-input {
     display: flex;
     justify-content: space-between;
     gap: 8px;
-    font-size: 13px;
+    font-size: 11px;
 }
 
 .detail-label {
@@ -491,7 +491,7 @@ select.field-input {
 }
 
 .eligible-section-label {
-    font-size: 11.5px;
+    font-size: 9.5px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -499,13 +499,13 @@ select.field-input {
 }
 
 .note-label {
-    font-size: 11.5px;
+    font-size: 9.5px;
     font-weight: 600;
     color: #8a1f1f;
 }
 
 .note-input {
-    font-size: 12.5px;
+    font-size: 10.5px;
     border: 1px solid #d8dbe1;
     padding: 5px;
     resize: vertical;
@@ -520,12 +520,12 @@ select.field-input {
 }
 
 .note-stale {
-    font-size: 12px;
+    font-size: 10px;
     color: #7a4b06;
 }
 
 .note-trace {
-    font-size: 12px;
+    font-size: 10px;
     color: #93999a;
     font-style: italic;
 }
@@ -543,7 +543,7 @@ select.field-input {
 
 .not-ready-lead {
     margin: 0 0 8px;
-    font-size: 13.5px;
+    font-size: 11.5px;
     font-weight: 600;
     color: #7a4b06;
 }
@@ -557,7 +557,7 @@ select.field-input {
 }
 
 .not-ready-list li {
-    font-size: 13px;
+    font-size: 11px;
     line-height: 1.5;
     color: #5b6472;
 }
@@ -565,7 +565,7 @@ select.field-input {
 .not-ready-list .link-button {
     display: block;
     margin-top: 2px;
-    font-size: 12.5px;
+    font-size: 10.5px;
     color: #1f3a5f;
 }
 
@@ -577,7 +577,7 @@ select.field-input {
     transform: translateX(-50%);
     background: #1a1f29;
     color: #fff;
-    font-size: 14px;
+    font-size: 12px;
     padding: 9px 16px;
     z-index: 80;
 }

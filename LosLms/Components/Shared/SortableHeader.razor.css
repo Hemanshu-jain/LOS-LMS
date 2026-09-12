@@ -2,7 +2,7 @@
     box-sizing: border-box;
     text-align: left;
     padding: 8px 10px;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -28,7 +28,7 @@
 }
 
 .sort-indicator {
-    font-size: 11px;
+    font-size: 9px;
     color: var(--los-text-muted, #93999a);
 }
 

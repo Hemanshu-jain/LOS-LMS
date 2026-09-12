@@ -6,7 +6,7 @@
 
 .stage-page {
     font-family: 'IBM Plex Sans', Arial, sans-serif;
-    font-size: 14px;
+    font-size: 12px;
     color: #1a1f29;
     background: #f4f5f7;
     min-height: 100vh;
@@ -42,14 +42,14 @@
 
 .not-found-title {
     margin: 0 0 10px;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
     color: #1a1f29;
 }
 
 .not-found-body {
     margin: 0 0 18px;
-    font-size: 14.5px;
+    font-size: 12.5px;
     line-height: 1.6;
     color: #5b6472;
 }
@@ -60,7 +60,7 @@
     background: #1f3a5f;
     color: #fff;
     padding: 0 14px;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
 }
@@ -109,18 +109,18 @@
 }
 
 .stage-title-number {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
     letter-spacing: .08em;
 }
 
 .stage-title-text {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
 }
 
 .stage-title-of {
-    font-size: 12.5px;
+    font-size: 10.5px;
     font-weight: 500;
     letter-spacing: .09em;
     text-transform: uppercase;
@@ -140,7 +140,7 @@
     border: 1px solid #dcdcdc;
     border-bottom: none;
     background: #f4f4f4;
-    font-size: 13.5px;
+    font-size: 11.5px;
     font-weight: 500;
     color: #8b8b8b;
     white-space: nowrap;
@@ -171,7 +171,7 @@
 .field-input {
     height: 29px;
     border: 1px solid #d8dbe1;
-    font-size: 14px;
+    font-size: 12px;
     background: #fafbfc;
     padding: 0 8px;
     width: 100%;
@@ -188,7 +188,7 @@ select.field-input {
 }
 
 .field-hint {
-    font-size: 12px;
+    font-size: 10px;
     color: #5b6472;
 }
 
@@ -226,7 +226,7 @@ select.field-input {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 10px;
     color: #9a9a9a;
     overflow: hidden;
     text-align: center;
@@ -239,7 +239,7 @@ select.field-input {
 }
 
 .photo-onfile {
-    font-size: 10.5px;
+    font-size: 8.5px;
     line-height: 1.35;
     padding: 4px;
     word-break: break-all;
@@ -250,7 +250,7 @@ select.field-input {
     width: 88px;
     border: 1px solid #c4c4c4;
     background: #f1f1f1;
-    font-size: 11.5px;
+    font-size: 9.5px;
     font-weight: 500;
     color: #6f6f6f;
     cursor: pointer;
@@ -301,7 +301,7 @@ select.field-input {
 }
 
 .panel-title {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: .1em;
     text-transform: uppercase;
@@ -336,7 +336,7 @@ select.field-input {
     border: 1px solid #9e9e9e;
     background: #ebebeb;
     padding: 0 11px;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     letter-spacing: .07em;
     text-transform: uppercase;
@@ -368,7 +368,7 @@ select.field-input {
     display: flex;
     align-items: center;
     padding: 0 10px;
-    font-size: 12.5px;
+    font-size: 10.5px;
     color: #8d8d8d;
     cursor: pointer;
     word-break: break-all;
@@ -387,19 +387,19 @@ select.field-input {
 }
 
 .gate-label {
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 600;
     letter-spacing: .09em;
     text-transform: uppercase;
 }
 
 .gate-value {
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 600;
 }
 
 .gate-note {
-    font-size: 12px;
+    font-size: 10px;
     color: #8a8a8a;
 }
 
@@ -434,7 +434,7 @@ select.field-input {
 /* ---------- Notices ---------- */
 .inline-error {
     margin: 0;
-    font-size: 12.5px;
+    font-size: 10.5px;
     line-height: 1.4;
     color: #8a1f1f;
     background: #f8d7d7;
@@ -449,7 +449,7 @@ select.field-input {
     transform: translateX(-50%);
     background: #1a1f29;
     color: #fff;
-    font-size: 14px;
+    font-size: 12px;
     padding: 9px 16px;
     z-index: 80;
 }
@@ -466,14 +466,14 @@ select.field-input {
 .cibil-state { display: flex; flex-direction: column; gap: 2px; }
 
 .cibil-label {
-    font-size: 11.5px;
+    font-size: 9.5px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
     color: #5b6472;
 }
 
-.cibil-value { font-size: 13.5px; }
+.cibil-value { font-size: 11.5px; }
 .cibil-value.cibil-none { color: #8d8d8d; }
 .cibil-value.cibil-caution { color: #7a4b06; }
 .cibil-value.cibil-healthy { color: #1f5c2a; font-weight: 600; }
