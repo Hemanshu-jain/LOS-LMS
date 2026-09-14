@@ -1,5 +1,6 @@
 ﻿using LosLms.Models;
 using LosLms.Services;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -55,6 +56,12 @@ public static class DemoSeedData
             return;
         }
 
+        // The three officers the demo files are assigned to must exist as real users, or every seeded
+        // application's officer FK is null and the dashboard's officer filter and Summary Rail read
+        // "Unassigned". Created here (Staff, seed company) so the officerIds lookup below resolves them.
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        await EnsureDemoOfficersAsync(userManager);
+
         var officerIds = await db.Users
             .Where(u => u.CompanyId == LosDbContext.SeedCompanyId)
             .ToDictionaryAsync(u => u.DisplayName, u => u.Id);
@@ -90,6 +97,27 @@ public static class DemoSeedData
             Specs.Count(s => s.Status == "In progress"),
             Specs.Count(s => s.Status == "New"),
             Specs.Count(s => s.Status == "Rejected"));
+    }
+
+    /// <summary>
+    /// Ensures the demo officers exist as real users so the seeded applications' officer foreign keys
+    /// resolve. Idempotent — <see cref="IdentitySeeder.EnsureUserAsync"/> no-ops when the user is
+    /// already present.
+    /// </summary>
+    private static async Task EnsureDemoOfficersAsync(UserManager<ApplicationUser> userManager)
+    {
+        var officers = new[]
+        {
+            ("usr-demo-kulkarni", "R. Kulkarni", "r.kulkarni@acme.local"),
+            ("usr-demo-deshpande", "S. Deshpande", "s.deshpande@acme.local"),
+            ("usr-demo-rao", "A. Rao", "a.rao@acme.local"),
+        };
+
+        foreach (var (id, name, email) in officers)
+        {
+            await IdentitySeeder.EnsureUserAsync(
+                userManager, id, name, email, TenantContext.StaffRole, LosDbContext.SeedCompanyId);
+        }
     }
 
     // -------------------------------------------------------------------------------------------
@@ -260,6 +288,46 @@ public static class DemoSeedData
             "Eicher Pro 2110", "Aurangabad", "431003", 71_000m,
             RejectReason: "RCU field verification negative on residence and business address; "
                           + "applicant untraceable at both. Deviation not supportable."),
+
+        // ===========================================================================================
+        // QA CLOSE-OUT SET — seven files requested for end-to-end testing.
+        //   005016-005018  complete (stage 8, disbursed, sanctioned) — full lifecycle
+        //   005019-005020  incomplete (in progress, left mid-file) — see report for what each is missing
+        //   005021-005022  left at approval (stage 7, in progress) — recommended, no admin sanction yet
+        // ===========================================================================================
+
+        // ---- 3 complete: whole lifecycle, money released ----
+        new("LN-2026-005016", 8, "Sanctioned", Cv, "Nashik West", "Branch walk-in", "R. Kulkarni",
+            "Prakash Digambar Jadhav", 1_950_000m, 48, 13.00m, 30, "Sanika Jadhav", "Digambar Jadhav",
+            "Tata Ultra 1918.T", "Nashik", "422005", 128_000m, Disbursed: true),
+
+        new("LN-2026-005017", 8, "Sanctioned", Cv, "Pune Camp", "DSA — Patil Motors", "S. Deshpande",
+            "Rekha Sunil Kadam", 2_300_000m, 60, 12.50m, 25, null, "Sunil Kadam",
+            "Ashok Leyland 3520 haulage", "Pune", "411001", 150_000m, Disbursed: true),
+
+        new("LN-2026-005018", 8, "Sanctioned", Lap, "Nashik East", "Digital", "A. Rao",
+            "Suresh Nana Pawar", 3_800_000m, 84, 11.60m, 40, "Lata Pawar", null,
+            "Residential flat, College Road, Nashik", "Nashik", "422005", 225_000m, Disbursed: true),
+
+        // ---- 2 incomplete: started and left ----
+        // 005019 stopped at Loan & Security (stage 2): has customer + loan/security only.
+        new("LN-2026-005019", 2, "In progress", Cv, "Jalgaon", "Branch walk-in", "R. Kulkarni",
+            "Nitin Bhaskar Patil", 1_700_000m, 48, 13.50m, 6, null, null,
+            "Ashok Leyland Dost+", "Jalgaon", "425001", 99_000m),
+
+        // 005020 stopped at Document Checklist (stage 4): customer + loan + banking + docs, no RCU onward.
+        new("LN-2026-005020", 4, "In progress", Lap, "Pune Camp", "DSA — Shree Associates", "S. Deshpande",
+            "Vaishnavi Anil Deshmukh", 3_200_000m, 72, 11.95m, 10, "Anil Deshmukh", null,
+            "Commercial shop, FC Road, Pune", "Pune", "411004", 195_000m),
+
+        // ---- 2 left at approval: recommended, awaiting the approving admin's sanction (see recommenderOnly) ----
+        new("LN-2026-005021", 7, "In progress", Cv, "Aurangabad", "DSA — Patil Motors", "R. Kulkarni",
+            "Balaji Shivaji More", 2_050_000m, 54, 13.25m, 14, null, "Shivaji More",
+            "Tata Signa 2823.K tipper", "Aurangabad", "431001", 132_000m),
+
+        new("LN-2026-005022", 7, "In progress", Lap, "Nashik West", "Digital", "A. Rao",
+            "Manisha Prakash Shinde", 3_600_000m, 84, 11.80m, 18, "Prakash Shinde", null,
+            "Residential row house, Indira Nagar, Nashik", "Nashik", "422009", 210_000m),
     };
 
     // -------------------------------------------------------------------------------------------
@@ -832,8 +900,10 @@ public static class DemoSeedData
             NewCharge(spec.Id, "Stamp duty", "As per state rate", 5000m, 0m),
             NewCharge(spec.Id, "Valuation fee", "Flat", 3000m, Gst(3000m, policy)));
 
-        // 005005 is deliberately half-signed: the recommender has signed, the approver has not.
-        var recommenderOnly = spec.Id == "LN-2026-005005";
+        // Half-signed: the recommender has signed, the approver (admin) has not — the file is parked at
+        // Approvals waiting on the sanctioning authority. 005005 is the original; 005021/005022 are the
+        // QA "left at approval" pair.
+        var recommenderOnly = spec.Id is "LN-2026-005005" or "LN-2026-005021" or "LN-2026-005022";
 
         db.ApprovalDecisions.Add(new ApprovalDecision
         {

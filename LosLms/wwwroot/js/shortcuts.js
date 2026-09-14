@@ -20,3 +20,12 @@ document.addEventListener('keydown', (e) => {
     search.focus();
     search.select();
 });
+
+// Selects the text in the currently focused field. Called from Blazor (System Updates → copy URL)
+// as a named function rather than eval(), which the app's CSP (script-src 'self') forbids.
+window.selectActiveElement = function () {
+    const el = document.activeElement;
+    if (el && typeof el.select === 'function') {
+        el.select();
+    }
+};

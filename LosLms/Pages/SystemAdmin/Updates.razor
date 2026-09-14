@@ -6,6 +6,7 @@
 @inject IConfiguration Config
 @inject IWebHostEnvironment Environment
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 @inject LicenseService License
 @inject UpdateNotificationService Notifications
 
@@ -204,26 +205,26 @@
 
         _publicUrl = (Config["LOSLMS_PUBLIC_URL"] ?? string.Empty).Trim();
 
+        // Fallback when the launcher did not supply the public URL: use the host this page was reached
+        // on. Taken from the request (the tunnel host once forwarded headers are honoured), never from
+        // a JS eval — the CSP is script-src 'self' with no 'unsafe-eval', so eval throws and would kill
+        // the circuit ("An unhandled error has occurred").
+        if (string.IsNullOrWhiteSpace(_publicUrl))
+        {
+            var origin = new Uri(Navigation.BaseUri).GetLeftPart(UriPartial.Authority);
+            if (!origin.Contains("127.0.0.1") && !origin.Contains("localhost"))
+            {
+                _publicUrl = origin;
+            }
+        }
+
         await CheckAsync();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // Fallback when the launcher did not supply the public URL: use the address this page was
-        // actually reached on. Only meaningful once interactive, hence here rather than OnInitialized.
-        if (firstRender && string.IsNullOrWhiteSpace(_publicUrl))
-        {
-            var origin = await JS.InvokeAsync<string>("eval", "window.location.origin");
-            if (!string.IsNullOrWhiteSpace(origin) && !origin.Contains("127.0.0.1") && !origin.Contains("localhost"))
-            {
-                _publicUrl = origin;
-                StateHasChanged();
-            }
-        }
-    }
-
+    // Selects the URL text in the focused field so it is easy to copy. A named helper, not eval,
+    // because the CSP forbids eval.
     private async Task SelectAllAsync() =>
-        await JS.InvokeVoidAsync("eval", "document.activeElement && document.activeElement.select && document.activeElement.select()");
+        await JS.InvokeVoidAsync("selectActiveElement");
 
     private async Task CopyUrlAsync()
     {

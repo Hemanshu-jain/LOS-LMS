@@ -5,9 +5,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    @* Fonts are NOT loaded from Google's CDN: the CSP is self-only (no font/style host), and this is a
+       LAN/offline product, so an external font would never load anyway. The CSS stacks fall back to the
+       system UI font. To ship IBM Plex Sans, self-host the woff2 files under wwwroot and @font-face them. *@
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="LosLms.styles.css" />
     <HeadOutlet @rendermode="@RenderModeForRequest" />
@@ -15,7 +15,13 @@
 
 <body>
     <Routes @rendermode="@RenderModeForRequest" />
-    <script src="_framework/blazor.web.js"></script>
+    @* Only the interactive pages need the Blazor script. The static /account pages don't, and emitting
+       it there makes the browser fetch /_framework/blazor.web.js while unauthenticated — which the
+       fallback auth policy 302-redirects to the login HTML, producing a console MIME error every time. *@
+    @if (RenderModeForRequest is not null)
+    {
+        <script src="_framework/blazor.web.js"></script>
+    }
     <script src="js/download.js"></script>
     <script src="js/shortcuts.js"></script>
 </body>

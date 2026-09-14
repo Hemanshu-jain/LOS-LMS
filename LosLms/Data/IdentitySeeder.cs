@@ -158,7 +158,7 @@ public static class IdentitySeeder
     /// Creates the user if absent. Returns the generated temporary password, or null when the user
     /// already existed — an existing password is a hash and cannot be recovered, nor should it be.
     /// </summary>
-    private static async Task<string?> EnsureUserAsync(
+    internal static async Task<string?> EnsureUserAsync(
         UserManager<ApplicationUser> userManager,
         string id,
         string displayName,

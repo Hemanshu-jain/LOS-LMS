@@ -452,7 +452,7 @@ else
 
                                     @if (ConfirmSanctionBlocked)
                                     {
-                                        <span class="blocked-note">Complete first: @string.Join(", ", MissingTabs)</span>
+                                        <span class="blocked-note">@ConfirmSanctionBlockedReason</span>
                                     }
                                 }
                             </div>
@@ -843,7 +843,18 @@ else
         }
     }
 
-    private bool ConfirmSanctionBlocked => MissingTabs.Count > 0;
+    // A sanction is not confirmable until it records how long it is valid and who authorised it —
+    // both are on the sanction letter and were previously acceptable blank.
+    private bool SanctionDetailsComplete =>
+        _decision.ValidityDate is not null
+        && !string.IsNullOrWhiteSpace(_decision.Authority);
+
+    private bool ConfirmSanctionBlocked => MissingTabs.Count > 0 || !SanctionDetailsComplete;
+
+    private string ConfirmSanctionBlockedReason =>
+        MissingTabs.Count > 0
+            ? "Complete first: " + string.Join(", ", MissingTabs)
+            : "Enter the sanction validity date and approval authority.";
 
     // ---------------------------------------------------------------------
     // Display helpers

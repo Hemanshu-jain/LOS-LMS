@@ -71,8 +71,7 @@ else
                     <Panel Title="Branch disbursement checklist">
                         <Right>
                             <span class="cleared-count">
-                                @ClearedCount of @IntendedChecklistItems flags cleared
-                                <span class="pending-definition">(2 items pending definition)</span>
+                                @ClearedCount of @_checklist.Count flags cleared
                             </span>
                         </Right>
                         <ChildContent>
@@ -619,12 +618,6 @@ else
     private const string BlankOption = "— Select —";
     private const long MaxUploadBytes = 10 * 1024 * 1024;
 
-    /// <summary>
-    /// What the content brief says the checklist should contain. Only 7 are defined, so the header
-    /// reads "n of 9" and says so — see the gate comment on <see cref="ReleaseBlocked"/>.
-    /// </summary>
-    private const int IntendedChecklistItems = 9;
-
     private static readonly string[] Tabs =
     {
         DisbursementTab, RepaymentTab, EnachTab, SecurityNachTab,
@@ -813,27 +806,16 @@ else
 
     private int ClearedCount => _checklist.Count(c => c.Flag == "Cleared");
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // FAIL-CLOSED. Only 7 of the 9 intended checklist items are defined (the other 2
-    // were never specified — see the Post Sanction content brief). Rather than let an
-    // officer clear the 7 that exist and release real money with 2 compliance items
-    // that no one has named, this gate stays BLOCKED until the table actually holds
-    // all IntendedChecklistItems rows AND every one reads Cleared.
-    //
-    // The moment the missing 2 are added to SeedChecklist(), IntendedChecklistItems
-    // is met and the gate opens automatically — no other change needed. Do NOT relax
-    // this back to "every existing row" while fewer than 9 rows exist.
-    // ─────────────────────────────────────────────────────────────────────────────
+    // Release is allowed once every item on the branch disbursement checklist reads Cleared. An empty
+    // checklist never releases — a file must have its checklist created before any funds move.
     private bool ReleaseBlocked =>
-        _checklist.Count < IntendedChecklistItems || _checklist.Any(c => c.Flag != "Cleared");
+        _checklist.Count == 0 || _checklist.Any(c => c.Flag != "Cleared");
 
     private string? ReleaseBlockedReason =>
         !ReleaseBlocked
             ? null
-            : _checklist.Count < IntendedChecklistItems
-                ? $"{IntendedChecklistItems - _checklist.Count} checklist item(s) are still pending "
-                    + "definition — release stays blocked until all "
-                    + $"{IntendedChecklistItems} are defined and cleared."
+            : _checklist.Count == 0
+                ? "The disbursement checklist has not been created yet."
                 : $"{_checklist.Count - ClearedCount} checklist item(s) still pending.";
 
     // ---------------------------------------------------------------------

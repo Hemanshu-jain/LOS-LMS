@@ -25,7 +25,9 @@
             </button>
         }
 
-        <button type="button" class="stage-button" disabled="@(!_interactive)" @onclick="OnSaveDraft">@SecondaryLabel</button>
+        @* A rejected application is terminal — nothing more is saved or advanced on it, so both stage
+           actions are disabled (the Reject button above is already hidden for a rejected file). *@
+        <button type="button" class="stage-button" disabled="@(!_interactive || _status == "Rejected")" @onclick="OnSaveDraft">@SecondaryLabel</button>
 
         @* A real disabled attribute, not just the blocked styling — styling alone would still
            let a keyboard or screen-reader user activate it. The gate is OR'd with the page's own
@@ -33,9 +35,9 @@
            until the circuit is live, so an early click is not silently lost. *@
         <button type="button"
                 class="stage-button is-primary @(EffectivelyBlocked ? "is-blocked" : null)"
-                disabled="@(EffectivelyBlocked || !_interactive)"
-                aria-disabled="@(EffectivelyBlocked || !_interactive)"
-                title="@(!_interactive ? "Connecting…" : EffectivelyBlocked ? EffectiveBlockedReason : null)"
+                disabled="@(EffectivelyBlocked || !_interactive || _status == "Rejected")"
+                aria-disabled="@(EffectivelyBlocked || !_interactive || _status == "Rejected")"
+                title="@(!_interactive ? "Connecting…" : _status == "Rejected" ? "This application was rejected." : EffectivelyBlocked ? EffectiveBlockedReason : null)"
                 @onclick="OnCompleteStage">
             @(_interactive ? PrimaryLabel : "Connecting…")
         </button>
