@@ -2,10 +2,12 @@
 @using LosLms.Data
 @using LosLms.Models
 @using Microsoft.AspNetCore.Identity
+@using LosLms.Services
 @attribute [AllowAnonymous]
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager Navigation
+@inject PasswordVault Vault
 
 <PageTitle>Create administrator · LOS/LMS</PageTitle>
 
@@ -99,6 +101,8 @@
         var user = await UserManager.FindByEmailAsync(Input.Email.Trim());
         if (user is not null)
         {
+            // Keep the admin's own password viewable in User Management, like every account they create.
+            Vault.Store(user.Id, Input.Password);
             await SignInManager.SignInAsync(user, isPersistent: false);
         }
 

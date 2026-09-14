@@ -4,9 +4,11 @@
 @using LosLms.Services
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
+@implements IDisposable
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject UserManager<ApplicationUser> UserManager
 @inject TenantContext Tenant
+@inject PasswordVault Vault
 @inject ILogger<UsersTab> Logger
 
 <Panel Title="Users">
@@ -15,8 +17,9 @@
     </Right>
     <ChildContent>
         <p class="setup-note">
-            Users are deactivated, never deleted. Their historical actions — who verified an RCU, who
-            approved a sanction — must stay attributable, so the record is disabled rather than removed.
+            You set every user's password here, and staff cannot change it themselves — all credential
+            control stays with the admin. Passwords are shown masked below; use the eye to reveal one
+            briefly. Users are deactivated, never deleted, so their past actions stay attributable.
         </p>
 
         @if (Tenant.IsSuperAdmin)
@@ -41,6 +44,8 @@
                        @bind="_invite.DisplayName" @bind:event="oninput" />
                 <input class="field-input" type="email" placeholder="Email" maxlength="200"
                        @bind="_invite.Email" @bind:event="oninput" />
+                <input class="field-input" type="text" placeholder="Password for this user" maxlength="100"
+                       autocomplete="off" @bind="_invite.Password" @bind:event="oninput" />
                 <select class="field-input" @bind="_invite.Role">
                     <option value="@TenantContext.StaffRole">Staff</option>
                     <option value="@TenantContext.AdminRole">Admin</option>
@@ -50,6 +55,11 @@
                 </button>
                 <button type="button" class="setup-cancel" @onclick="() => _invite = null">Cancel</button>
             </div>
+            <p class="setup-note">
+                Type the password you want this user to sign in with. They use it as-is and cannot change
+                it — you manage it here. It must be at least 10 characters with an upper- and lower-case
+                letter, a digit and a symbol. You can reveal or reset it any time.
+            </p>
         }
 
         @if (_resetTarget is not null)
@@ -62,39 +72,15 @@
                 <button type="button" class="setup-cancel" @onclick="() => _resetTarget = null">Cancel</button>
             </div>
             <p class="setup-note">
-                Type a password to hand to the user directly — they sign in with it and are <em>not</em>
-                forced to change it. Leave it blank to generate a random one-time password they must
-                change at first sign-in.
+                Type a password to hand to the user, or leave blank to auto-generate a strong one. Either
+                way they sign in with it directly (no forced change), and you can reveal it below whenever
+                you need it.
             </p>
         }
 
         @if (_error is not null)
         {
             <p class="inline-error" role="alert">@_error</p>
-        }
-
-        @* Shown exactly once, right after creation. There is no mail provider in this build, so this
-           is the only route the credential can take — and it is never stored in plain text, so it
-           cannot be recovered afterwards. *@
-        @if (_issued is not null)
-        {
-            <div class="setup-credential" role="alert">
-                <span class="setup-credential-title">Temporary password for @_issued.Email</span>
-                <code class="setup-credential-value">@_issued.Password</code>
-                <span class="setup-credential-note">
-                    @if (_issued.MustChange)
-                    {
-                        <text>Copy this now — it is shown once and cannot be retrieved. It has also been
-                        written to the server log. The user must change it at first sign-in.</text>
-                    }
-                    else
-                    {
-                        <text>Copy this now — it is shown once and cannot be retrieved. This is the user's
-                        working password; they sign in with it directly and are not forced to change it.</text>
-                    }
-                </span>
-                <button type="button" class="setup-cancel" @onclick="() => _issued = null">Dismiss</button>
-            </div>
         }
 
         <div class="table-scroll">
@@ -104,6 +90,7 @@
                         <th>Name</th>
                         <th>Email</th>
                         <th>Role</th>
+                        <th>Password</th>
                         <th>Status</th>
                         <th></th>
                     </tr>
@@ -131,13 +118,27 @@
                                 }
                             </td>
                             <td>
+                                @if (_revealed.TryGetValue(u.User.Id, out var shown))
+                                {
+                                    <code class="setup-credential-value">@shown</code>
+                                    <button type="button" class="row-action" title="Hide now"
+                                            @onclick="() => HideNow(u.User.Id)">Hide</button>
+                                }
+                                else if (_hasVault.Contains(u.User.Id))
+                                {
+                                    <span class="password-mask">••••••••</span>
+                                    <button type="button" class="row-action" title="Reveal for 15 seconds"
+                                            @onclick="() => RevealAsync(u.User.Id)">Show</button>
+                                }
+                                else
+                                {
+                                    <span class="field-caption">Not stored — reset to set one</span>
+                                }
+                            </td>
+                            <td>
                                 <span class="status-pill @(u.User.IsActive ? "is-active" : "is-inactive")">
                                     @(u.User.IsActive ? "Active" : "Inactive")
                                 </span>
-                                @if (u.User.MustChangePassword)
-                                {
-                                    <span class="status-pill is-pending">Password change pending</span>
-                                }
                             </td>
                             <td class="align-right">
                                 @if (u.User.Id == Tenant.UserId)
@@ -159,7 +160,7 @@
 
                     @if (_users.Count == 0)
                     {
-                        <tr><td colspan="5" class="empty-row">No users.</td></tr>
+                        <tr><td colspan="6" class="empty-row">No users.</td></tr>
                     }
                 </tbody>
             </table>
@@ -176,24 +177,30 @@
     {
         public string DisplayName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
         public string Role { get; set; } = TenantContext.StaffRole;
     }
-
-    private sealed record IssuedCredential(string Email, string Password, bool MustChange = true);
 
     private List<UserRow> _users = new();
     private List<Company> _companies = new();
     private string _companyFilter = string.Empty;
     private InviteForm? _invite;
-    private IssuedCredential? _issued;
     private UserRow? _resetTarget;
     private string _resetPassword = string.Empty;
     private string? _error;
 
+    // Which users have a viewable password on file, and the ones currently revealed (with a token so a
+    // re-reveal supersedes the earlier auto-hide instead of racing it).
+    private readonly HashSet<string> _hasVault = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _revealed = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Guid> _revealTokens = new(StringComparer.Ordinal);
+    private bool _disposed;
+
     private bool InviteDisabled =>
         _invite is null
         || string.IsNullOrWhiteSpace(_invite.DisplayName)
-        || string.IsNullOrWhiteSpace(_invite.Email);
+        || string.IsNullOrWhiteSpace(_invite.Email)
+        || string.IsNullOrWhiteSpace(_invite.Password);
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -223,10 +230,12 @@
         var users = await query.OrderBy(u => u.DisplayName).ToListAsync();
 
         _users = new List<UserRow>(users.Count);
+        _hasVault.Clear();
         foreach (var user in users)
         {
             var roles = await UserManager.GetRolesAsync(user);
             _users.Add(new UserRow(user, roles.FirstOrDefault() ?? "—"));
+            if (Vault.Has(user.Id)) { _hasVault.Add(user.Id); }
         }
     }
 
@@ -240,12 +249,12 @@
     {
         _invite = new InviteForm();
         _error = null;
-        _issued = null;
     }
 
     /// <summary>
-    /// Creates a real account on a generated temporary credential, the same mechanism the startup
-    /// seeder uses. No password is ever chosen by the admin or hardcoded anywhere.
+    /// Creates a real account with the password the admin typed. There is no forced change and no
+    /// self-service reset — the admin owns the credential — and it is captured in the vault so it can
+    /// be revealed again from this screen.
     /// </summary>
     private async Task InviteAsync()
     {
@@ -272,7 +281,7 @@
             return;
         }
 
-        var password = IdentitySeeder.GenerateTemporaryPassword();
+        var password = _invite.Password.Trim();
 
         var user = new ApplicationUser
         {
@@ -282,25 +291,24 @@
             DisplayName = _invite.DisplayName.Trim(),
             CompanyId = companyId,
             IsActive = true,
-            MustChangePassword = true,
+            MustChangePassword = false,
         };
 
         var result = await UserManager.CreateAsync(user, password);
 
         if (!result.Succeeded)
         {
+            // Surfaces the policy reason (too short, no symbol, …) so the admin can fix it.
             _error = string.Join(" ", result.Errors.Select(x => x.Description));
             return;
         }
 
         await UserManager.AddToRoleAsync(user, _invite.Role);
+        Vault.Store(user.Id, password);
 
-        _issued = new IssuedCredential(email, password);
-
-        Logger.LogWarning(
-            "TEMPORARY CREDENTIAL issued for {Email} ({Role}, company {CompanyId}): {Password} — " +
-            "must be changed at first sign-in.",
-            email, _invite.Role, companyId, password);
+        Logger.LogInformation(
+            "Account created for {Email} ({Role}, company {CompanyId}) with an admin-set password.",
+            email, _invite.Role, companyId);
 
         _invite = null;
         await LoadAsync();
@@ -312,16 +320,12 @@
         _resetTarget = row;
         _resetPassword = string.Empty;
         _error = null;
-        _issued = null;
     }
 
     /// <summary>
-    /// Admin-mediated password reset — the only reset path in this build, since no email/SMS provider
-    /// exists to send a self-service link. If the admin typed a password it is set as-is and the user
-    /// signs in with it directly (no forced change) — the intended path for handing a chosen credential
-    /// to a client. Left blank, it generates a random one-time password and forces a change at first
-    /// sign-in, the same mechanism the invite flow and the startup seeder use. Either way it is shown
-    /// exactly once for the admin to relay directly (never stored in plain text, never emailed).
+    /// Admin-mediated password reset — the only reset path in this build, since staff never change their
+    /// own. A typed password is used as-is; left blank, a strong one is generated. Either way there is no
+    /// forced change, and the password is stored in the vault so it can be revealed here later.
     /// </summary>
     /// <remarks>
     /// <c>ResetPasswordAsync</c> rotates the target's security stamp, so any session they already have
@@ -332,7 +336,6 @@
         if (_resetTarget is null) { return; }
 
         _error = null;
-        _issued = null;
 
         var user = await UserManager.FindByIdAsync(_resetTarget.User.Id);
         if (user is null)
@@ -342,43 +345,55 @@
             return;
         }
 
-        // Admin chose a password to hand over -> use it and don't force another change.
-        // Blank -> random one-time password the user must rotate at first sign-in.
         var chosen = _resetPassword.Trim();
-        var adminChose = chosen.Length > 0;
-        var password = adminChose ? chosen : IdentitySeeder.GenerateTemporaryPassword();
+        var password = chosen.Length > 0 ? chosen : IdentitySeeder.GenerateTemporaryPassword();
 
         var token = await UserManager.GeneratePasswordResetTokenAsync(user);
         var result = await UserManager.ResetPasswordAsync(user, token, password);
         if (!result.Succeeded)
         {
-            // Surfaces the policy reason (e.g. too short, no symbol) so the admin can fix the password.
             _error = string.Join(" ", result.Errors.Select(x => x.Description));
             return;
         }
 
-        user.MustChangePassword = !adminChose;
+        user.MustChangePassword = false;
         await UserManager.UpdateAsync(user);
+        Vault.Store(user.Id, password);
 
-        _issued = new IssuedCredential(user.Email ?? user.UserName ?? user.Id, password, MustChange: !adminChose);
+        Logger.LogInformation("Password reset for {Email} by an admin (admin-managed, no forced change).", user.Email);
+
         _resetTarget = null;
         _resetPassword = string.Empty;
-
-        // The random one-time password is logged so an admin who lost the once-shown card can recover it.
-        // An admin-chosen password is not logged — they picked it and it is a lasting credential.
-        if (adminChose)
-        {
-            Logger.LogWarning("PASSWORD RESET issued for {Email} by an admin (admin-set, no forced change).", user.Email);
-        }
-        else
-        {
-            Logger.LogWarning(
-                "PASSWORD RESET issued for {Email} by an admin: {Password} — must be changed at first sign-in.",
-                user.Email, password);
-        }
-
         await LoadAsync();
         await OnSaved.InvokeAsync($"Password set for {user.Email}");
+    }
+
+    /// <summary>Reveals a stored password for 15 seconds, then re-masks it. Repeatable.</summary>
+    private async Task RevealAsync(string userId)
+    {
+        var password = Vault.TryReveal(userId);
+        if (password is null) { return; }
+
+        var token = Guid.NewGuid();
+        _revealed[userId] = password;
+        _revealTokens[userId] = token;
+        StateHasChanged();
+
+        await Task.Delay(TimeSpan.FromSeconds(15));
+
+        // Only re-mask if this reveal is still the current one — a later Show on the same row supersedes.
+        if (!_disposed && _revealTokens.TryGetValue(userId, out var current) && current == token)
+        {
+            _revealed.Remove(userId);
+            _revealTokens.Remove(userId);
+            try { await InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { /* circuit gone */ }
+        }
+    }
+
+    private void HideNow(string userId)
+    {
+        _revealed.Remove(userId);
+        _revealTokens.Remove(userId);
     }
 
     private async Task ChangeRoleAsync(UserRow row, string? role)
@@ -422,4 +437,6 @@
         await OnSaved.InvokeAsync(
             $"{stored.DisplayName} {(stored.IsActive ? "reactivated" : "deactivated")}");
     }
+
+    public void Dispose() => _disposed = true;
 }

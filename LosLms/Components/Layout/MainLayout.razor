@@ -175,19 +175,8 @@ else
 
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
 
-        // Backstop for the temporary-password rule. Login redirects there already; this catches
-        // somebody who signs in and then types a URL to get around it. The /account pages are
-        // exempt or it would redirect to itself forever. Password change takes precedence over the
-        // setup gate below — a temporary credential must be replaced first.
-        if (user.HasClaim(TenantContext.MustChangePasswordClaim, "true"))
-        {
-            if (!relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase))
-            {
-                Navigation.NavigateTo("/account/change-password", forceLoad: true);
-            }
-
-            return;
-        }
+        // No forced password change exists any more: the admin sets every password (including their own)
+        // and staff never change theirs, so there is nothing to redirect to here.
 
         // Backstop for the first-run setup gate — the interactive-circuit half of the middleware in
         // Program.cs, which never sees SignalR navigations. Same rule: a company-scoped user whose

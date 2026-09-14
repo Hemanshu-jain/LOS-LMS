@@ -182,9 +182,9 @@ public static class IdentitySeeder
             CompanyId = companyId,
             IsActive = true,
 
-            // Every seeded account starts on a throwaway credential and is forced to replace it at
-            // first sign-in. Nothing permanent is ever committed to source.
-            MustChangePassword = true,
+            // No forced change: the admin owns every password now, and staff never change their own.
+            // The generated credential is a working one the admin can view and reset from User Management.
+            MustChangePassword = false,
         };
 
         var password = GenerateTemporaryPassword();

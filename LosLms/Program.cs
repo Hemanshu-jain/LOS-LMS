@@ -75,6 +75,10 @@ builder.Services.AddHostedService<UpdateCheckBackgroundService>();
 // once expired (see MainLayout + the /account/renew page).
 builder.Services.AddSingleton<LicenseService>();
 
+// Server-side encrypted store of admin-set passwords, so an Admin can re-view a credential later
+// (masked, briefly revealed). Recoverable by design — see PasswordVault's own remarks for the trade-off.
+builder.Services.AddSingleton<PasswordVault>();
+
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFactory>();
 

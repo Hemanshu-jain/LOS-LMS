@@ -162,12 +162,6 @@
             return;
         }
 
-        if (user.MustChangePassword)
-        {
-            Navigation.NavigateTo("/account/change-password", forceLoad: true);
-            return;
-        }
-
         // Only relative paths are honoured. An absolute one would turn the sign-in form into an open
         // redirect that could bounce a freshly authenticated user to somebody else's site.
         var destination = !string.IsNullOrWhiteSpace(ReturnUrl)
