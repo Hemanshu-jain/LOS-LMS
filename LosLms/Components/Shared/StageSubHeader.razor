@@ -38,7 +38,7 @@
                 disabled="@(EffectivelyBlocked || !_interactive || _status == "Rejected")"
                 aria-disabled="@(EffectivelyBlocked || !_interactive || _status == "Rejected")"
                 title="@(!_interactive ? "Connecting…" : _status == "Rejected" ? "This application was rejected." : EffectivelyBlocked ? EffectiveBlockedReason : null)"
-                @onclick="OnCompleteStage">
+                @onclick="CompletePrimaryAsync">
             @(_interactive ? PrimaryLabel : "Connecting…")
         </button>
     </div>
@@ -339,6 +339,29 @@
                 .Where(u => ids.Contains(u.Id))
                 .ToDictionaryAsync(u => u.Id, u => u.DisplayName);
         }
+    }
+
+    /// <summary>
+    /// Runs the page's primary action, but first records an Admin's implicit CIBIL bypass. An Admin is
+    /// never blocked by the gate (<see cref="GateCheckService.CanAdvanceAsync"/> clears them), so when
+    /// one advances a file whose stored gate is still Blocked, that advance IS the bypass — stamp it so
+    /// staff who reopen the file later are not blocked again by a gate the Admin has already cleared.
+    /// Staff never reach this while blocked: the primary button is disabled for them.
+    /// </summary>
+    private async Task CompletePrimaryAsync()
+    {
+        if (_isAdmin)
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var application = await db.Applications.FirstOrDefaultAsync(a => a.Id == ApplicationId);
+            if (application is not null && application.CibilGateStatus == GateCheckService.Blocked)
+            {
+                application.CibilGateStatus = GateCheckService.Bypassed;
+                await db.SaveChangesAsync();
+            }
+        }
+
+        await OnCompleteStage.InvokeAsync();
     }
 
     /// <summary>Raises whatever request the currently-blocking gate says would unblock it.</summary>
