@@ -121,7 +121,7 @@ h1:focus {
     background: #fff;
 }
 
-/* Password field with an inline Show/Hide toggle. */
+/* Password field with an inline eye reveal. */
 .auth-password {
     position: relative;
     display: flex;
@@ -129,30 +129,54 @@ h1:focus {
 }
 
 .auth-password .field-input {
-    padding-right: 50px;
+    padding-right: 44px;
 }
+
+/* Hide the browser's own password reveal control (Edge / WebView2 shows ::-ms-reveal), so only our
+   single eye button appears — never two side by side. */
+input[type=password]::-ms-reveal,
+input[type=password]::-ms-clear { display: none; }
 
 .auth-reveal {
     position: absolute;
-    right: 4px;
+    right: 6px;
     top: 50%;
     transform: translateY(-50%);
-    height: 24px;
-    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
     border: none;
     background: transparent;
-    color: #1f3a5f;
-    font-size: 11px;
-    font-weight: 600;
+    color: #5b6b7f;
     cursor: pointer;
 }
 
-.auth-reveal:hover { text-decoration: underline; }
+.auth-reveal:hover,
+.auth-reveal.is-revealed { color: #1f3a5f; }
 
 .auth-reveal:focus-visible {
     outline: 2px solid #1f3a5f;
     outline-offset: 1px;
+    border-radius: 4px;
 }
+
+.auth-reveal svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Show the open eye by default; swap to the struck-through eye once the password is revealed. */
+.auth-reveal .reveal-eye-off { display: none; }
+.auth-reveal.is-revealed .reveal-eye { display: none; }
+.auth-reveal.is-revealed .reveal-eye-off { display: inline-block; }
 
 /* First-run "create your administrator account" prompt on the sign-in page. */
 .auth-setup-prompt {

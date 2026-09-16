@@ -51,8 +51,7 @@
                 <div class="auth-password">
                     <InputText id="su-password" type="password" class="field-input"
                                @bind-Value="Input.Password" autocomplete="new-password" />
-                    <button type="button" class="auth-reveal" aria-label="Show password" aria-pressed="false"
-                            onclick="losTogglePassword('su-password', this)">Show</button>
+                    <PasswordReveal TargetId="su-password" />
                 </div>
                 <ValidationMessage For="() => Input.Password" class="auth-validation" />
                 <span class="auth-hint">At least 10 characters, with an upper case letter, a lower case letter, a digit and a symbol.</span>
@@ -60,8 +59,11 @@
 
             <div class="auth-field">
                 <label class="auth-label" for="su-confirm">Confirm password</label>
-                <InputText id="su-confirm" type="password" class="field-input"
-                           @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+                <div class="auth-password">
+                    <InputText id="su-confirm" type="password" class="field-input"
+                               @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+                    <PasswordReveal TargetId="su-confirm" />
+                </div>
                 <ValidationMessage For="() => Input.ConfirmPassword" class="auth-validation" />
             </div>
 

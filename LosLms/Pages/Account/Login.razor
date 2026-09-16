@@ -53,8 +53,7 @@
                 <div class="auth-password">
                     <InputText id="login-password" type="password" class="field-input"
                                @bind-Value="Input.Password" autocomplete="current-password" />
-                    <button type="button" class="auth-reveal" aria-label="Show password" aria-pressed="false"
-                            onclick="losTogglePassword('login-password', this)">Show</button>
+                    <PasswordReveal TargetId="login-password" />
                 </div>
                 <ValidationMessage For="() => Input.Password" class="auth-validation" />
             </div>
