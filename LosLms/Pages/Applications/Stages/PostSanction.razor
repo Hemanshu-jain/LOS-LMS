@@ -57,7 +57,6 @@ else
 
                 <div class="stage-main">
                     <div class="stage-title">
-                        <span class="stage-title-number">09</span>
                         <span class="stage-title-text">STAGE 8 — POST SANCTION / DISBURSEMENT</span>
                         <span class="stage-title-of">Stage 8 of 8</span>
                     </div>
@@ -895,7 +894,7 @@ else
             _companyName, _application.Id, _application.CustomerName,
             DateOnly.FromDateTime(DateTime.Today), SanctionedAmount, FirstMonthEmi, SanctionedTenure);
 
-        _disbursement.WelcomeLetterFilePath = await WriteGeneratedAsync(bytes, "welcomeletter");
+        _disbursement.WelcomeLetterFilePath = await WriteWelcomeLetterAsync(bytes);
         await SaveDisbursementAsync();
         await ShowToastAsync("Welcome letter generated");
     }
@@ -988,6 +987,39 @@ else
         await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
 
         return Path.Combine("App_Data", "uploads", _application.Id, "postsanction", fileName);
+    }
+
+    /// <summary>
+    /// Writes the welcome letter with a human-readable name — "{Customer}-{date}-welcomeletter.pdf" —
+    /// rather than a random id. It goes to the guarded uploads folder so the in-app link works, and a
+    /// copy is filed under App_Data/welcome-letters/ so every letter can be found on disk without
+    /// opening the app.
+    /// </summary>
+    private async Task<string> WriteWelcomeLetterAsync(byte[] bytes)
+    {
+        var fileName = $"{SafeFileName(_application!.CustomerName)}-{DateTime.Today:yyyy-MM-dd}-welcomeletter.pdf";
+
+        var served = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
+            _application.Id, "postsanction");
+        Directory.CreateDirectory(served);
+        await File.WriteAllBytesAsync(Path.Combine(served, fileName), bytes);
+
+        // A browsable archive of every welcome letter, outside the per-application upload tree.
+        var archive = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "welcome-letters");
+        Directory.CreateDirectory(archive);
+        await File.WriteAllBytesAsync(Path.Combine(archive, fileName), bytes);
+
+        return Path.Combine("App_Data", "uploads", _application.Id, "postsanction", fileName);
+    }
+
+    /// <summary>A filename-safe form of the customer name: letters, digits and single hyphens only.</summary>
+    private static string SafeFileName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) { return "Customer"; }
+
+        var cleaned = new string(name.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+        while (cleaned.Contains("--")) { cleaned = cleaned.Replace("--", "-"); }
+        return cleaned.Trim('-') is { Length: > 0 } trimmed ? trimmed : "Customer";
     }
 
     /// <summary>Persists the disbursement row (all its fields, including the just-set path/status).</summary>

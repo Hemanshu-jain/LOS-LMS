@@ -18,4 +18,11 @@ public static class PartyRules
     /// </remarks>
     public static bool HasGuarantor(IEnumerable<Party> parties) =>
         parties.Any(p => p.PartyType == "Guarantor" && !string.IsNullOrWhiteSpace(p.FullName));
+
+    /// <summary>
+    /// Whether this application has a co-applicant. Like a guarantor, one counts only once named — an
+    /// empty placeholder row does not make one exist, so screens must not demand input for it.
+    /// </summary>
+    public static bool HasCoApplicant(IEnumerable<Party> parties) =>
+        parties.Any(p => p.PartyType == "CoApplicant" && !string.IsNullOrWhiteSpace(p.FullName));
 }

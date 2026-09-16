@@ -844,6 +844,10 @@
 
         var id = await NextApplicationIdAsync(db);
 
+        // Auto-assign to whoever is creating it — the officer working a file is the one who started it.
+        // They (or an admin) can reassign later from the dashboard drawer.
+        await Tenant.EnsureLoadedAsync();
+
         // Branch is left unset. It used to be stamped with a hardcoded "Nashik West", which was
         // wrong the moment a second company existed and had branches of its own. The officer picks
         // the real one from the company's branch list on Loan & Security, which is stage 2.
@@ -855,6 +859,8 @@
             Id = id,
             Status = "New",
             CurrentStage = 1,
+            AssignedOfficerId = Tenant.UserId,
+            AssignedOfficer = Tenant.DisplayName,
         });
 
         await db.SaveChangesAsync();

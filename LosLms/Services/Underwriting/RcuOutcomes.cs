@@ -50,13 +50,15 @@ public static class RcuOutcomes
             .ToListAsync();
 
         var hasGuarantor = PartyRules.HasGuarantor(parties);
+        var hasCoApplicant = PartyRules.HasCoApplicant(parties);
 
         var outcomes = await db.RcuOutcomes.AsNoTracking()
             .Where(o => o.ApplicationId == applicationId)
             .ToListAsync();
 
         return OverallStatus(outcomes
-            .Where(o => o.PartyType != "Guarantor" || hasGuarantor)
+            .Where(o => (o.PartyType != "Guarantor" || hasGuarantor)
+                        && (o.PartyType != "CoApplicant" || hasCoApplicant))
             .Select(o => o.Status));
     }
 }

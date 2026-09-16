@@ -56,7 +56,6 @@ else
 
                 <div class="stage-main">
                     <div class="stage-title">
-                        <span class="stage-title-number">06</span>
                         <span class="stage-title-text">STAGE 5 — REPORTS (RCU)</span>
                         <span class="stage-title-of">Stage 5 of 8</span>
                     </div>
@@ -368,6 +367,7 @@ else
     private Application? _application;
     private bool _loading = true;
     private bool _hasGuarantor;
+    private bool _hasCoApplicant;
 
     private Dictionary<string, Party> _parties = new(StringComparer.Ordinal);
     private Dictionary<string, RcuOutcome> _outcomes = new(StringComparer.Ordinal);
@@ -382,7 +382,8 @@ else
     private CancellationTokenSource? _toastCts;
 
     private IEnumerable<string> VisiblePartyKeys =>
-        AllParties.Where(p => p != "Guarantor" || _hasGuarantor);
+        AllParties.Where(p => (p != "Guarantor" || _hasGuarantor)
+                              && (p != "CoApplicant" || _hasCoApplicant));
 
     private RcuReport? CurrentReport =>
         _reports.OrderByDescending(r => r.SequenceNumber).FirstOrDefault();
@@ -440,7 +441,9 @@ else
             .ToListAsync();
 
         var hasGuarantor = PartyRules.HasGuarantor(parties);
-        var visible = AllParties.Where(p => p != "Guarantor" || hasGuarantor);
+        var hasCoApplicant = PartyRules.HasCoApplicant(parties);
+        var visible = AllParties.Where(p => (p != "Guarantor" || hasGuarantor)
+                                            && (p != "CoApplicant" || hasCoApplicant));
 
         var changed = false;
 
@@ -508,6 +511,8 @@ else
         _parties = parties.ToDictionary(p => p.PartyType, StringComparer.Ordinal);
         _hasGuarantor = _parties.TryGetValue("Guarantor", out var guarantor)
             && !string.IsNullOrWhiteSpace(guarantor.FullName);
+        _hasCoApplicant = _parties.TryGetValue("CoApplicant", out var coApplicant)
+            && !string.IsNullOrWhiteSpace(coApplicant.FullName);
 
         _initiation = await db.RcuInitiations.AsNoTracking()
             .FirstAsync(i => i.ApplicationId == ApplicationId);
