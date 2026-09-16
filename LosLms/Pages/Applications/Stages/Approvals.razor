@@ -8,6 +8,8 @@
 @implements IDisposable
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject TenantContext Tenant
+@inject AdminRequestNotifier Notifier
 
 <PageTitle>Approvals · @ApplicationId</PageTitle>
 
@@ -35,15 +37,24 @@ else
     <div class="stage-page">
         <div class="stage-card">
 
-            @* The primary action sanctions rather than advancing a stage, and the secondary opens
-               the send-back panel rather than saving — hence both labels are overridden. *@
+            @* The primary action is the credit decision, not a stage advance: an Admin sanctions the
+               loan directly; an officer sends it to an Admin for sanction. The secondary opens the
+               send-back panel rather than saving — hence both labels are overridden. *@
             <StageSubHeader ApplicationId="@_application.Id"
                             SecondaryLabel="Send back"
-                            PrimaryLabel="Sanction"
-                            CompleteBlocked="!_decision.SanctionConfirmed"
-                            BlockedReason="Confirm the sanction on the Sanction Confirmation tab first."
+                            PrimaryLabel="@PrimaryLabel"
+                            CompleteBlocked="@PrimaryBlocked"
+                            BlockedReason="@PrimaryBlockedReason"
                             OnSaveDraft="ToggleSendBack"
-                            OnCompleteStage="SanctionAsync" />
+                            OnCompleteStage="PrimaryActionAsync"
+                            OnGateChanged="ReloadStateAsync" />
+
+            @if (_sanctionPending)
+            {
+                <div class="gate-banner" role="status">
+                    <span class="gate-banner-text">Sent for approval — awaiting an Admin's decision.</span>
+                </div>
+            }
 
             @if (_sendBackOpen)
             {
@@ -297,52 +308,32 @@ else
                     {
                         <Panel Title="Approver &amp; recommender">
                             <div class="stacked">
+                                <p class="setup-note">
+                                    The recommender is the officer who worked this file. The approver is the
+                                    Admin who sanctions it — filled in automatically once the sanction is
+                                    approved. Neither is chosen by hand.
+                                </p>
                                 <div class="signoff-blocks">
                                     <div class="signature-block">
                                         <span class="sub-block-label">Recommender</span>
-                                        <select class="field-input" aria-label="Recommender name"
-                                                value="@(_decision.RecommenderUserId ?? string.Empty)"
-                                                @onchange="e => SetSignatory(recommender: true, (string?)e.Value)">
-                                            <option value="">@BlankOption</option>
-                                            @foreach (var o in _officers) { <option value="@o.Id">@o.DisplayName</option> }
-                                        </select>
-                                        <select class="field-input" aria-label="Recommender role" @bind="_decision.RecommenderRole">
-                                            <option value="">@BlankOption</option>
-                                            @foreach (var o in RoleOptions) { <option value="@o">@o</option> }
-                                        </select>
+                                        <div class="locked-value">@RecommenderName</div>
                                         <span class="signed-line">
                                             @(_decision.RecommenderDate is { } rd
-                                                ? "Signed " + rd.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
-                                                : "Not yet signed")
+                                                ? "Recommended " + rd.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
+                                                : "On send for approval")
                                         </span>
                                     </div>
 
                                     <div class="signature-block">
                                         <span class="sub-block-label">Approver</span>
-                                        <select class="field-input" aria-label="Approver name"
-                                                value="@(_decision.ApproverUserId ?? string.Empty)"
-                                                @onchange="e => SetSignatory(recommender: false, (string?)e.Value)">
-                                            <option value="">@BlankOption</option>
-                                            @foreach (var o in _officers) { <option value="@o.Id">@o.DisplayName</option> }
-                                        </select>
-                                        <select class="field-input" aria-label="Approver role" @bind="_decision.ApproverRole">
-                                            <option value="">@BlankOption</option>
-                                            @foreach (var o in RoleOptions) { <option value="@o">@o</option> }
-                                        </select>
+                                        <div class="locked-value">@(ApproverName ?? "Awaiting an Admin")</div>
                                         <span class="signed-line">
                                             @(_decision.ApproverDate is { } ad
-                                                ? "Signed " + ad.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
-                                                : "Not yet signed")
+                                                ? "Approved " + ad.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)
+                                                : "Not yet approved")
                                         </span>
                                     </div>
                                 </div>
-
-                                @if (SameSignatory)
-                                {
-                                    <p class="inline-error" role="alert">
-                                        ⚠ Recommender and Approver cannot be the same person
-                                    </p>
-                                }
                             </div>
                         </Panel>
                     }
@@ -443,16 +434,21 @@ else
                                 {
                                     <div class="sanction-confirmed">✓ Sanction confirmed — locked</div>
                                 }
+                                else if (SanctionGateBlocked)
+                                {
+                                    <span class="blocked-note">@SanctionGateBlockedReason</span>
+                                }
+                                else if (_sanctionPending)
+                                {
+                                    <span class="blocked-note">Sent for approval — awaiting an Admin's decision.</span>
+                                }
                                 else
                                 {
-                                    <button type="button" class="confirm-sanction-button"
-                                            disabled="@ConfirmSanctionBlocked"
-                                            @onclick="() => _showSanctionConfirm = true">Confirm sanction</button>
-
-                                    @if (ConfirmSanctionBlocked)
-                                    {
-                                        <span class="blocked-note">@ConfirmSanctionBlockedReason</span>
-                                    }
+                                    <span class="blocked-note">
+                                        @(_isAdmin
+                                            ? "Ready — use “Sanction” at the top to approve this loan."
+                                            : "Ready — use “Send for approval” at the top to send it to an Admin.")
+                                    </span>
                                 }
                             </div>
                         </Panel>
@@ -554,11 +550,11 @@ else
 
         @if (_showSanctionConfirm)
         {
-            <ConfirmDialog Title="Confirm sanction"
-                           Message="Confirm sanction? This action is irreversible."
-                           ConfirmLabel="Confirm sanction"
+            <ConfirmDialog Title="Sanction this loan"
+                           Message="This approves and sanctions the loan, and cannot be undone. Continue?"
+                           ConfirmLabel="Sanction"
                            Destructive="true"
-                           OnConfirm="ConfirmSanctionAsync"
+                           OnConfirm="SanctionAsync"
                            OnCancel="() => _showSanctionConfirm = false" />
         }
 
@@ -604,9 +600,6 @@ else
     private static readonly string[] TvrStatusOptions =
         { "Positive - Confirmed", "Negative - Discrepancy", "Unable to Contact" };
 
-    private static readonly string[] RoleOptions =
-        { "Credit Analyst", "Senior Credit Analyst", "Branch Credit Manager", "Regional Credit Head" };
-
     /// <summary>The six earlier stages, each with the route it actually lives at.</summary>
     private static readonly (int Number, string Label, string Route)[] SendBackTargets =
     {
@@ -638,6 +631,8 @@ else
     private int _sendBackStage;
     private string _sendBackReason = string.Empty;
     private bool _showSanctionConfirm;
+    private bool _isAdmin;
+    private bool _sanctionPending;
 
     private string? _toast;
     private CancellationTokenSource? _toastCts;
@@ -713,6 +708,16 @@ else
             .Where(c => c.ApplicationId == ApplicationId).OrderBy(c => c.Id).ToListAsync();
 
         PrefillSanctionTerms();
+
+        await Tenant.EnsureLoadedAsync();
+        _isAdmin = Tenant.IsAdmin || Tenant.IsSuperAdmin;
+
+        // A pending sanction-approval request parks the file: the officer sees "awaiting an Admin" and
+        // an Admin sees Approve/Deny in the sub-header. Cleared once decided.
+        _sanctionPending = await db.AdminRequests.AsNoTracking()
+            .AnyAsync(r => r.ApplicationId == ApplicationId
+                           && r.RequestType == AdminRequest.SanctionApproval
+                           && r.Status == AdminRequest.Pending);
     }
 
     private static T Track<T>(DbSet<T> set, T entity, ref bool created) where T : class
@@ -807,15 +812,21 @@ else
     /// Segregation of duties: one person cannot both recommend and approve. Compares user ids rather
     /// than the typed names it used to, so renaming somebody can no longer defeat the check.
     /// </summary>
-    private bool SameSignatory =>
-        !string.IsNullOrWhiteSpace(_decision.RecommenderUserId)
-        && !string.IsNullOrWhiteSpace(_decision.ApproverUserId)
-        && string.Equals(_decision.RecommenderUserId, _decision.ApproverUserId, StringComparison.Ordinal);
+    // Sign-off is automatic now: the recommender is the initiating officer, and the approver is stamped
+    // when an Admin sanctions (segregation of duties is enforced by requester ≠ reviewer at approval).
+    // Nothing here to complete by hand, so this never blocks the gate.
+    private bool SignOffComplete => true;
 
-    private bool SignOffComplete =>
-        !string.IsNullOrWhiteSpace(_decision.RecommenderUserId)
-        && !string.IsNullOrWhiteSpace(_decision.ApproverUserId)
-        && !SameSignatory;
+    // Names for the read-only sign-off panel.
+    private string RecommenderName =>
+        NameFor(_decision.RecommenderUserId)
+        ?? NameFor(_application?.AssignedOfficerId)
+        ?? (string.IsNullOrWhiteSpace(_application?.AssignedOfficer) ? "—" : _application!.AssignedOfficer);
+
+    private string? ApproverName => NameFor(_decision.ApproverUserId);
+
+    private string? NameFor(string? userId) =>
+        string.IsNullOrWhiteSpace(userId) ? null : _officers.FirstOrDefault(o => o.Id == userId)?.DisplayName;
 
     private IEnumerable<(string Tab, bool Complete)> TabState =>
         new[]
@@ -848,12 +859,24 @@ else
         _decision.ValidityDate is not null
         && !string.IsNullOrWhiteSpace(_decision.Authority);
 
-    private bool ConfirmSanctionBlocked => MissingTabs.Count > 0 || !SanctionDetailsComplete;
+    private bool SanctionGateBlocked => MissingTabs.Count > 0 || !SanctionDetailsComplete;
 
-    private string ConfirmSanctionBlockedReason =>
+    private string SanctionGateBlockedReason =>
         MissingTabs.Count > 0
             ? "Complete first: " + string.Join(", ", MissingTabs)
             : "Enter the sanction validity date and approval authority.";
+
+    // The role-based primary action in the sub-header: an Admin sanctions; an officer sends for approval.
+    private string PrimaryLabel => _isAdmin ? "Sanction" : "Send for approval";
+
+    private bool PrimaryBlocked =>
+        _decision.SanctionConfirmed || SanctionGateBlocked || (!_isAdmin && _sanctionPending);
+
+    private string? PrimaryBlockedReason =>
+        _decision.SanctionConfirmed ? "This loan is already sanctioned."
+        : SanctionGateBlocked ? SanctionGateBlockedReason
+        : (!_isAdmin && _sanctionPending) ? "Already sent for approval — awaiting an Admin."
+        : null;
 
     // ---------------------------------------------------------------------
     // Display helpers
@@ -892,27 +915,6 @@ else
     // ---------------------------------------------------------------------
 
     private void AddPartner() => _partners.Add(new Partner { ApplicationId = ApplicationId });
-
-    /// <summary>
-    /// Selecting a signatory stamps today's server date against them; clearing the selection clears
-    /// it again, so a date never outlives the signature it belongs to.
-    /// </summary>
-    private void SetSignatory(bool recommender, string? userId)
-    {
-        var chosen = string.IsNullOrWhiteSpace(userId) ? null : userId;
-        var signedOn = chosen is null ? (DateOnly?)null : DateOnly.FromDateTime(DateTime.Now);
-
-        if (recommender)
-        {
-            _decision.RecommenderUserId = chosen;
-            _decision.RecommenderDate = signedOn;
-        }
-        else
-        {
-            _decision.ApproverUserId = chosen;
-            _decision.ApproverDate = signedOn;
-        }
-    }
 
     // ---------------------------------------------------------------------
     // Send back — the only backward transition in the system
@@ -968,58 +970,92 @@ else
     }
 
     // ---------------------------------------------------------------------
-    // Sanction — two steps, both re-checked server-side
+    // Sanction — an Admin sanctions directly; an officer sends it for approval
     // ---------------------------------------------------------------------
 
-    private async Task ConfirmSanctionAsync()
+    /// <summary>Re-loads the screen after an inline admin decision (e.g. approving the request here).</summary>
+    private async Task ReloadStateAsync() => await OnParametersSetAsync();
+
+    /// <summary>The sub-header's primary action, branched by role.</summary>
+    private async Task PrimaryActionAsync()
+    {
+        if (_isAdmin)
+        {
+            // Open the irreversible-confirm dialog; SanctionAsync runs on confirm.
+            _showSanctionConfirm = true;
+            return;
+        }
+
+        await SendForApprovalAsync();
+    }
+
+    /// <summary>
+    /// An officer sends the file to an Admin for sanction. Saves the recommendation (with the officer
+    /// recorded as recommender) and raises a Sanction-approval request; the file is parked until an
+    /// Admin decides it. This is what stops a file at Approvals rather than letting the officer sanction.
+    /// </summary>
+    private async Task SendForApprovalAsync()
+    {
+        if (SanctionGateBlocked || _sanctionPending || _application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        await PersistAsync(db);
+
+        // Attribute the recommendation to the initiating officer now, before an Admin acts.
+        var decision = await db.ApprovalDecisions.FirstAsync(d => d.ApplicationId == ApplicationId);
+        decision.RecommenderUserId ??= _application.AssignedOfficerId ?? Tenant.UserId;
+        decision.RecommenderDate ??= DateOnly.FromDateTime(DateTime.Today);
+        await db.SaveChangesAsync();
+
+        var raised = await GateCheckService.RaiseRequestAsync(
+            db, Notifier, ApplicationId, AdminRequest.SanctionApproval, Tenant.UserId,
+            reason: "Sanction approval requested.");
+
+        _sanctionPending = true;
+        await ShowToastAsync(raised ? "Sent for approval" : "Already awaiting approval");
+    }
+
+    /// <summary>
+    /// An Admin sanctions the loan directly (after the irreversible-confirm dialog). The shared
+    /// <see cref="SanctionService"/> records recommender (initiating officer) and approver (this Admin)
+    /// and moves the file to Sanctioned; any pending approval request is closed as approved.
+    /// </summary>
+    private async Task SanctionAsync()
     {
         _showSanctionConfirm = false;
 
-        if (ConfirmSanctionBlocked || _application is null)
-        {
-            return;
-        }
-
-        _decision.SanctionConfirmed = true;
-        _decision.SanctionConfirmedAt = DateTime.UtcNow;
-
-        await using var db = await DbFactory.CreateDbContextAsync();
-        await PersistAsync(db);
-        await db.SaveChangesAsync();
-
-        await ShowToastAsync("Sanction confirmed");
-    }
-
-    private async Task SanctionAsync()
-    {
-        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
-        // event or a stale circuit must not get past it. One shared check, never re-implemented.
-        await using (var gateDb = await DbFactory.CreateDbContextAsync())
-        {
-            if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
-            {
-                return;
-            }
-        }
-        // The sub-header button carries a real disabled attribute; this repeats the check so the
-        // stage cannot be closed without the confirmation step having happened.
-        if (!_decision.SanctionConfirmed || _application is null)
+        if (!_isAdmin || SanctionGateBlocked || _application is null)
         {
             return;
         }
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
+        // Server-side gate — the sub-header disables the button, but a crafted event must not get past it.
+        if (!(await GateCheckService.CanAdvanceAsync(db, ApplicationId)).CanAdvance)
+        {
+            return;
+        }
+
         await PersistAsync(db);
+        await SanctionService.ApplyAsync(db, ApplicationId, Tenant.UserId);
 
-        var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
-
-        // Never move an application backwards — see CustomerDetails for the same guard.
-        application.CurrentStage = Math.Max(application.CurrentStage, 8);
-
-        // The credit decision is made — the file is now Sanctioned. Post Sanction leaves this as-is
-        // and only sets Disbursed when the money moves.
-        application.Status = "Sanctioned";
+        // This Admin decided it directly, so close any pending sanction-approval request.
+        var pending = await db.AdminRequests
+            .Where(r => r.ApplicationId == ApplicationId
+                        && r.RequestType == AdminRequest.SanctionApproval
+                        && r.Status == AdminRequest.Pending)
+            .ToListAsync();
+        foreach (var request in pending)
+        {
+            request.Status = AdminRequest.Approved;
+            request.ReviewedByUserId = Tenant.UserId;
+            request.ReviewedAt = DateTime.UtcNow;
+        }
 
         await db.SaveChangesAsync();
 

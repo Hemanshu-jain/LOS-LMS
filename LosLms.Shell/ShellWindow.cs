@@ -185,16 +185,12 @@ public sealed class ShellWindow : Form
         settings.IsStatusBarEnabled = false;
         settings.AreBrowserAcceleratorKeysEnabled = false;
 
-        // Keep everything inside this one window: a target=_blank or window.open lands in-place rather
-        // than trying to spawn a second, chrome-less popup the user can't navigate.
-        _web.CoreWebView2.NewWindowRequested += (_, args) =>
-        {
-            args.Handled = true;
-            if (!string.IsNullOrEmpty(args.Uri))
-            {
-                _web.CoreWebView2.Navigate(args.Uri);
-            }
-        };
+        // A target=_blank / window.open (the generated PDFs — welcome letter, CAM, agreement, memo — and
+        // document previews all use it) opens in a SEPARATE viewer window the user can close to get back,
+        // rather than navigating the main window away from the app with no way back. The viewer shares
+        // this WebView2's environment, so its cookies carry over and the authenticated /files endpoint
+        // still serves the file.
+        _web.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
 
         _coreReady = true;
 
@@ -203,6 +199,46 @@ public sealed class ShellWindow : Form
             _pendingUrl = null;
             _ = NavigateAsync(url);
         }
+    }
+
+    /// <summary>
+    /// Opens a target=_blank / window.open request in a separate, closable viewer window instead of
+    /// navigating the main app window away. The viewer reuses the main WebView2's environment, so it
+    /// shares the authentication cookie and can load the guarded /files endpoint.
+    /// </summary>
+    private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs args)
+    {
+        var deferral = args.GetDeferral();
+
+        var viewer = new Form
+        {
+            Text = "Document — LOS-LMS",
+            StartPosition = FormStartPosition.CenterParent,
+            Size = new Size(1000, 800),
+            MinimumSize = new Size(600, 400),
+            BackColor = Color.FromArgb(17, 24, 39),
+            Icon = Icon,
+        };
+
+        var view = new WebView2 { Dock = DockStyle.Fill };
+        viewer.Controls.Add(view);
+
+        view.CoreWebView2InitializationCompleted += (_, init) =>
+        {
+            if (init.IsSuccess)
+            {
+                // Leave default context menus on here (unlike the main window) so the viewer can print
+                // or save the PDF. WebView2 loads the requested Uri into this window once NewWindow is set.
+                view.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                view.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                args.NewWindow = view.CoreWebView2;
+            }
+
+            deferral.Complete();
+        };
+
+        viewer.Show(this);
+        _ = view.EnsureCoreWebView2Async(_web.CoreWebView2.Environment);
     }
 
     /// <summary>

@@ -426,6 +426,13 @@
                     await RejectionService.ApplyAsync(
                         db, ApplicationId, stored.RequestReason ?? "Rejected by admin.");
                     break;
+
+                case AdminRequest.SanctionApproval:
+                    // Approving the officer's request IS the sanction. This Admin is the approver;
+                    // the initiating officer is stamped as the recommender.
+                    await SanctionService.ApplyAsync(db, ApplicationId, _currentUserId);
+                    await db.SaveChangesAsync();
+                    break;
             }
         }
 

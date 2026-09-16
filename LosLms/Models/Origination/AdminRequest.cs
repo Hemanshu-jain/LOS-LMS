@@ -77,6 +77,13 @@ public class AdminRequest
     /// <summary>Approving this is what actually rejects the application.</summary>
     public const string Reject = "Reject";
 
+    /// <summary>
+    /// An officer's request for an Admin to sanction the loan. Approving it IS the sanction: it records
+    /// the approving Admin as the approver, the initiating officer as the recommender, and moves the
+    /// application to Sanctioned. This is what stops a file at Approvals until an Admin has decided it.
+    /// </summary>
+    public const string SanctionApproval = "SanctionApproval";
+
     // ---- Statuses ----
 
     public const string Pending = "Pending";
@@ -90,6 +97,7 @@ public class AdminRequest
         MakeModelCapBypass => "Vehicle cap bypass",
         MakeModelCapChange => "Vehicle cap change",
         Reject => "Reject application",
+        SanctionApproval => "Sanction approval",
         _ => requestType,
     };
 }
