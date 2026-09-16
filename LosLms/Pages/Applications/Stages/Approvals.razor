@@ -641,6 +641,8 @@ else
     // Lifecycle
     // ---------------------------------------------------------------------
 
+    private readonly AutoSaveLoop _autoSave = new();
+
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
@@ -666,6 +668,16 @@ else
         }
 
         _loading = false;
+
+        if (_application is not null)
+        {
+            _autoSave.Start(() => InvokeAsync(async () =>
+            {
+                await using var saveDb = await DbFactory.CreateDbContextAsync();
+                await PersistAsync(saveDb);
+                await saveDb.SaveChangesAsync();
+            }), TimeSpan.FromSeconds(8));
+        }
     }
 
     private async Task LoadAsync(LosDbContext db)
@@ -1215,6 +1227,7 @@ else
 
     public void Dispose()
     {
+        _autoSave.Dispose();
         _toastCts?.Cancel();
         _toastCts?.Dispose();
     }

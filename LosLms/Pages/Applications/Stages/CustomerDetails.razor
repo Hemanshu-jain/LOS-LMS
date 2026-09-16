@@ -483,6 +483,8 @@ else
     // Lifecycle
     // ---------------------------------------------------------------------
 
+    private readonly AutoSaveLoop _autoSave = new();
+
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
@@ -516,10 +518,16 @@ else
         }
 
         _loading = false;
+
+        if (_application is not null)
+        {
+            _autoSave.Start(() => InvokeAsync(() => PersistAsync(completeStage: false)), TimeSpan.FromSeconds(8));
+        }
     }
 
     public void Dispose()
     {
+        _autoSave.Dispose();
         _toastCts?.Cancel();
         _toastCts?.Dispose();
         _pinLookupCts?.Cancel();
