@@ -191,14 +191,7 @@
 
         @if (!IsDataTab)
         {
-            <div class="tab-placeholder">
-                <p class="tab-placeholder-title">No migrated records yet.</p>
-                <p class="tab-placeholder-body">
-                    This is where loan records brought over from your previous system will appear,
-                    kept separate from applications created here. Bulk import isn't switched on in this
-                    build yet — until it is, there is nothing to show.
-                </p>
-            </div>
+            <MigratedLoansPanel />
         }
         else
         {

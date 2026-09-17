@@ -51,6 +51,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<LookupValue> LookupValues => Set<LookupValue>();
 
+    public DbSet<MigratedLoan> MigratedLoans => Set<MigratedLoan>();
+
     public DbSet<Application> Applications => Set<Application>();
 
     public DbSet<Party> Parties => Set<Party>();
@@ -812,6 +814,21 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<MigratedLoan>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+
+            entity.HasIndex(m => m.CompanyId);
+
+            entity.Property(m => m.SanctionedAmount).HasPrecision(18, 2);
+            entity.Property(m => m.OutstandingAmount).HasPrecision(18, 2);
+
+            entity.HasOne(m => m.Company)
+                .WithMany()
+                .HasForeignKey(m => m.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<AdminRequest>(entity =>
         {
             entity.ToTable("AdminRequest");
@@ -868,6 +885,9 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
         modelBuilder.Entity<LookupValue>()
             .HasQueryFilter(l => _isSuperAdmin || l.CompanyId == _companyId);
+
+        modelBuilder.Entity<MigratedLoan>()
+            .HasQueryFilter(m => _isSuperAdmin || m.CompanyId == _companyId);
 
         // The one deliberate exception, and it is narrow: when nobody is signed in the user filter is
         // open, because Identity's own sign-in path calls FindByEmailAsync on this very context before

@@ -269,7 +269,7 @@
             {
                 <LookupTab CompanyId="_company.Id" Kind="@LookupKind.SourcingChannel"
                            Title="DSA / sourcing channels" ItemNoun="sourcing channel"
-                           Description="The options shown in the DSA / sourcing-channel dropdown on Loan & Security."
+                           Description="Where your loan applications come from — a branch walk-in, a digital lead, or a specific DSA (direct selling agent who refers business to you). Whatever you list here becomes the choices in the 'DSA / sourcing channel' dropdown an officer picks when starting a new file, so you can later see which channel each loan came through. Deactivate one to stop offering it on new files without changing the files that already used it."
                            OnSaved="ShowToastAsync" />
             }
 
@@ -277,7 +277,7 @@
             {
                 <LookupTab CompanyId="_company.Id" Kind="@LookupKind.Scheme"
                            Title="Loan schemes" ItemNoun="scheme"
-                           Description="The options shown in the Scheme dropdown on Loan & Security."
+                           Description="Your loan products, or 'schemes' — each is a named lending programme with its own terms (for example CV-STD-2026 for a standard commercial-vehicle loan, or LAP-STD-2026 for a loan against property). What you list here fills the 'Scheme' dropdown on Loan & Security, so every application is tagged with the product it belongs to."
                            OnSaved="ShowToastAsync" />
             }
 
@@ -285,7 +285,7 @@
             {
                 <LookupTab CompanyId="_company.Id" Kind="@LookupKind.RcuVendor"
                            Title="RCU vendors" ItemNoun="vendor"
-                           Description="The agencies shown in the Vendor dropdown on Reports (RCU)."
+                           Description="The outside agencies you send files to for RCU (Risk Containment Unit) checks — independent field and document verification of the borrower before approval. List the agencies you work with here and they become the choices in the 'Vendor' dropdown on the Reports (RCU) stage."
                            OnSaved="ShowToastAsync" />
             }
 

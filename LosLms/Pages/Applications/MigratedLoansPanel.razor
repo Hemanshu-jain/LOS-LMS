@@ -1,0 +1,227 @@
+@using System.Globalization
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject TenantContext Tenant
+@inject IJSRuntime JS
+
+@* The "Migrated data" tab — bulk import of the client's back-book from their previous system, kept
+   separate from applications originated here. Self-contained: loads, imports and lists on its own. *@
+
+<p class="setup-note" style="margin-top:4px;">
+    Loan records brought over from your previous system, kept separate from the applications you create
+    here — a searchable home for your existing book. These are reference records only; they do not enter
+    the 8-stage origination flow. Download the template, fill it with your old loans, and upload it below.
+</p>
+
+<div class="setup-import">
+    <button type="button" class="add-row-button" @onclick="DownloadTemplateAsync">⬇ Download CSV template</button>
+    <label class="upload-button">
+        ⬆ Import CSV
+        <InputFile OnChange="ImportAsync" accept=".csv,text/csv" />
+    </label>
+    @if (_migrated.Count > 0)
+    {
+        <span class="setup-note" style="margin:0;">@_migrated.Count record@(_migrated.Count == 1 ? "" : "s") imported</span>
+    }
+</div>
+
+@if (_importSummary is not null)
+{
+    <p class="setup-note is-status" role="status">@_importSummary</p>
+}
+
+@if (_importErrors.Count > 0)
+{
+    <ul class="inline-error" role="alert">
+        @foreach (var err in _importErrors) { <li>@err</li> }
+    </ul>
+}
+
+@if (_loading)
+{
+    <p class="loading-note">Loading…</p>
+}
+else
+{
+    <div class="table-scroll">
+        <table class="row-table">
+            <thead>
+                <tr>
+                    <th>Loan a/c no.</th>
+                    <th>Customer</th>
+                    <th>PAN</th>
+                    <th>Product</th>
+                    <th class="align-right">Sanctioned</th>
+                    <th class="align-right">Outstanding</th>
+                    <th>Status</th>
+                    <th>Disbursed</th>
+                    <th>Branch</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var loan in _migrated)
+                {
+                    var m = loan;
+                    <tr>
+                        <td>@m.LoanAccountNo</td>
+                        <td>@m.CustomerName</td>
+                        <td>@(m.Pan ?? "—")</td>
+                        <td>@(m.Product ?? "—")</td>
+                        <td class="align-right">@Money(m.SanctionedAmount)</td>
+                        <td class="align-right">@Money(m.OutstandingAmount)</td>
+                        <td>@(m.Status ?? "—")</td>
+                        <td>@(m.DisbursedOn?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")</td>
+                        <td>@(m.Branch ?? "—")</td>
+                        <td class="align-right">
+                            <button type="button" class="row-action is-danger" @onclick="() => RemoveAsync(m)">Remove</button>
+                        </td>
+                    </tr>
+                }
+
+                @if (_migrated.Count == 0)
+                {
+                    <tr><td colspan="10" class="empty-row">No migrated records yet. Import a CSV to bring your existing loans in.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<MigratedLoan> _migrated = new();
+    private bool _loading = true;
+    private string? _importSummary;
+    private List<string> _importErrors = new();
+
+    private const long MaxImportBytes = 5 * 1024 * 1024;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _migrated = await db.MigratedLoans.AsNoTracking()
+            .OrderBy(m => m.CustomerName)
+            .ToListAsync();
+        _loading = false;
+    }
+
+    private static string Money(decimal? amount) =>
+        amount is { } a ? "₹" + a.ToString("N0", CultureInfo.InvariantCulture) : "—";
+
+    private async Task DownloadTemplateAsync()
+    {
+        var content = MigratedLoanCsv.Header + "\n"
+            + "LN-OLD-1001,Ramesh Kumar,ABCDE1234F,9876543210,Commercial vehicle,1200000,850000,Live,15-04-2023,Nashik West\n"
+            + "LN-OLD-1002,\"Patil, Sons Transport\",,9812345678,Loan against property,3500000,3100000,Live,02-11-2022,Pune Camp\n";
+
+        await JS.InvokeVoidAsync("downloadFile", "migrated-loans-template.csv", content);
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        _importSummary = null;
+        _importErrors = new();
+
+        var file = e.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        if (Tenant.CompanyId is not { } companyId)
+        {
+            _importErrors = new() { "Your account isn't attached to a company, so there is nowhere to import these. Sign in as a company admin." };
+            return;
+        }
+
+        if (file.Size > MaxImportBytes)
+        {
+            _importErrors = new() { $"File is larger than {MaxImportBytes / (1024 * 1024)} MB. Split it into smaller files." };
+            return;
+        }
+
+        if (!Path.GetExtension(file.Name).Equals(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            _importErrors = new() { "The file must be a .csv." };
+            return;
+        }
+
+        string content;
+        using (var reader = new StreamReader(file.OpenReadStream(MaxImportBytes)))
+        {
+            content = await reader.ReadToEndAsync();
+        }
+
+        var (rows, errors) = MigratedLoanCsv.Parse(content);
+        _importErrors = errors;
+
+        if (rows.Count == 0)
+        {
+            _importSummary = "Nothing imported — no valid rows found. Check the file matches the template.";
+            return;
+        }
+
+        var added = await ImportRowsAsync(companyId, rows);
+        await LoadAsync();
+
+        _importSummary = $"Imported {added} record{(added == 1 ? "" : "s")}"
+            + (errors.Count > 0 ? $", {errors.Count} skipped (see below)" : "") + ".";
+    }
+
+    /// <summary>
+    /// Inserts new rows and updates existing ones matched on loan account number, so re-importing a
+    /// corrected file refreshes those loans rather than duplicating them.
+    /// </summary>
+    private async Task<int> ImportRowsAsync(int companyId, List<MigratedLoanRow> rows)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var existing = await db.MigratedLoans.ToListAsync();
+
+        foreach (var row in rows)
+        {
+            var match = existing.FirstOrDefault(m =>
+                string.Equals(m.LoanAccountNo, row.LoanAccountNo, StringComparison.OrdinalIgnoreCase));
+
+            if (match is null)
+            {
+                match = new MigratedLoan { CompanyId = companyId, LoanAccountNo = row.LoanAccountNo };
+                db.MigratedLoans.Add(match);
+                existing.Add(match);
+            }
+
+            match.CustomerName = row.CustomerName;
+            match.Pan = row.Pan;
+            match.Mobile = row.Mobile;
+            match.Product = row.Product;
+            match.SanctionedAmount = row.SanctionedAmount;
+            match.OutstandingAmount = row.OutstandingAmount;
+            match.Status = row.Status;
+            match.DisbursedOn = row.DisbursedOn;
+            match.Branch = row.Branch;
+            match.ImportedAt = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+        return rows.Count;
+    }
+
+    private async Task RemoveAsync(MigratedLoan loan)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.MigratedLoans.FirstOrDefaultAsync(m => m.Id == loan.Id);
+        if (stored is not null)
+        {
+            db.MigratedLoans.Remove(stored);
+            await db.SaveChangesAsync();
+        }
+
+        await LoadAsync();
+    }
+}

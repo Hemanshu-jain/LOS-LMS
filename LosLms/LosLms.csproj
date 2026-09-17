@@ -8,7 +8,7 @@
 
     <!-- The running app's version. The System Updates page reads this and compares it against the
          latest GitHub Release tag. Bump it for every release; publish.ps1 names the artifact from it. -->
-    <Version>1.1.8</Version>
+    <Version>1.1.9</Version>
   </PropertyGroup>
 
   <ItemGroup>
