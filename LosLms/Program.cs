@@ -227,6 +227,10 @@ try
     {
         await IdentitySeeder.SeedIsolationFixtureAsync(app.Services, app.Logger);
     }
+
+    // Every company gets the built-in DSA/sourcing, scheme and RCU-vendor options the first time it has
+    // none — so those dropdowns are never empty after moving off the old hardcoded arrays. Idempotent.
+    await LookupSeeder.SeedAsync(app.Services);
 }
 catch (Exception ex)
 {
@@ -309,6 +313,7 @@ app.Use(async (context, next) =>
 {
     static bool IsExempt(PathString p) =>
         p.StartsWithSegments("/account", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/settings", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/company-setup", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/files", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/system", StringComparison.OrdinalIgnoreCase)
@@ -327,7 +332,7 @@ app.Use(async (context, next) =>
         await using var db = await factory.CreateDbContextAsync();
         if (!await CompanySetupState.IsCompleteAsync(db, companyId))
         {
-            context.Response.Redirect("/company-setup");
+            context.Response.Redirect("/settings");
             return;
         }
     }

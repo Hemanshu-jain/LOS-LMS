@@ -1,0 +1,180 @@
+@using LosLms.Components.Shared
+@using LosLms.Data
+@using LosLms.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+
+@* One tab for any simple editable dropdown list (sourcing channels, schemes, RCU vendors). The
+   parent passes the Kind and the labels; everything else — add, rename, deactivate — is identical to
+   Branches, so it lives here once rather than three times. *@
+
+<Panel Title="@Title">
+    <Right>
+        <button type="button" class="add-row-button" @onclick="StartAdd">+ Add @ItemNoun</button>
+    </Right>
+    <ChildContent>
+        <p class="setup-note">@Description</p>
+
+        @if (_adding)
+        {
+            <div class="setup-inline-add">
+                <input class="field-input" placeholder="@($"{CapitalisedNoun} name")" maxlength="120"
+                       @bind="_newName" @bind:event="oninput" />
+                <button type="button" class="setup-save" disabled="@string.IsNullOrWhiteSpace(_newName)"
+                        @onclick="AddAsync">Add</button>
+                <button type="button" class="setup-cancel" @onclick="CancelAdd">Cancel</button>
+            </div>
+            @if (_error is not null)
+            {
+                <p class="inline-error" role="alert">@_error</p>
+            }
+        }
+
+        <div class="table-scroll">
+            <table class="row-table">
+                <thead>
+                    <tr>
+                        <th>@CapitalisedNoun</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var value in _values)
+                    {
+                        var v = value;
+                        <tr>
+                            <td>
+                                <input class="cell-input" maxlength="120" @bind="v.Name" @bind:event="oninput" />
+                            </td>
+                            <td>
+                                <span class="status-pill @(v.IsActive ? "is-active" : "is-inactive")">
+                                    @(v.IsActive ? "Active" : "Inactive")
+                                </span>
+                            </td>
+                            <td class="align-right">
+                                <button type="button" class="row-action" @onclick="() => ToggleAsync(v)">
+                                    @(v.IsActive ? "Deactivate" : "Reactivate")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+
+                    @if (_values.Count == 0)
+                    {
+                        <tr><td colspan="3" class="empty-row">Nothing added yet.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="setup-actions">
+            <button type="button" class="setup-save" @onclick="SaveNamesAsync">Save changes</button>
+        </div>
+    </ChildContent>
+</Panel>
+
+@code {
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+
+    /// <summary>Which <see cref="LookupKind"/> this tab manages.</summary>
+    [Parameter, EditorRequired] public string Kind { get; set; } = string.Empty;
+
+    /// <summary>Panel heading, e.g. "DSA / sourcing channels".</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Singular noun for the add button and column, e.g. "sourcing channel".</summary>
+    [Parameter, EditorRequired] public string ItemNoun { get; set; } = "value";
+
+    /// <summary>One-line explanation shown above the table.</summary>
+    [Parameter] public string Description { get; set; } =
+        "Deactivated, never deleted — a removed option disappears from new applications but stays on the ones that already used it.";
+
+    /// <summary>Raised with a message for the parent's toast, so there is one toast on the page.</summary>
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private List<LookupValue> _values = new();
+    private bool _adding;
+    private string? _newName;
+    private string? _error;
+
+    private string CapitalisedNoun =>
+        string.IsNullOrEmpty(ItemNoun) ? ItemNoun : char.ToUpperInvariant(ItemNoun[0]) + ItemNoun[1..];
+
+    // Each kind is rendered as its own tab (a fresh component mount), so loading once on init is right
+    // and avoids a parameter-change reload ever clobbering a half-edited row.
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _values = await db.LookupValues
+            .Where(l => l.Kind == Kind)
+            .OrderBy(l => l.Name)
+            .ToListAsync();
+    }
+
+    private void StartAdd()
+    {
+        _adding = true;
+        _newName = null;
+        _error = null;
+    }
+
+    private void CancelAdd()
+    {
+        _adding = false;
+        _newName = null;
+        _error = null;
+    }
+
+    private async Task AddAsync()
+    {
+        var name = _newName?.Trim();
+        if (string.IsNullOrWhiteSpace(name)) { return; }
+
+        if (_values.Any(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _error = $"\"{name}\" already exists.";
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // CompanyId is stamped from the signed-in user's claims, never taken from the browser.
+        db.LookupValues.Add(new LookupValue { CompanyId = CompanyId, Kind = Kind, Name = name, IsActive = true });
+        await db.SaveChangesAsync();
+
+        CancelAdd();
+        await LoadAsync();
+        await OnSaved.InvokeAsync($"\"{name}\" added");
+    }
+
+    private async Task ToggleAsync(LookupValue value)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.LookupValues.FirstAsync(l => l.Id == value.Id);
+        stored.IsActive = !stored.IsActive;
+        await db.SaveChangesAsync();
+
+        await LoadAsync();
+        await OnSaved.InvokeAsync($"\"{stored.Name}\" {(stored.IsActive ? "reactivated" : "deactivated")}");
+    }
+
+    private async Task SaveNamesAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        foreach (var edited in _values)
+        {
+            var stored = await db.LookupValues.FirstOrDefaultAsync(l => l.Id == edited.Id);
+            if (stored is not null)
+            {
+                stored.Name = edited.Name.Trim();
+            }
+        }
+
+        await db.SaveChangesAsync();
+        await LoadAsync();
+        await OnSaved.InvokeAsync("Saved — existing applications keep the value they recorded");
+    }
+}

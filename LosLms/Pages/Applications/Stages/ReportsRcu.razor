@@ -87,7 +87,7 @@ else
                                         <FormField Label="Vendor name" For="rcu-vendor">
                                             <select id="rcu-vendor" class="field-input" @bind="_initiation.Vendor">
                                                 <option value="">@BlankOption</option>
-                                                @foreach (var o in VendorOptions) { <option value="@o">@o</option> }
+                                                @foreach (var o in _vendorOptions) { <option value="@o">@o</option> }
                                             </select>
                                         </FormField>
 
@@ -354,11 +354,8 @@ else
     // filter. Loaded in OnParametersSetAsync alongside everything else this screen needs.
     private List<string> _branchOptions = new();
 
-    private static readonly string[] VendorOptions =
-    {
-        "Verified Field Services", "TransUnion CIBIL RCU", "CRISIL Risk Solutions",
-        "SecureCheck Verifications", "Other",
-    };
+    // Loaded per load from the company's editable list (Settings → RCU Vendors), not hardcoded.
+    private List<string> _vendorOptions = new();
 
     // ---------------------------------------------------------------------
     // State
@@ -427,6 +424,17 @@ else
                 && !_branchOptions.Contains(recordedBranch, StringComparer.OrdinalIgnoreCase))
             {
                 _branchOptions.Insert(0, recordedBranch);
+            }
+
+            // Vendors now come from the company's editable list. Same guard: a vendor this RCU was
+            // raised with that has since been removed is re-inserted so the select never blanks it out.
+            _vendorOptions = await db.LookupValues.AsNoTracking()
+                .Where(l => l.Kind == LookupKind.RcuVendor && l.IsActive)
+                .OrderBy(l => l.Name).Select(l => l.Name).ToListAsync();
+            if (_initiation.Vendor is { Length: > 0 } recordedVendor
+                && !_vendorOptions.Contains(recordedVendor, StringComparer.OrdinalIgnoreCase))
+            {
+                _vendorOptions.Insert(0, recordedVendor);
             }
         }
 

@@ -99,7 +99,7 @@ else
                                 <FormField Label="DSA / sourcing channel" For="ls-dsa">
                                     <select id="ls-dsa" class="field-input" @bind="_application!.SourcingChannel">
                                         <option value="">@BlankOption</option>
-                                        @foreach (var o in ChannelOptions) { <option value="@o">@o</option> }
+                                        @foreach (var o in _channelOptions) { <option value="@o">@o</option> }
                                     </select>
                                 </FormField>
 
@@ -118,7 +118,7 @@ else
                                 <FormField Label="Scheme" For="ls-scheme">
                                     <select id="ls-scheme" class="field-input" @bind="_application!.Scheme">
                                         <option value="">@BlankOption</option>
-                                        @foreach (var o in SchemeOptions) { <option value="@o">@o</option> }
+                                        @foreach (var o in _schemeOptions) { <option value="@o">@o</option> }
                                     </select>
                                 </FormField>
 
@@ -797,6 +797,7 @@ else
 
     /// <summary>Party type string for the co-applicant. There is no enum — see Party.PartyType.</summary>
     private const string CoApplicantPartyType = "CoApplicant";
+    private const string GuarantorPartyType = "Guarantor";
     private const long MaxUploadBytes = 5 * 1024 * 1024;
 
     private const string LoanTab = "Loan Details";
@@ -808,8 +809,8 @@ else
     private static readonly string[] AssetTypes = { "Vehicle", "Property" };
     private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
 
-    private static readonly string[] ChannelOptions =
-        { "DSA — Patil Motors", "DSA — Shree Associates", "Branch walk-in", "Digital" };
+    // Loaded per load from the company's editable list (Settings → Sourcing Channels), not hardcoded.
+    private List<string> _channelOptions = new();
 
     // Real rows from the Branches table, scoped to the signed-in user's company by the global query
     // filter. Loaded in OnParametersSetAsync alongside everything else this screen needs.
@@ -819,7 +820,8 @@ else
     /// is not blanked out. Null when the stored branch is still active.</summary>
     private string? _inactiveBranch;
 
-    private static readonly string[] SchemeOptions = { "CV-STD-2026", "CV-PRIME-2026", "LAP-STD-2026" };
+    // Loaded per load from the company's editable list (Settings → Schemes), not hardcoded.
+    private List<string> _schemeOptions = new();
 
     // Placeholder options pending confirmation with Arun/the client.
     private static readonly string[] RepaymentOptions = { "NACH", "Post-dated cheques", "Cash" };
@@ -902,6 +904,27 @@ else
                 _inactiveBranch = current;
             }
 
+            // Sourcing channels and schemes now come from the company's editable lists. Same guard as
+            // branch: a value stored on this file that has since been removed is re-inserted so the
+            // select never renders blank and write a blank back on the next save.
+            _channelOptions = await db.LookupValues.AsNoTracking()
+                .Where(l => l.Kind == LookupKind.SourcingChannel && l.IsActive)
+                .OrderBy(l => l.Name).Select(l => l.Name).ToListAsync();
+            if (_application.SourcingChannel is { Length: > 0 } channel
+                && !_channelOptions.Contains(channel, StringComparer.OrdinalIgnoreCase))
+            {
+                _channelOptions.Insert(0, channel);
+            }
+
+            _schemeOptions = await db.LookupValues.AsNoTracking()
+                .Where(l => l.Kind == LookupKind.Scheme && l.IsActive)
+                .OrderBy(l => l.Name).Select(l => l.Name).ToListAsync();
+            if (_application.Scheme is { Length: > 0 } scheme
+                && !_schemeOptions.Contains(scheme, StringComparer.OrdinalIgnoreCase))
+            {
+                _schemeOptions.Insert(0, scheme);
+            }
+
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
             _security = security is null ? new SecurityForm() : ToForm(security);
@@ -926,7 +949,7 @@ else
                 _references.Add(new ReferenceForm());
             }
 
-            await ApplyCoApplicantReferenceAsync(db);
+            await ApplyPartyReferencesAsync(db);
 
             _viability = await db.Viabilities.AsNoTracking()
                 .FirstOrDefaultAsync(v => v.ApplicationId == ApplicationId)
@@ -1036,49 +1059,80 @@ else
     private void AddReference() => _references.Add(new ReferenceForm());
 
     /// <summary>
-    /// Pre-fills one reference row from the application's Co-Applicant, when there is one.
+    /// Pre-fills a reference row from the application's Co-Applicant and Guarantor, when each exists —
+    /// carrying over their name, mobile and address so the officer starts from real data rather than a
+    /// blank row.
     /// </summary>
     /// <remarks>
     /// Re-derived on every load rather than stored with a flag column: the save replaces the whole
-    /// reference set anyway, so a column would be a second source of truth for something already
-    /// known from Parties. Editing the Co-Applicant's name on Stage 1 therefore corrects this row too.
+    /// reference set anyway, so a column would be a second source of truth for something already known
+    /// from Parties. Editing the party on Stage 1 therefore corrects the derived row too.
     ///
-    /// Reuses the existing row that already carries the name where possible, so an officer who has
-    /// filled in mobile and address does not lose that work on the next visit.
-    ///
-    /// No Co-Applicant, or a blank name, and this does nothing at all — Reference Details then
-    /// behaves exactly as it always has.
+    /// Reuses the row that already carries the name where possible, and only ever fills a BLANK field —
+    /// so any mobile, address or more precise relationship ("Co-Applicant · brother") the officer typed
+    /// is kept. A missing party, or a blank name, contributes nothing.
     /// </remarks>
-    private async Task ApplyCoApplicantReferenceAsync(LosDbContext db)
+    private async Task ApplyPartyReferencesAsync(LosDbContext db)
     {
-        var coApplicantName = await db.Parties.AsNoTracking()
-            .Where(p => p.ApplicationId == ApplicationId && p.PartyType == CoApplicantPartyType)
-            .Select(p => p.FullName)
-            .FirstOrDefaultAsync();
-
-        if (string.IsNullOrWhiteSpace(coApplicantName))
+        // Guarantor first, Co-Applicant last: each is inserted at the top, so after the loop the
+        // Co-Applicant leads and the Guarantor follows.
+        foreach (var (partyType, relationship) in new[]
+                 {
+                     (GuarantorPartyType, "Guarantor"),
+                     (CoApplicantPartyType, "Co-Applicant"),
+                 })
         {
-            return;
+            var party = await db.Parties.AsNoTracking()
+                .Where(p => p.ApplicationId == ApplicationId && p.PartyType == partyType)
+                .Select(p => new { p.FullName, p.Mobile, p.Address1, p.Address2, p.City })
+                .FirstOrDefaultAsync();
+
+            if (party is null || string.IsNullOrWhiteSpace(party.FullName))
+            {
+                continue;
+            }
+
+            var name = party.FullName.Trim();
+
+            var derived = _references.FirstOrDefault(r =>
+                              string.Equals(r.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase))
+                          ?? _references.FirstOrDefault(r => !r.HasAnyData)
+                          ?? AddReferenceRow();
+
+            derived.Name = name;
+            derived.IsDerived = true;
+
+            if (string.IsNullOrWhiteSpace(derived.Relationship))
+            {
+                derived.Relationship = relationship;
+            }
+
+            if (string.IsNullOrWhiteSpace(derived.Mobile) && !string.IsNullOrWhiteSpace(party.Mobile))
+            {
+                derived.Mobile = party.Mobile;
+            }
+
+            if (string.IsNullOrWhiteSpace(derived.Address))
+            {
+                var address = string.Join(", ", new[] { party.Address1, party.Address2, party.City }
+                    .Where(part => !string.IsNullOrWhiteSpace(part)));
+                if (address.Length > 0)
+                {
+                    derived.Address = address;
+                }
+            }
+
+            // The derived row leads: it is a reference the system already vouches for.
+            _references.Remove(derived);
+            _references.Insert(0, derived);
         }
+    }
 
-        var derived = _references.FirstOrDefault(r =>
-                          string.Equals(r.Name?.Trim(), coApplicantName.Trim(), StringComparison.OrdinalIgnoreCase))
-                      ?? _references.FirstOrDefault(r => !r.HasAnyData)
-                      ?? _references[0];
-
-        derived.Name = coApplicantName;
-        derived.IsDerived = true;
-
-        // Only stamped when blank, so an officer who recorded a more precise relationship
-        // ("Co-Applicant · brother") keeps it.
-        if (string.IsNullOrWhiteSpace(derived.Relationship))
-        {
-            derived.Relationship = "Co-Applicant";
-        }
-
-        // The derived row leads: it is the one reference the system vouches for.
-        _references.Remove(derived);
-        _references.Insert(0, derived);
+    private ReferenceForm AddReferenceRow()
+    {
+        var row = new ReferenceForm();
+        _references.Add(row);
+        return row;
     }
 
     private void RemoveReference(int index)

@@ -1,3 +1,4 @@
+@page "/settings"
 @page "/company-setup"
 @using System.ComponentModel.DataAnnotations
 @using LosLms.Components.Shared
@@ -13,14 +14,14 @@
    component for Staff and renders the access-denied card in Routes.razor instead — none of the code
    below ever runs for them, so there is nothing to bypass by typing the URL. *@
 
-<PageTitle>Company Setup · LOS/LMS</PageTitle>
+<PageTitle>Settings · LOS/LMS</PageTitle>
 
 <div class="company-setup">
     <div class="company-setup-card">
 
         <div class="setup-header">
             <div>
-                <span class="setup-eyebrow">Company Setup</span>
+                <span class="setup-eyebrow">Settings</span>
                 <h1 class="setup-title">@(_company?.Name ?? "Loading…")</h1>
             </div>
             <a class="setup-back" href="/applications">← Applications</a>
@@ -263,7 +264,32 @@
                 <VehicleCapsTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
             }
 
-            @* ---------- Tab 5: User management ---------- *@
+            @* ---------- Editable dropdown lists (one table, three kinds) ---------- *@
+            @if (_activeTab == SourcingTab)
+            {
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.SourcingChannel"
+                           Title="DSA / sourcing channels" ItemNoun="sourcing channel"
+                           Description="The options shown in the DSA / sourcing-channel dropdown on Loan & Security."
+                           OnSaved="ShowToastAsync" />
+            }
+
+            @if (_activeTab == SchemeTab)
+            {
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.Scheme"
+                           Title="Loan schemes" ItemNoun="scheme"
+                           Description="The options shown in the Scheme dropdown on Loan & Security."
+                           OnSaved="ShowToastAsync" />
+            }
+
+            @if (_activeTab == RcuVendorTab)
+            {
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.RcuVendor"
+                           Title="RCU vendors" ItemNoun="vendor"
+                           Description="The agencies shown in the Vendor dropdown on Reports (RCU)."
+                           OnSaved="ShowToastAsync" />
+            }
+
+            @* ---------- Tab: User management ---------- *@
             @if (_activeTab == UsersTab)
             {
                 <UsersTab OnSaved="ShowToastAsync" />
@@ -277,10 +303,13 @@
     private const string BranchesTab = "Branches";
     private const string PolicyTab = "Policy Thresholds";
     private const string VehicleTab = "Vehicle Loan Caps";
+    private const string SourcingTab = "Sourcing Channels";
+    private const string SchemeTab = "Schemes";
+    private const string RcuVendorTab = "RCU Vendors";
     private const string UsersTab = "User Management";
 
     private static readonly string[] Tabs =
-        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, UsersTab };
+        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, RcuVendorTab, UsersTab };
 
     private string _activeTab = ProfileTab;
     private Company? _company;

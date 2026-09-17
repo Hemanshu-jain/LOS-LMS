@@ -64,7 +64,7 @@ else
             <AuthorizeView Roles="@TenantContext.AdminRoles" Context="admin">
                 <Authorized>
                     <a class="app-nav-link" href="/admin/inbox">Admin Inbox</a>
-                    <a class="app-nav-link" href="/company-setup">Company Setup</a>
+                    <a class="app-nav-link" href="/settings">Settings</a>
                 </Authorized>
             </AuthorizeView>
 
@@ -184,6 +184,7 @@ else
         // has no company and is exempt; so are the /account and /company-setup pages themselves.
         var isSuperAdmin = user.IsInRole(TenantContext.SuperAdminRole);
         var setupExempt = relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase)
+            || relative.StartsWith("settings", StringComparison.OrdinalIgnoreCase)
             || relative.StartsWith("company-setup", StringComparison.OrdinalIgnoreCase);
 
         if (!isSuperAdmin
@@ -200,7 +201,7 @@ else
 
             if (!setupExempt && !await CompanySetupState.IsCompleteAsync(db, companyId))
             {
-                Navigation.NavigateTo("/company-setup", forceLoad: true);
+                Navigation.NavigateTo("/settings", forceLoad: true);
             }
         }
     }

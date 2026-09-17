@@ -21,8 +21,8 @@
            make/model/year, so re-importing a corrected file simply updates the caps it changed. *@
         <div class="setup-import">
             <button type="button" class="add-row-button" @onclick="DownloadTemplateAsync">⬇ Download CSV template</button>
-            <label class="setup-import-file">
-                <span>Import (.csv):</span>
+            <label class="upload-button">
+                ⬆ Import CSV
                 <InputFile OnChange="ImportAsync" accept=".csv,text/csv" />
             </label>
         </div>

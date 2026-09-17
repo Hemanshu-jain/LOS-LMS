@@ -108,7 +108,7 @@
             await SignInManager.SignInAsync(user, isPersistent: false);
         }
 
-        Navigation.NavigateTo("/company-setup", forceLoad: true);
+        Navigation.NavigateTo("/settings", forceLoad: true);
     }
 
     private sealed class SetupInput

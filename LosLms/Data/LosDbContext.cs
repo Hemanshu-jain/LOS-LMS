@@ -49,6 +49,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<VehicleLoanCap> VehicleLoanCaps => Set<VehicleLoanCap>();
 
+    public DbSet<LookupValue> LookupValues => Set<LookupValue>();
+
     public DbSet<Application> Applications => Set<Application>();
 
     public DbSet<Party> Parties => Set<Party>();
@@ -795,6 +797,21 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<LookupValue>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+
+            // One value per name per kind per company — the list is also the dropdown source, so a
+            // duplicate would render twice. Kind is in the key because the same name could legitimately
+            // exist under two different kinds.
+            entity.HasIndex(l => new { l.CompanyId, l.Kind, l.Name }).IsUnique();
+
+            entity.HasOne(l => l.Company)
+                .WithMany()
+                .HasForeignKey(l => l.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<AdminRequest>(entity =>
         {
             entity.ToTable("AdminRequest");
@@ -848,6 +865,9 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
         modelBuilder.Entity<VehicleLoanCap>()
             .HasQueryFilter(v => _isSuperAdmin || v.CompanyId == _companyId);
+
+        modelBuilder.Entity<LookupValue>()
+            .HasQueryFilter(l => _isSuperAdmin || l.CompanyId == _companyId);
 
         // The one deliberate exception, and it is narrow: when nobody is signed in the user filter is
         // open, because Identity's own sign-in path calls FindByEmailAsync on this very context before

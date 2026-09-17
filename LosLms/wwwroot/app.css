@@ -178,6 +178,45 @@ input[type=password]::-ms-clear { display: none; }
 .auth-reveal.is-revealed .reveal-eye { display: none; }
 .auth-reveal.is-revealed .reveal-eye-off { display: inline-block; }
 
+/* ---------------------------------------------------------------------------
+   File uploads — one consistent control everywhere.
+
+   Every file picker in the app is a styled <label> that wraps a hidden <InputFile>, so the browser's
+   raw "Choose File" button never shows. The stage screens carry component-scoped copies of these
+   rules; this is the global definition so Settings (which has no scoped CSS) and any label that only
+   set the class — like Post-sanction's dropzones — get the same look and the same hidden native input.
+   Global CSS reaches the <input> InputFile renders without needing ::deep.
+   --------------------------------------------------------------------------- */
+.upload-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    color: #3d3d3d;
+    background: #ebebeb;
+    border: 1px solid #9e9e9e;
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.upload-button:hover { background: #e0e0e0; }
+
+.upload-button input[type="file"],
+.dropzone input[type="file"],
+.other-target input[type="file"],
+.setup-import-file input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* First-run "create your administrator account" prompt on the sign-in page. */
 .auth-setup-prompt {
     margin-bottom: 16px;
