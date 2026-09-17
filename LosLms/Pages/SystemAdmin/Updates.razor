@@ -15,151 +15,135 @@
    confirmation) signals the watchdog to swap it in. The app never overwrites its own running binaries;
    the watchdog does that, and rolls back if anything fails. *@
 
-<PageTitle>System Updates · LOS/LMS</PageTitle>
+<PageTitle>System · LOS/LMS</PageTitle>
 
-<div class="updates-page">
+<div class="sys-page">
+    <div class="sys-shell">
 
-    @* ---------- Your app address ---------- *@
-    <div class="updates-card">
-        <div class="updates-head">
+        <header class="sys-header">
             <div>
-                <span class="updates-eyebrow">Your app</span>
-                <h1 class="updates-title">App address</h1>
+                <span class="sys-eyebrow">System</span>
+                <h1 class="sys-title">System &amp; updates</h1>
             </div>
-            <a class="updates-back" href="/applications">← Applications</a>
-        </div>
+            <a class="sys-back" href="/applications">← Applications</a>
+        </header>
 
-        <p class="updates-current">
-            This is where your staff sign in. It is fixed — share it with them once and it never changes.
-        </p>
-
-        @if (!string.IsNullOrWhiteSpace(_publicUrl))
-        {
-            <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
-                <input class="field-input" style="flex:1; min-width:240px;" readonly value="@_publicUrl"
-                       @onfocus="SelectAllAsync" @ref="_urlInput" />
-                <button type="button" class="updates-button" @onclick="CopyUrlAsync">
-                    @(_copied ? "Copied ✓" : "Copy")
+        @* ---------- Update status: the hero ---------- *@
+        <section class="sys-status sys-status--@HeroTone" aria-live="polite">
+            <div class="sys-status-row">
+                <span class="sys-status-glyph" aria-hidden="true">@HeroGlyph</span>
+                <div class="sys-status-copy">
+                    <span class="sys-status-headline">@HeroHeadline</span>
+                    <span class="sys-status-sub">
+                        Running version <strong>@_currentVersion</strong>@(LatestSuffix)
+                    </span>
+                </div>
+                <button type="button" class="sys-btn" disabled="@_busy" @onclick="CheckAsync">
+                    @(_checking ? "Checking…" : "Check now")
                 </button>
-                <a class="updates-button" href="@_publicUrl" target="_blank" rel="noopener noreferrer">Open</a>
             </div>
-        }
-        else
-        {
-            <p class="updates-message" role="status">
-                This machine is running on the local network only — no public address is set for it yet.
-            </p>
-        }
-    </div>
 
-    @* ---------- Subscription ---------- *@
-    <div class="updates-card">
-        <div class="updates-head">
-            <div>
-                <span class="updates-eyebrow">Subscription</span>
-                <h1 class="updates-title">Licence</h1>
-            </div>
-        </div>
-        <p class="updates-current">@SubscriptionText</p>
-    </div>
-
-    @* ---------- Software updates ---------- *@
-    <div class="updates-card">
-        <div class="updates-head">
-            <div>
-                <span class="updates-eyebrow">System</span>
-                <h1 class="updates-title">Software updates</h1>
-            </div>
-            <a class="updates-back" href="/applications">← Applications</a>
-        </div>
-
-        <p class="updates-current">
-            Running version <strong>@_currentVersion</strong>
-        </p>
-
-        <div class="updates-actions">
-            <button type="button" class="updates-button" disabled="@_busy" @onclick="CheckAsync">
-                @(_checking ? "Checking…" : "Check now")
-            </button>
-        </div>
-
-        @if (_message is not null)
-        {
-            <p class="updates-message" role="status">@_message</p>
-        }
-
-        @if (_result is not null)
-        {
-            @if (!_result.Checked)
+            @if (_result is { Checked: false })
             {
-                <p class="updates-failure" role="alert">Couldn't check for updates — @_result.FailureReason</p>
+                <p class="sys-inline sys-inline--danger" role="alert">@_result.FailureReason</p>
             }
-            else if (!_result.UpdateAvailable)
-            {
-                <p class="updates-uptodate" role="status">
-                    You're up to date. Latest release is <strong>@_result.LatestTag</strong>.
-                </p>
-            }
-            else
-            {
-                <div class="updates-available">
-                    <h2 class="updates-available-title">
-                        Update available: <strong>@_result.LatestTag</strong>
-                    </h2>
 
+            @if (_message is not null)
+            {
+                <p class="sys-inline" role="status">@_message</p>
+            }
+
+            @* ---------- Update-available flow ---------- *@
+            @if (_result is { Checked: true, UpdateAvailable: true })
+            {
+                <div class="sys-update">
                     @if (!string.IsNullOrWhiteSpace(_result.ReleaseNotes))
                     {
-                        <div class="updates-notes">
-                            <span class="updates-notes-label">What's new</span>
-                            <pre class="updates-notes-body">@_result.ReleaseNotes</pre>
+                        <div class="sys-notes">
+                            <span class="sys-notes-label">What's new in @_result.LatestTag</span>
+                            <pre class="sys-notes-body">@_result.ReleaseNotes</pre>
                         </div>
                     }
 
                     @if (_result.AssetDownloadUrl is null)
                     {
-                        <p class="updates-failure" role="alert">
+                        <p class="sys-inline sys-inline--danger" role="alert">
                             This release has no downloadable .zip build attached, so it can't be applied
                             automatically. Attach the publish.ps1 artifact to the GitHub Release.
                         </p>
                     }
                     else if (_downloadedZip is null)
                     {
-                        <button type="button" class="updates-button is-primary" disabled="@_busy" @onclick="DownloadAsync">
+                        <button type="button" class="sys-btn is-primary" disabled="@_busy" @onclick="DownloadAsync">
                             @(_downloading ? "Downloading…" : $"Download update ({FormatSize(_result.AssetSize)})")
+                        </button>
+                    }
+                    else if (!_confirmApply)
+                    {
+                        <p class="sys-inline sys-inline--ok" role="status">Downloaded and ready to apply.</p>
+                        <button type="button" class="sys-btn is-danger" @onclick="() => _confirmApply = true">
+                            Apply @_result.LatestTag now…
                         </button>
                     }
                     else
                     {
-                        <p class="updates-downloaded" role="status">
-                            Downloaded — ready to apply. Staged at <code>@_downloadedZip</code>.
-                        </p>
-
-                        @if (!_confirmApply)
-                        {
-                            <button type="button" class="updates-button is-danger" @onclick="() => _confirmApply = true">
-                                Apply now…
-                            </button>
-                        }
-                        else
-                        {
-                            <div class="updates-confirm" role="alertdialog">
-                                <p>
-                                    This signals the watchdog to stop the server, swap in @_result.LatestTag,
-                                    and restart. Branch staff will be briefly disconnected. If the swap fails,
-                                    the watchdog restores the current version automatically. Continue?
-                                </p>
-                                <div class="updates-confirm-actions">
-                                    <button type="button" class="updates-button" @onclick="() => _confirmApply = false">Cancel</button>
-                                    <button type="button" class="updates-button is-danger" disabled="@_busy" @onclick="ApplyAsync">
-                                        Yes, apply @_result.LatestTag
-                                    </button>
-                                </div>
+                        <div class="sys-confirm" role="alertdialog" aria-label="Confirm update">
+                            <p>
+                                This stops the server, swaps in <strong>@_result.LatestTag</strong>, and restarts.
+                                Branch staff are briefly disconnected. If the swap fails, the watchdog restores the
+                                current version automatically.
+                            </p>
+                            <div class="sys-confirm-actions">
+                                <button type="button" class="sys-btn" @onclick="() => _confirmApply = false">Cancel</button>
+                                <button type="button" class="sys-btn is-danger" disabled="@_busy" @onclick="ApplyAsync">
+                                    Yes, apply @_result.LatestTag
+                                </button>
                             </div>
-                        }
+                        </div>
                     }
                 </div>
             }
-        }
+        </section>
+
+        @* ---------- Supporting facts ---------- *@
+        <div class="sys-grid">
+
+            <section class="sys-card">
+                <span class="sys-card-label">Subscription</span>
+                <div class="sys-card-head">
+                    <h2 class="sys-card-title">Licence</h2>
+                    <span class="sys-pill sys-pill--@LicenceTone">@LicenceBadge</span>
+                </div>
+                <p class="sys-card-body">@SubscriptionText</p>
+            </section>
+
+            <section class="sys-card">
+                <span class="sys-card-label">Your app</span>
+                <h2 class="sys-card-title">App address</h2>
+                <p class="sys-card-body">
+                    Where your staff sign in. It is fixed — share it once and it never changes.
+                </p>
+
+                @if (!string.IsNullOrWhiteSpace(_publicUrl))
+                {
+                    <div class="sys-address">
+                        <input class="sys-address-field" readonly value="@_publicUrl"
+                               @onfocus="SelectAllAsync" @ref="_urlInput" />
+                        <button type="button" class="sys-btn" @onclick="CopyUrlAsync">
+                            @(_copied ? "Copied ✓" : "Copy")
+                        </button>
+                        <a class="sys-btn" href="@_publicUrl" target="_blank" rel="noopener noreferrer">Open</a>
+                    </div>
+                }
+                else
+                {
+                    <p class="sys-inline" role="status">
+                        This machine is on the local network only — no public address is set yet.
+                    </p>
+                }
+            </section>
+
+        </div>
     </div>
 </div>
 
@@ -184,6 +168,51 @@
     };
 
     private string ClientSuffix => string.IsNullOrEmpty(License.Client) ? "" : $" for {License.Client}";
+
+    // ---- Presentation state (tone drives the semantic colour; no new behaviour) ----
+
+    private string HeroTone =>
+        _result is null || _checking ? "neutral"
+        : !_result.Checked ? "danger"
+        : _result.UpdateAvailable ? "info"
+        : "ok";
+
+    private string HeroGlyph => HeroTone switch
+    {
+        "ok" => "✓",
+        "info" => "↑",
+        "danger" => "!",
+        _ => "⟳",
+    };
+
+    private string HeroHeadline =>
+        _checking ? "Checking for updates…"
+        : _result is null ? "Ready to check"
+        : !_result.Checked ? "Couldn't check for updates"
+        : _result.UpdateAvailable ? $"Update available — {_result.LatestTag}"
+        : "You're on the latest version";
+
+    // The "· latest is vX" tail, only when a successful check has something to compare against.
+    private string LatestSuffix =>
+        _result is { Checked: true, LatestTag: { Length: > 0 } tag } && !_result.UpdateAvailable
+            ? $" · latest release {tag}"
+            : "";
+
+    private string LicenceTone => License.State switch
+    {
+        LicenseState.Licensed => "ok",
+        LicenseState.ExpiringSoon => "warn",
+        LicenseState.Expired => "danger",
+        _ => "neutral",
+    };
+
+    private string LicenceBadge => License.State switch
+    {
+        LicenseState.Licensed => "Active",
+        LicenseState.ExpiringSoon => "Expiring soon",
+        LicenseState.Expired => "Expired",
+        _ => "Dev build",
+    };
 
     private string StagingFolder =>
         Path.Combine(Environment.ContentRootPath, Config["Updates:StagingFolder"] ?? "updates");

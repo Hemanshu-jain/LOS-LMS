@@ -829,43 +829,104 @@ input[type=password]::-ms-clear { display: none; }
     line-height: 1.5;
 }
 
-/* ---- System Updates page ---- */
-.updates-page { padding: 32px; display: flex; justify-content: center; }
-.updates-card {
+/* ---- System & updates page ----
+   Status-forward: the update state is a coloured hero, and licence + app address are supporting
+   cards. Each tone (ok / info / warn / danger / neutral) sets four custom properties the components
+   read, so one modifier class recolours the accent, tint, and status glyph together. */
+.sys-page { padding: 32px 16px; display: flex; justify-content: center; }
+
+.sys-shell {
     width: 100%;
-    max-width: 720px;
-    background: #fff;
+    max-width: 760px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.sys-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.sys-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7d8695; }
+.sys-title { margin: 3px 0 0; font-size: 24px; color: #1a1f29; }
+.sys-back { font-size: 13px; color: #1f3a5f; text-decoration: none; white-space: nowrap; }
+.sys-back:hover { text-decoration: underline; }
+
+/* Tone tokens — the default is neutral; each modifier overrides them. */
+.sys-status {
+    --accent: #7d8695; --tint: #f6f7f9; --glyph-bg: #e6e9ee; --glyph-fg: #5b6470;
+    background: var(--tint);
     border: 1px solid #e2e5ea;
-    border-radius: 8px;
-    padding: 24px 28px;
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    padding: 20px 22px;
 }
-.updates-head { display: flex; align-items: flex-start; justify-content: space-between; }
-.updates-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #7d8695; }
-.updates-title { margin: 4px 0 0; font-size: 22px; color: #1a1f29; }
-.updates-back { font-size: 13px; color: #1f3a5f; text-decoration: none; }
-.updates-current { margin: 14px 0 18px; font-size: 13px; color: #3a4150; }
-.updates-source { color: #7d8695; }
-.updates-actions { margin-bottom: 12px; }
-.updates-button {
+.sys-status--ok     { --accent: #2f7d3a; --tint: #f1f8f2; --glyph-bg: #d7ebd9; --glyph-fg: #1f5c2a; }
+.sys-status--info   { --accent: #1f3a5f; --tint: #eef2f8; --glyph-bg: #d6e2f2; --glyph-fg: #1f3a5f; }
+.sys-status--warn   { --accent: #b07a1e; --tint: #fdf7ec; --glyph-bg: #f2e2c2; --glyph-fg: #8a5a1f; }
+.sys-status--danger { --accent: #8a1f1f; --tint: #fdf3f3; --glyph-bg: #f4d6d6; --glyph-fg: #8a1f1f; }
+
+.sys-status-row { display: flex; align-items: center; gap: 14px; }
+.sys-status-glyph {
+    flex: 0 0 auto;
+    width: 40px; height: 40px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--glyph-bg); color: var(--glyph-fg);
+    font-size: 20px; font-weight: 700; line-height: 1;
+}
+.sys-status-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sys-status-headline { font-size: 16px; font-weight: 700; color: #1a1f29; }
+.sys-status-sub { font-size: 12.5px; color: #5b6470; }
+.sys-status-sub strong { color: #3a4150; }
+
+.sys-btn {
     height: 36px; padding: 0 16px; border: 1px solid #c3c9d2; background: #fff;
-    color: #1a1f29; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;
+    color: #1a1f29; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+    text-decoration: none;
 }
-.updates-button.is-primary { background: #1f3a5f; border-color: #1f3a5f; color: #fff; }
-.updates-button.is-danger { background: #8a1f1f; border-color: #8a1f1f; color: #fff; }
-.updates-button:disabled { opacity: 0.55; cursor: not-allowed; }
-.updates-message { font-size: 13px; color: #3a4150; }
-.updates-failure { font-size: 13px; color: #8a1f1f; }
-.updates-uptodate { font-size: 13px; color: #1f5c2a; }
-.updates-available { margin-top: 12px; border-top: 1px solid #eceef1; padding-top: 16px; }
-.updates-available-title { font-size: 16px; color: #1a1f29; margin: 0 0 10px; }
-.updates-notes { margin-bottom: 14px; }
-.updates-notes-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #7d8695; }
-.updates-notes-body {
-    margin: 6px 0 0; padding: 10px 12px; background: #f4f6f9; border: 1px solid #dde2e9;
-    border-radius: 4px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto;
+.sys-btn:hover { background: #f2f4f7; }
+.sys-btn.is-primary { background: #1f3a5f; border-color: #1f3a5f; color: #fff; }
+.sys-btn.is-primary:hover { background: #244675; }
+.sys-btn.is-danger { background: #8a1f1f; border-color: #8a1f1f; color: #fff; }
+.sys-btn.is-danger:hover { background: #a02525; }
+.sys-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.sys-inline { margin: 12px 0 0; font-size: 12.5px; color: #3a4150; }
+.sys-inline--danger { color: #8a1f1f; }
+.sys-inline--ok { color: #1f5c2a; }
+
+.sys-update { margin-top: 16px; border-top: 1px solid rgba(0,0,0,0.08); padding-top: 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.sys-notes { width: 100%; }
+.sys-notes-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #7d8695; }
+.sys-notes-body {
+    margin: 6px 0 0; padding: 10px 12px; background: #fff; border: 1px solid #dde2e9;
+    border-radius: 6px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word;
+    max-height: 260px; overflow: auto;
 }
-.updates-downloaded { font-size: 13px; color: #1f5c2a; }
-.updates-downloaded code { font-size: 12px; word-break: break-all; }
-.updates-confirm { margin-top: 12px; padding: 12px 14px; background: #fdf2f2; border: 1px solid #e6b8b8; border-radius: 4px; }
-.updates-confirm p { margin: 0 0 10px; font-size: 13px; color: #5b2020; }
-.updates-confirm-actions { display: flex; gap: 8px; }
+.sys-confirm { width: 100%; padding: 12px 14px; background: #fdf2f2; border: 1px solid #e6b8b8; border-radius: 6px; }
+.sys-confirm p { margin: 0 0 10px; font-size: 12.5px; color: #5b2020; }
+.sys-confirm-actions { display: flex; gap: 8px; }
+
+/* Supporting cards */
+.sys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.sys-card {
+    background: #fff; border: 1px solid #e2e5ea; border-radius: 10px; padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.sys-card-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #7d8695; }
+.sys-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sys-card-title { margin: 0; font-size: 17px; color: #1a1f29; }
+.sys-card-body { margin: 4px 0 0; font-size: 12.5px; color: #3a4150; line-height: 1.5; }
+
+.sys-pill {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+    background: #e6e9ee; color: #5b6470;
+}
+.sys-pill--ok     { background: #d7ebd9; color: #1f5c2a; }
+.sys-pill--warn   { background: #f2e2c2; color: #8a5a1f; }
+.sys-pill--danger { background: #f4d6d6; color: #8a1f1f; }
+
+.sys-address { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.sys-address-field {
+    flex: 1; min-width: 200px; height: 36px; padding: 0 10px;
+    border: 1px solid #c3c9d2; border-radius: 6px; font-size: 13px; color: #1a1f29; background: #f9fafb;
+}
