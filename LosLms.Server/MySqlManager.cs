@@ -151,9 +151,22 @@ internal sealed class MySqlManager
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"MySQL initialisation failed (exit {process.ExitCode}). Details:\n{stderr}");
+                $"MySQL initialisation failed (exit {process.ExitCode}). Details:\n{stderr}{MissingRuntimeHint(process.ExitCode)}");
         }
     }
+
+    // 0xC0000135 = STATUS_DLL_NOT_FOUND: mysqld.exe could not load a DLL it needs, so it exits before
+    // writing any stderr (hence a blank "Details:"). On a clean PC this is the Visual C++ Redistributable
+    // — the runtime our app-local DLLs in mysql\bin normally cover, but this makes the failure legible if
+    // an older build (without them) ever lands on such a machine.
+    private const int StatusDllNotFound = unchecked((int)0xC0000135);
+
+    private static string MissingRuntimeHint(int exitCode) =>
+        exitCode == StatusDllNotFound
+            ? "\n\nThis almost always means the Microsoft Visual C++ Redistributable (x64) is not "
+              + "installed on this PC, which the database engine needs. Install it from "
+              + "https://aka.ms/vs/17/release/vc_redist.x64.exe, then restart and open LOS/LMS again."
+            : string.Empty;
 
     // A one-shot SQL script mysqld runs, as a privileged internal user, on its first normal start.
     // Doing the bootstrap this way avoids the Windows "localhost vs 127.0.0.1" auth mismatch that a
@@ -233,7 +246,8 @@ internal sealed class MySqlManager
             if (_mysqld is { HasExited: true })
             {
                 throw new InvalidOperationException(
-                    $"mysqld exited unexpectedly during startup (code {_mysqld.ExitCode}). See the log.");
+                    $"mysqld exited unexpectedly during startup (code {_mysqld.ExitCode}). See the log."
+                    + MissingRuntimeHint(_mysqld.ExitCode));
             }
 
             try

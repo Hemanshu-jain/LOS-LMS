@@ -115,6 +115,28 @@ Write-Host "Staging bundled MySQL and cloudflared..."
 Copy-Item -Path $deps.MysqlDir     -Destination (Join-Path $appFolder 'mysql') -Recurse -Force
 Copy-Item -Path $deps.Cloudflared  -Destination (Join-Path $appFolder 'cloudflared.exe') -Force
 
+# ---- Bundle the Visual C++ runtime next to mysqld.exe so a clean client PC can start the database. ----
+# A fresh Windows PC that has never had the VC++ Redistributable installed cannot load mysqld.exe: it
+# exits with 0xC0000135 (DLL not found) and the app shows "The database couldn't start". Windows searches
+# the executable's own folder for DLLs first, so copying these here (app-local deployment, which Microsoft
+# permits) makes MySQL self-sufficient — no separate installer, no admin rights, zero-setup preserved.
+$mysqlBin = Join-Path $appFolder 'mysql\bin'
+$vcDlls   = 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'
+$sys32    = Join-Path $env:WINDIR 'System32'
+$vcCopied = 0
+foreach ($dll in $vcDlls) {
+    $src = Join-Path $sys32 $dll
+    if (Test-Path $src) { Copy-Item $src (Join-Path $mysqlBin $dll) -Force; $vcCopied++ }
+}
+# vcruntime140.dll + vcruntime140_1.dll + msvcp140.dll are the three mysqld 8.0 hard-depends on; the _1/_2
+# msvcp files are version-dependent extras. Fewer than the three essentials means the build host itself is
+# missing the runtime — fail loudly rather than ship a package that repeats the client's error.
+if ($vcCopied -lt 3) {
+    throw "VC++ runtime: only $vcCopied of the required DLLs were found in $sys32. Install the " +
+          "Microsoft Visual C++ Redistributable (x64) on THIS build machine, then re-run publish."
+}
+Write-Host "VC++ runtime: bundled $vcCopied DLL(s) into mysql\bin (clean-PC fix for 0xC0000135)."
+
 # ---- Optional operator config template + read-me, inside app\ (top level stays just the exe + app\) ----
 Copy-Item -Path (Join-Path $root 'server-config.example.json') -Destination (Join-Path $appFolder 'server-config.example.json') -Force
 Copy-Item -Path (Join-Path $root 'READ-ME-FIRST.txt')          -Destination (Join-Path $appFolder 'READ ME FIRST.txt') -Force
