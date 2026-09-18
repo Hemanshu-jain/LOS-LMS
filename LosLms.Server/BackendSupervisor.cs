@@ -12,7 +12,11 @@ namespace LosLms.Server;
 /// </summary>
 internal sealed class BackendSupervisor
 {
-    private static readonly TimeSpan HttpReadyTimeout = TimeSpan.FromSeconds(120);
+    // Generous on purpose: the FIRST run initialises a fresh MySQL data directory (~50s on its own),
+    // then applies every migration and seeds on a cold database — which on a loaded machine runs well
+    // past two minutes before Kestrel binds. Later runs reuse the warmed database and come up in
+    // seconds, so this ceiling only ever matters once.
+    private static readonly TimeSpan HttpReadyTimeout = TimeSpan.FromSeconds(300);
 
     // Preserved across an update swap: the operator's config and their data/uploaded PII.
     private static readonly string[] Preserve = { "appsettings.json", "App_Data" };
