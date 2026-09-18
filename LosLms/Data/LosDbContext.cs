@@ -720,6 +720,11 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
         {
             entity.HasKey(c => c.Id);
 
+            // The company code is the prefix of every application id, so it MUST be unique across
+            // companies. MySQL allows several NULLs under a unique index, so pre-existing rows added
+            // before the backfill coexist; once CompanyCodeSeeder has run, every row has a distinct code.
+            entity.HasIndex(c => c.Code).IsUnique();
+
             // No query filter. A company row is only ever fetched by the id in the caller's own claim,
             // and a SuperAdmin has to be able to enumerate every one of them.
 
@@ -746,6 +751,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
             {
                 Id = SeedCompanyId,
                 Name = string.Empty,
+                // A fixed, reserved code for the seed company so it never clashes with a generated one.
+                Code = "LOS",
                 SlaOverdueDays = 5,
                 FoirCapPct = 50m,
                 LtvCapPct = 85m,

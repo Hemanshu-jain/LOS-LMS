@@ -243,6 +243,10 @@ try
     // none — so those dropdowns are never empty after moving off the old hardcoded arrays. Idempotent.
     await LookupSeeder.SeedAsync(app.Services);
 
+    // Give every company a unique short code (the prefix of its application ids) — including any that
+    // existed before the code column, so their next new application is numbered under their own code.
+    await CompanyCodeSeeder.SeedAsync(app.Services);
+
     // One ready-to-use demo tenant for the public web instance — a company with a known login, a branch
     // and a few vehicle caps, so a visitor lands straight in a working (but empty) app. OFF unless
     // Seed:DemoTenant is set, which only the web build's config does; idempotent and never on for desktop.

@@ -74,9 +74,18 @@ public sealed class CompanyProvisioningService(
         int companyId;
         await using (var db = new LosDbContext(dbOptions, TenantContext.ForSeeding()))
         {
+            // A unique 3-letter code for this company, generated against every code already in use so
+            // it can never clash — it becomes the prefix of the company's application ids. The unique
+            // index on Company.Code is the hard backstop.
+            var takenCodes = await db.Companies
+                .Where(c => c.Code != null)
+                .Select(c => c.Code!.ToUpper())
+                .ToListAsync();
+
             var company = new Company
             {
                 Name = profile.Name.Trim(),
+                Code = CompanyCode.Generate(profile.Name, takenCodes.ToHashSet()),
                 ContactEmail = profile.ContactEmail.Trim(),
                 ContactPhone = profile.ContactPhone.Trim(),
                 Address = profile.Address.Trim(),

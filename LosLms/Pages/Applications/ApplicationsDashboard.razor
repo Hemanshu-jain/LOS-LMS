@@ -835,11 +835,11 @@
     {
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        var id = await NextApplicationIdAsync(db);
-
         // Auto-assign to whoever is creating it — the officer working a file is the one who started it.
         // They (or an admin) can reassign later from the dashboard drawer.
         await Tenant.EnsureLoadedAsync();
+
+        var id = await NextApplicationIdAsync(db, Tenant.CompanyId);
 
         // Branch is left unset. It used to be stamped with a hardcoded "Nashik West", which was
         // wrong the moment a second company existed and had branches of its own. The officer picks
@@ -869,17 +869,20 @@
     /// instant can collide; the fix is a database sequence or retry-on-duplicate-key, which is
     /// worth adding once this is genuinely multi-user rather than now.
     /// </remarks>
-    private static async Task<string> NextApplicationIdAsync(LosDbContext db)
+    private static async Task<string> NextApplicationIdAsync(LosDbContext db, int? companyId)
     {
-        var prefix = $"LN-{DateTime.UtcNow.Year}-";
+        // Each company's own unique code prefixes its application ids (e.g. KIS-2026-000001), so the
+        // number is sequential PER COMPANY yet globally unique — the differing prefix keeps two
+        // companies' ids apart, so there is no cross-tenant scan and no duplicate-key collision. Falls
+        // back to LOS only for a user with no company (a SuperAdmin), who does not create client files.
+        var code = companyId is { } id
+            ? await db.Companies.Where(c => c.Id == id).Select(c => c.Code).FirstOrDefaultAsync()
+            : null;
+        code = string.IsNullOrWhiteSpace(code) ? "LOS" : code.ToUpperInvariant();
 
-        // IgnoreQueryFilters is essential: Application.Id is a GLOBAL primary key, so its sequence has to
-        // be global too. Without this the tenant filter scopes the "highest so far" to the current
-        // company, and a second company restarts at 000001 and collides with another company's existing
-        // LN-<year>-000001 on insert (a duplicate-key crash). Reading only the max id string here leaks
-        // no other tenant's data — just the next free number.
+        var prefix = $"{code}-{DateTime.UtcNow.Year}-";
+
         var highest = await db.Applications
-            .IgnoreQueryFilters()
             .Where(a => a.Id.StartsWith(prefix))
             .OrderByDescending(a => a.Id)
             .Select(a => a.Id)

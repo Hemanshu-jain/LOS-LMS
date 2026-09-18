@@ -25,6 +25,17 @@ public class Company
     [MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Short unique company code (3 characters, derived from the name), used as the prefix of every
+    /// application id this company creates — e.g. "KIS" gives KIS-2026-000001. Because the code is
+    /// unique across companies (a unique index plus generation that avoids clashes), each company's
+    /// application numbering is segregated inside the key itself and can never collide with another's.
+    /// Nullable only so the column can be added to existing rows; a startup backfill fills any that are
+    /// missing, and every newly provisioned company is given one at creation.
+    /// </summary>
+    [MaxLength(3)]
+    public string? Code { get; set; }
+
     // ---- Profile ----
 
     [MaxLength(400)] public string? Address { get; set; }

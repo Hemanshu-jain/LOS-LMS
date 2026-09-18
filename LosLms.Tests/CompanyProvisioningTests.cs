@@ -116,6 +116,32 @@ public sealed class CompanyProvisioningTests : IDisposable
     }
 
     [Fact]
+    public async Task Provision_AssignsADistinctCodeToEachCompany()
+    {
+        using var scope = _provider.CreateScope();
+        var provisioning = scope.ServiceProvider.GetRequiredService<CompanyProvisioningService>();
+
+        // Same name on purpose — the codes must still differ (the second can't reuse the first's).
+        var a = await provisioning.ProvisionCompanyAsync(
+            new CompanyProfile("Kishore Finance", "k1@kis.test", "9000000010", "Addr"),
+            new AdminAccount("K1", "k1@kis.test", "Str0ng@Pass1"));
+        var b = await provisioning.ProvisionCompanyAsync(
+            new CompanyProfile("Kishore Finance", "k2@kis.test", "9000000011", "Addr"),
+            new AdminAccount("K2", "k2@kis.test", "Str0ng@Pass2"));
+
+        Assert.True(a.Succeeded);
+        Assert.True(b.Succeeded);
+
+        using var db = NewContext(SuperAdmin());
+        var codeA = db.Companies.Where(c => c.Id == a.CompanyId).Select(c => c.Code).Single();
+        var codeB = db.Companies.Where(c => c.Id == b.CompanyId).Select(c => c.Code).Single();
+
+        Assert.Equal("KIS", codeA);       // name-derived
+        Assert.Equal(3, codeB!.Length);
+        Assert.NotEqual(codeA, codeB);    // unique despite the identical name
+    }
+
+    [Fact]
     public async Task Provision_RejectsDuplicateEmail_WithoutCreatingCompany()
     {
         using var scope = _provider.CreateScope();
