@@ -36,6 +36,7 @@ internal sealed class BackendSupervisor
 
     private string _connectionString = "";
     private string _publicUrl = "";
+    private bool _webMode;
     private Process? _backend;
     private DateTime _backendStartedAt;
     private int _rapidFailures;
@@ -51,7 +52,8 @@ internal sealed class BackendSupervisor
     /// <summary>Raised when the backend crash-loops and the supervisor gives up, so the shell can say so.</summary>
     public event Action? BackendFailedPermanently;
 
-    public async Task StartAsync(string connectionString, string publicUrl, Action<string> progress, CancellationToken ct)
+    public async Task StartAsync(
+        string connectionString, string publicUrl, bool webMode, Action<string> progress, CancellationToken ct)
     {
         if (!File.Exists(Paths.BackendExe))
         {
@@ -61,6 +63,7 @@ internal sealed class BackendSupervisor
 
         _connectionString = connectionString;
         _publicUrl = publicUrl;
+        _webMode = webMode;
         // Fixed, not free-scanned: the named tunnel's hostname → http://localhost:5037 mapping (set once
         // in the Cloudflare dashboard) has to keep matching, so the backend must always bind the same
         // local port across restarts.
@@ -141,6 +144,13 @@ internal sealed class BackendSupervisor
         info.ArgumentList.Add("--urls");
         info.ArgumentList.Add(LocalUrl); // bind 127.0.0.1 only — the tunnel, not the LAN, carries remote users
         info.Environment["ConnectionStrings__LosDb"] = _connectionString;
+
+        // Public multi-tenant web instance: load appsettings.Web.json, which turns on self-service
+        // company registration and seeds the demo tenant. Absent for a normal client install.
+        if (_webMode)
+        {
+            info.Environment["ASPNETCORE_ENVIRONMENT"] = "Web";
+        }
 
         // The client's fixed public address, so the app can show "share this URL with your staff"
         // without the backend having to know how it was reached. Empty on a LAN-only host.

@@ -25,6 +25,15 @@ internal sealed class ServerConfig
     [JsonPropertyName("TunnelToken")]
     public string? TunnelToken { get; init; }
 
+    /// <summary>
+    /// Turns this host into the public multi-tenant web instance. The backend is started with
+    /// ASPNETCORE_ENVIRONMENT=Web, which switches on self-service company registration and the demo
+    /// tenant (see the app's appsettings.Web.json). Off by default, so a normal client install stays the
+    /// single-tenant desktop app it has always been.
+    /// </summary>
+    [JsonPropertyName("WebMode")]
+    public bool WebMode { get; init; }
+
     // Optional offsite backup target. When host/user/password are all set, the nightly database dump is
     // uploaded here after it is written locally.
     [JsonPropertyName("BackupFtpHost")] public string? BackupFtpHost { get; init; }
