@@ -79,6 +79,10 @@ builder.Services.AddSingleton<LicenseService>();
 // (masked, briefly revealed). Recoverable by design — see PasswordVault's own remarks for the trade-off.
 builder.Services.AddSingleton<PasswordVault>();
 
+// Which company each SuperAdmin is currently "acting as" (set from the company picker). Singleton +
+// single-server, like the notifier above; TenantContext reads it to scope the SuperAdmin to one company.
+builder.Services.AddSingleton<ActingCompanyStore>();
+
 builder.Services.AddScoped<TenantContext>();
 builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFactory>();
 
@@ -283,6 +287,15 @@ if (!app.Environment.IsDevelopment())
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
+
+// Without this, any error status with an empty body (a 404 from a mistyped URL, the 429 the rate
+// limiter returns, a 400, a 403) reaches the browser as a blank page — so the WebView2/Chrome host
+// paints its own "This page isn't working" screen and the product looks broken. Re-executing the
+// pipeline against /Error/{code} replaces that with our own branded, polite page while preserving the
+// original status code. Runs in every environment: these pages leak nothing, and it lets us preview
+// any of them by opening /Error/404, /Error/503, etc. directly. Unhandled 500s are handled separately
+// by UseExceptionHandler above (non-dev only, so developers still get the full stack trace).
+app.UseStatusCodePagesWithReExecute("/Error/{0}");
 
 // Plain HTTP on the LAN, no certificate — branch staff reach the one server by its local address.
 // No HTTPS redirect (it would only log a "failed to determine https port" warning every request).

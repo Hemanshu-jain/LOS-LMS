@@ -6,6 +6,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject UpdateNotificationService Updates
 @inject LicenseService License
+@inject TenantContext Tenant
 
 @* Subscription freeze. Once the licence has expired the whole app is paused — this replaces every
    screen with the renewal card. A SuperAdmin can paste a renewal key here; everyone else is told to
@@ -73,6 +74,13 @@ else
             <AuthorizeView Roles="@TenantContext.AdminRoles" Context="super">
                 <Authorized>
                     <a class="app-nav-link" href="/system/updates">System Updates</a>
+                </Authorized>
+            </AuthorizeView>
+
+            @* Vendor-only: jump back to the company picker to open a different company. *@
+            <AuthorizeView Roles="@TenantContext.SuperAdminRole" Context="sa">
+                <Authorized>
+                    <a class="app-nav-link" href="/companies">Switch company</a>
                 </Authorized>
             </AuthorizeView>
 
@@ -202,6 +210,24 @@ else
             if (!setupExempt && !await CompanySetupState.IsCompleteAsync(db, companyId))
             {
                 Navigation.NavigateTo("/settings", forceLoad: true);
+            }
+        }
+        else if (isSuperAdmin)
+        {
+            // A SuperAdmin acting as a company shows that company's name in the bar, so the vendor always
+            // knows which company they're inside. Not acting (browsing the picker) shows no chip.
+            await Tenant.EnsureLoadedAsync();
+            if (Tenant.ActingCompanyId is int actingId)
+            {
+                await using var db = await DbFactory.CreateDbContextAsync();
+                _companyName = await db.Companies
+                    .Where(c => c.Id == actingId)
+                    .Select(c => c.Name)
+                    .FirstOrDefaultAsync() ?? string.Empty;
+            }
+            else
+            {
+                _companyName = string.Empty;
             }
         }
     }

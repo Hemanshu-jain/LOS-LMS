@@ -1,0 +1,97 @@
+@page "/companies"
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject ActingCompanyStore Store
+@inject TenantContext Tenant
+@inject NavigationManager Nav
+
+<PageTitle>Companies · LOS/LMS</PageTitle>
+
+@* SuperAdmin landing: pick a company to open its dashboard. Choosing one scopes the whole app to that
+   company (TenantContext.ActingCompanyId), so every screen then shows only that company's data. *@
+
+<div class="sa-companies">
+    <div class="sa-head">
+        <h1>Companies</h1>
+        <p>Choose a company to open. You'll see its dashboard exactly as its own admins do.</p>
+    </div>
+
+    @if (_companies is null)
+    {
+        <p class="sa-muted">Loading…</p>
+    }
+    else if (_companies.Count == 0)
+    {
+        <p class="sa-muted">No companies yet.</p>
+    }
+    else
+    {
+        <div class="sa-grid">
+            @foreach (var c in _companies)
+            {
+                <button type="button" class="sa-card" @onclick="() => Open(c.Id)">
+                    <span class="sa-code">@c.Code</span>
+                    <span class="sa-name">@c.Name</span>
+                    <span class="sa-meta">@(c.ContactEmail ?? "—")</span>
+                    <span class="sa-open">Open dashboard →</span>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .sa-companies { max-width: 1000px; margin: 0 auto; padding: 32px 16px 64px; }
+    .sa-head h1 { font-size: 1.6rem; margin: 0 0 4px; }
+    .sa-head p { color: #5b6472; margin: 0 0 24px; }
+    .sa-muted { color: #5b6472; }
+    .sa-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+    .sa-card {
+        display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+        text-align: left; padding: 18px; border: 1px solid #e2e6ec; border-radius: 12px;
+        background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s;
+    }
+    .sa-card:hover { border-color: #1a1f29; box-shadow: 0 6px 20px rgba(26,31,41,.08); transform: translateY(-2px); }
+    .sa-card:focus-visible { outline: 2px solid #1a1f29; outline-offset: 2px; }
+    .sa-code {
+        font: 600 .72rem/1 ui-monospace, monospace; letter-spacing: .08em; color: #1a1f29;
+        background: #eef1f5; border-radius: 6px; padding: 5px 8px;
+    }
+    .sa-name { font-size: 1.1rem; font-weight: 600; color: #1a1f29; }
+    .sa-meta { font-size: .82rem; color: #5b6472; }
+    .sa-open { margin-top: 8px; font-size: .85rem; font-weight: 600; color: #1a1f29; }
+</style>
+
+@code {
+    private List<CompanyRow>? _companies;
+
+    private sealed record CompanyRow(int Id, string Name, string? Code, string? ContactEmail);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Blank seed company (name "") is the internal placeholder — never a real tenant, so hide it.
+        _companies = await db.Companies
+            .Where(c => c.Name != "")
+            .OrderBy(c => c.Name)
+            .Select(c => new CompanyRow(c.Id, c.Name, c.Code, c.ContactEmail))
+            .ToListAsync();
+    }
+
+    private void Open(int companyId)
+    {
+        if (!string.IsNullOrEmpty(Tenant.UserId))
+        {
+            Store.Set(Tenant.UserId, companyId);
+        }
+
+        // Full reload so a fresh circuit rebuilds TenantContext and picks up the acting company.
+        Nav.NavigateTo("/applications", forceLoad: true);
+    }
+}

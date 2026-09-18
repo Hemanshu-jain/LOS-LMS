@@ -187,7 +187,7 @@ public sealed class CompanyProvisioningTests : IDisposable
 
     private LosDbContext NewContext(ClaimsPrincipal user)
     {
-        var tenant = new TenantContext(new FakeAuthStateProvider(user), new HttpContextAccessor());
+        var tenant = new TenantContext(new FakeAuthStateProvider(user), new HttpContextAccessor(), new ActingCompanyStore());
         tenant.EnsureLoadedAsync().GetAwaiter().GetResult();
         return new LosDbContext(_options, tenant);
     }
@@ -195,7 +195,7 @@ public sealed class CompanyProvisioningTests : IDisposable
     private static TenantContext AnonymousTenant()
     {
         var tenant = new TenantContext(
-            new FakeAuthStateProvider(new ClaimsPrincipal(new ClaimsIdentity())), new HttpContextAccessor());
+            new FakeAuthStateProvider(new ClaimsPrincipal(new ClaimsIdentity())), new HttpContextAccessor(), new ActingCompanyStore());
         tenant.EnsureLoadedAsync().GetAwaiter().GetResult();
         return tenant;
     }

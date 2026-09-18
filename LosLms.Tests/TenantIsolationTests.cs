@@ -78,6 +78,21 @@ public sealed class TenantIsolationTests : IDisposable
         Assert.Equal(2, db.DocumentRemarks.Count());
     }
 
+    [Fact]
+    public void SuperAdmin_ActingAsCompany_IsScopedToThatCompanyOnly()
+    {
+        var store = new ActingCompanyStore();
+        store.Set("super", CompanyB); // the vendor picked company B in the company picker
+
+        var tenant = new TenantContext(new FakeAuthStateProvider(SuperAdmin()), new HttpContextAccessor(), store);
+        tenant.EnsureLoadedAsync().GetAwaiter().GetResult();
+        using var db = new LosDbContext(_options, tenant);
+
+        // Now scoped exactly like a company-B user — company A's rows are invisible, not merged in.
+        Assert.Equal(new[] { "A2" }, db.Applications.Select(a => a.Id).ToArray());
+        Assert.Equal("A2-remark", db.DocumentRemarks.Single().Text);
+    }
+
     /// <summary>
     /// The durable backstop: every tenant-owned table (anything with an ApplicationId, plus the
     /// DocumentRemark grandchild) must carry a query filter. A newly added child table that forgets one
@@ -124,7 +139,7 @@ public sealed class TenantIsolationTests : IDisposable
 
     private LosDbContext NewContext(ClaimsPrincipal user)
     {
-        var tenant = new TenantContext(new FakeAuthStateProvider(user), new HttpContextAccessor());
+        var tenant = new TenantContext(new FakeAuthStateProvider(user), new HttpContextAccessor(), new ActingCompanyStore());
         // The real factory calls this before handing out a context; the ctor snapshots the result.
         tenant.EnsureLoadedAsync().GetAwaiter().GetResult();
         return new LosDbContext(_options, tenant);

@@ -31,7 +31,10 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
         : base(options)
     {
         _companyId = tenant.CompanyId;
-        _isSuperAdmin = tenant.IsSuperAdmin;
+        // A SuperAdmin sees every company ONLY while not acting as one. The moment they pick a company
+        // (TenantContext.ActingCompanyId set, which also makes CompanyId that company), they are scoped to
+        // it exactly like a normal user — so every existing query filter narrows with no per-filter change.
+        _isSuperAdmin = tenant.IsSuperAdmin && tenant.ActingCompanyId is null;
         _isAdmin = tenant.IsAdmin;
         _hasUser = tenant.HasUser;
     }

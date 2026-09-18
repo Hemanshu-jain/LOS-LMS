@@ -9,6 +9,7 @@
 @inject LosLms.Services.TurnstileVerifier Turnstile
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.Extensions.Options.IOptions<LosLms.Services.WebOptions> WebOptions
+@inject LosLms.Services.ActingCompanyStore ActingStore
 
 <PageTitle>Sign in · LOS/LMS</PageTitle>
 
@@ -166,6 +167,15 @@
         {
             await SignInManager.SignOutAsync();
             _error = FailureMessage;
+            return;
+        }
+
+        // The vendor (SuperAdmin) lands on the company picker, not a single dashboard. Clear any previous
+        // selection so every sign-in starts at the list of companies.
+        if (await UserManager.IsInRoleAsync(user, LosLms.Services.TenantContext.SuperAdminRole))
+        {
+            ActingStore.Clear(user.Id);
+            Navigation.NavigateTo("/companies", forceLoad: true);
             return;
         }
 

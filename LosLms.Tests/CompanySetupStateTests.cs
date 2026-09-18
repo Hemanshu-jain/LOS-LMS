@@ -94,7 +94,7 @@ public sealed class CompanySetupStateTests : IDisposable
             },
             authenticationType: "TestAuth"));
 
-        var tenant = new TenantContext(new FakeAuthStateProvider(superAdmin), new HttpContextAccessor());
+        var tenant = new TenantContext(new FakeAuthStateProvider(superAdmin), new HttpContextAccessor(), new ActingCompanyStore());
         tenant.EnsureLoadedAsync().GetAwaiter().GetResult();
         return new LosDbContext(_options, tenant);
     }

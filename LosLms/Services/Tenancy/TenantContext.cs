@@ -44,12 +44,17 @@ public sealed class TenantContext
 
     private readonly AuthenticationStateProvider? _authProvider;
     private readonly IHttpContextAccessor? _httpContextAccessor;
+    private readonly ActingCompanyStore? _actingStore;
     private bool _loaded;
 
-    public TenantContext(AuthenticationStateProvider authProvider, IHttpContextAccessor httpContextAccessor)
+    public TenantContext(
+        AuthenticationStateProvider authProvider,
+        IHttpContextAccessor httpContextAccessor,
+        ActingCompanyStore actingStore)
     {
         _authProvider = authProvider;
         _httpContextAccessor = httpContextAccessor;
+        _actingStore = actingStore;
 
         // Signing in or out inside a live circuit must not leave the previous user's company behind.
         authProvider.AuthenticationStateChanged += _ => _loaded = false;
@@ -59,8 +64,18 @@ public sealed class TenantContext
     {
     }
 
-    /// <summary>Owning company, or null for a SuperAdmin and for anyone not signed in.</summary>
+    /// <summary>
+    /// The company everything is scoped to: the company the user belongs to, OR — for a SuperAdmin who
+    /// has picked one in the company picker — the company they are acting as. Null for a SuperAdmin who
+    /// has not picked one (they see every company) and for anyone not signed in.
+    /// </summary>
     public int? CompanyId { get; private set; }
+
+    /// <summary>
+    /// The company a SuperAdmin is currently acting as, or null. When set, the SuperAdmin is scoped to
+    /// that one company exactly like a normal user; when null, the SuperAdmin sees every company.
+    /// </summary>
+    public int? ActingCompanyId { get; private set; }
 
     /// <summary>True when the signed-in user holds the SuperAdmin role and so is not company-scoped.</summary>
     public bool IsSuperAdmin { get; private set; }
@@ -115,9 +130,17 @@ public sealed class TenantContext
         UserId = HasUser ? user.FindFirstValue(ClaimTypes.NameIdentifier) : null;
         DisplayName = HasUser ? user.FindFirstValue(DisplayNameClaim) : null;
 
-        CompanyId = HasUser && int.TryParse(user.FindFirstValue(CompanyIdClaim), out var companyId)
+        var homeCompanyId = HasUser && int.TryParse(user.FindFirstValue(CompanyIdClaim), out var companyId)
             ? companyId
-            : null;
+            : (int?)null;
+
+        // Only a SuperAdmin can be "acting as" a company (set from the company picker); for everyone else
+        // this stays null, so their scope is exactly their own company.
+        ActingCompanyId = IsSuperAdmin && UserId is not null ? _actingStore?.Get(UserId) : null;
+
+        // Acting company wins: a SuperAdmin who picked one is scoped to it, otherwise they belong to no
+        // single company (null => sees all). A normal user is always scoped to their own company.
+        CompanyId = ActingCompanyId ?? homeCompanyId;
 
         _loaded = true;
     }
