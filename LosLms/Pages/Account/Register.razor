@@ -1,0 +1,185 @@
+@page "/account/register"
+@using System.ComponentModel.DataAnnotations
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject CompanyProvisioningService Provisioning
+@inject IOptions<WebOptions> WebOptions
+@inject NavigationManager Navigation
+
+<PageTitle>Create your company · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+@* Public self-service sign-up for the web instance. Anonymous and statically rendered like the sign-in
+   page, so the new admin's auth cookie can be issued in the response. Only reachable when
+   Web:AllowSelfRegistration is on (the web build); on the desktop build the guard below sends visitors
+   to sign in, so the single-tenant app is unchanged. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Create your company</h1>
+            <p class="auth-sub">Set up a new company and its administrator. You'll be signed in and taken
+                to finish setup.</p>
+        </div>
+
+        <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="register">
+            <DataAnnotationsValidator />
+
+            @if (_errors.Count > 0)
+            {
+                <div class="inline-error" role="alert">
+                    @foreach (var error in _errors)
+                    {
+                        <p>@error</p>
+                    }
+                </div>
+            }
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-company">Company name</label>
+                <InputText id="reg-company" class="field-input" @bind-Value="Input.CompanyName" autocomplete="organization" />
+                <ValidationMessage For="() => Input.CompanyName" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-company-email">Company contact email</label>
+                <InputText id="reg-company-email" type="email" class="field-input"
+                           @bind-Value="Input.CompanyEmail" autocomplete="email" />
+                <ValidationMessage For="() => Input.CompanyEmail" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-company-phone">Company contact phone</label>
+                <InputText id="reg-company-phone" class="field-input"
+                           @bind-Value="Input.CompanyPhone" autocomplete="tel" />
+                <ValidationMessage For="() => Input.CompanyPhone" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-company-address">Company address</label>
+                <InputText id="reg-company-address" class="field-input"
+                           @bind-Value="Input.CompanyAddress" autocomplete="street-address" />
+                <ValidationMessage For="() => Input.CompanyAddress" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-name">Your full name</label>
+                <InputText id="reg-name" class="field-input" @bind-Value="Input.DisplayName" autocomplete="name" />
+                <ValidationMessage For="() => Input.DisplayName" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-email">Your email (sign-in)</label>
+                <InputText id="reg-email" type="email" class="field-input"
+                           @bind-Value="Input.Email" autocomplete="username" />
+                <ValidationMessage For="() => Input.Email" class="auth-validation" />
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-password">Password</label>
+                <div class="auth-password">
+                    <InputText id="reg-password" type="password" class="field-input"
+                               @bind-Value="Input.Password" autocomplete="new-password" />
+                    <PasswordReveal TargetId="reg-password" />
+                </div>
+                <ValidationMessage For="() => Input.Password" class="auth-validation" />
+                <span class="auth-hint">At least 10 characters, with an upper case letter, a lower case letter, a digit and a symbol.</span>
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="reg-confirm">Confirm password</label>
+                <div class="auth-password">
+                    <InputText id="reg-confirm" type="password" class="field-input"
+                               @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+                    <PasswordReveal TargetId="reg-confirm" />
+                </div>
+                <ValidationMessage For="() => Input.ConfirmPassword" class="auth-validation" />
+            </div>
+
+            <button type="submit" class="auth-submit">Create company</button>
+        </EditForm>
+
+        <div class="auth-setup-prompt">
+            <p>Already have an account?</p>
+            <a class="auth-setup-link" href="/account/login">Sign in →</a>
+        </div>
+    </div>
+</div>
+
+<script src="js/auth.js"></script>
+
+@code {
+    [SupplyParameterFromForm] private RegisterInput Input { get; set; } = new();
+
+    private readonly List<string> _errors = new();
+
+    protected override void OnInitialized()
+    {
+        // Closed unless this is the public web build. Keeps the page a no-op on the desktop, single-tenant
+        // deployment even though the route exists in the shared assembly.
+        if (!WebOptions.Value.AllowSelfRegistration)
+        {
+            Navigation.NavigateTo("/account/login", forceLoad: true);
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        _errors.Clear();
+
+        var result = await Provisioning.ProvisionCompanyAsync(
+            new CompanyProfile(Input.CompanyName, Input.CompanyEmail, Input.CompanyPhone, Input.CompanyAddress),
+            new AdminAccount(Input.DisplayName, Input.Email, Input.Password));
+
+        if (!result.Succeeded || result.User is null)
+        {
+            _errors.AddRange(result.Errors);
+            return;
+        }
+
+        // Sign the new admin in, then send them to Company Setup to add their branch(es) and vehicle caps
+        // — the same first-run any company does. The setup gate would route them there anyway.
+        await SignInManager.SignInAsync(result.User, isPersistent: false);
+        Navigation.NavigateTo("/settings", forceLoad: true);
+    }
+
+    private sealed class RegisterInput
+    {
+        [Required(ErrorMessage = "Enter your company name.")]
+        [StringLength(200)]
+        public string CompanyName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter a company contact email.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string CompanyEmail { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter a company contact phone.")]
+        [Phone(ErrorMessage = "Enter a valid phone number.")]
+        public string CompanyPhone { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your company address.")]
+        [StringLength(400)]
+        public string CompanyAddress { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your full name.")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your email address.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter a password.")]
+        [StringLength(100, MinimumLength = 10, ErrorMessage = "Use at least 10 characters.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Confirm your password.")]
+        [Compare(nameof(Password), ErrorMessage = "The two passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

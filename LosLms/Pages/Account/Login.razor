@@ -8,6 +8,7 @@
 @inject NavigationManager Navigation
 @inject LosLms.Services.TurnstileVerifier Turnstile
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Microsoft.Extensions.Options.IOptions<LosLms.Services.WebOptions> WebOptions
 
 <PageTitle>Sign in · LOS/LMS</PageTitle>
 
@@ -30,6 +31,13 @@
             <div class="auth-setup-prompt">
                 <p>No accounts exist on this system yet.</p>
                 <a class="auth-setup-link" href="/account/setup">Create your administrator account →</a>
+            </div>
+        }
+        else if (WebOptions.Value.AllowSelfRegistration)
+        {
+            <div class="auth-setup-prompt">
+                <p>New here?</p>
+                <a class="auth-setup-link" href="/account/register">Create your company →</a>
             </div>
         }
 

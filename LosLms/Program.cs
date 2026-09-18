@@ -87,6 +87,14 @@ builder.Services.AddScoped<IDbContextFactory<LosDbContext>, TenantDbContextFacto
 builder.Services.Configure<TurnstileOptions>(builder.Configuration.GetSection(TurnstileOptions.Section));
 builder.Services.AddScoped<TurnstileVerifier>();
 
+// Public web instance settings (self-service registration). The section is absent on the desktop build,
+// so AllowSelfRegistration defaults false and the register page / sign-in link stay closed there.
+builder.Services.Configure<WebOptions>(builder.Configuration.GetSection(WebOptions.Section));
+
+// Provisions a brand-new tenant (company + owning admin) for the public sign-up page and the demo
+// seeder. Scoped, because it creates the admin through the scoped UserManager.
+builder.Services.AddScoped<CompanyProvisioningService>();
+
 // Identity's UserStore and RoleStore resolve LosDbContext directly rather than through the factory,
 // so hand them one built the same way.
 builder.Services.AddScoped(sp =>
@@ -166,15 +174,18 @@ builder.Services.AddHsts(options =>
 // guessing at ONE account; this caps the request rate from one source across ALL accounts, which is
 // what credential-stuffing needs. Over the Cloudflare tunnel every request arrives from 127.0.0.1, so
 // key off CF-Connecting-IP (set by the tunnel edge) when present and fall back to the socket IP on the
-// LAN. Only POST /account/login is limited; everything else is unrestricted.
+// LAN. Only the POST to /account/login and /account/register is limited; everything else is unrestricted.
+// Registration is included because on the public web instance it creates rows anonymously, so a single
+// source must not be able to flood it with new companies.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
-        var isLoginPost = HttpMethods.IsPost(context.Request.Method)
-            && context.Request.Path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase);
-        if (!isLoginPost)
+        var isSensitivePost = HttpMethods.IsPost(context.Request.Method)
+            && (context.Request.Path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/account/register", StringComparison.OrdinalIgnoreCase));
+        if (!isSensitivePost)
         {
             return RateLimitPartition.GetNoLimiter("unlimited");
         }
@@ -231,6 +242,14 @@ try
     // Every company gets the built-in DSA/sourcing, scheme and RCU-vendor options the first time it has
     // none — so those dropdowns are never empty after moving off the old hardcoded arrays. Idempotent.
     await LookupSeeder.SeedAsync(app.Services);
+
+    // One ready-to-use demo tenant for the public web instance — a company with a known login, a branch
+    // and a few vehicle caps, so a visitor lands straight in a working (but empty) app. OFF unless
+    // Seed:DemoTenant is set, which only the web build's config does; idempotent and never on for desktop.
+    if (app.Configuration.GetValue("Seed:DemoTenant", false))
+    {
+        await DemoTenantSeeder.SeedAsync(app.Services, app.Configuration, app.Logger);
+    }
 }
 catch (Exception ex)
 {
