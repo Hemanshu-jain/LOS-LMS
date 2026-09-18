@@ -873,7 +873,13 @@
     {
         var prefix = $"LN-{DateTime.UtcNow.Year}-";
 
+        // IgnoreQueryFilters is essential: Application.Id is a GLOBAL primary key, so its sequence has to
+        // be global too. Without this the tenant filter scopes the "highest so far" to the current
+        // company, and a second company restarts at 000001 and collides with another company's existing
+        // LN-<year>-000001 on insert (a duplicate-key crash). Reading only the max id string here leaks
+        // no other tenant's data — just the next free number.
         var highest = await db.Applications
+            .IgnoreQueryFilters()
             .Where(a => a.Id.StartsWith(prefix))
             .OrderByDescending(a => a.Id)
             .Select(a => a.Id)
