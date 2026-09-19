@@ -1,36 +1,90 @@
 @page "/Error"
+@page "/Error/{Code:int}"
 @using System.Diagnostics
+@attribute [AllowAnonymous]
 
-<PageTitle>Error</PageTitle>
+<PageTitle>@_view.Title · LOS/LMS</PageTitle>
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+@* Statically rendered (see App.razor) — an error page must not depend on a live SignalR circuit,
+   because the very thing that failed may be the circuit, and a 500 is raised outside any circuit.
+   RequireStaticRender reloads for real if an interactive link ever routes here inside a circuit. *@
+<RequireStaticRender />
 
-@if (ShowRequestId)
-{
-    <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
-    </p>
-}
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <span class="auth-code">@StatusCode</span>
+            <h1 class="auth-title">@_view.Title</h1>
+            <p class="auth-sub">@_view.Message</p>
+        </div>
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+        <div class="auth-error-actions">
+            @* One honest action. We can't re-run the request that failed (we lost it on the way here),
+               and loading "/" is the real retry for a transient outage. A javascript: reload link would
+               be blocked by the app's script-src 'self' CSP anyway. *@
+            <a class="auth-submit" href="/">Back to LOS/LMS</a>
+        </div>
 
-@code{
-    [CascadingParameter]
-    private HttpContext? HttpContext { get; set; }
+        @if (StatusCode >= 500 && !string.IsNullOrEmpty(RequestId))
+        {
+            @* Not for the user to act on — it is the one thing support needs to find this exact
+               failure in the logs. Kept small and muted so it never reads as the main message. *@
+            <p class="auth-meta">Reference: <code>@RequestId</code></p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? Code { get; set; }
+
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
 
     private string? RequestId { get; set; }
-    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+    private ErrorView _view = default!;
 
-    protected override void OnInitialized() =>
+    // Bare /Error is only ever reached from UseExceptionHandler, which is an unhandled 500.
+    private int StatusCode => Code ?? StatusCodes.Status500InternalServerError;
+
+    protected override void OnParametersSet()
+    {
+        // When we arrive via UseStatusCodePagesWithReExecute / UseExceptionHandler the status code is
+        // already set and preserved; setting it again is a harmless no-op. When someone opens
+        // /Error/404 directly (to preview a page) this makes the response carry the real code too.
+        if (HttpContext is not null && !HttpContext.Response.HasStarted)
+        {
+            HttpContext.Response.StatusCode = StatusCode;
+        }
+
         RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+        _view = ViewFor(StatusCode);
+    }
+
+    private sealed record ErrorView(string Title, string Message);
+
+    // One polite, plain-English line per case. No stack traces, no environment hints, nothing that
+    // leaks how the system is built — this page is shown to end users in production.
+    private static ErrorView ViewFor(int code) => code switch
+    {
+        400 => new("That didn't go through",
+            "Something about that request wasn't quite right, so we couldn't complete it. Please go back and try again."),
+        401 => new("Please sign in",
+            "You need to be signed in to view this page. Sign in and we'll take you straight there."),
+        402 => new("Subscription needed",
+            "This workspace needs an active subscription to continue. Please renew, or contact your administrator, and you'll be back up right away."),
+        403 => new("You don't have access",
+            "Your account doesn't have permission to open this page. If you think you should, please ask your administrator."),
+        404 => new("Page not found",
+            "We couldn't find the page you were looking for. It may have been moved or the link may be out of date."),
+        408 or 504 => new("This is taking too long",
+            "The request timed out before we could finish. Please check your connection and try again in a moment."),
+        429 => new("Just a moment",
+            "That's a lot of requests in a short time. Please wait a few seconds and try again — we're keeping things safe for everyone."),
+        502 or 503 => new("We'll be right back",
+            "The system is temporarily unavailable while our team gets it back up. Nothing you did caused this. Please try again shortly — we're on it."),
+        >= 500 => new("Something went wrong on our end",
+            "We hit an unexpected problem processing your request. Our team has been notified and is looking into it. Please try again in a little while."),
+        _ => new("Something went wrong",
+            "We ran into an unexpected problem completing that. Please go back and try again, or contact your administrator if it keeps happening."),
+    };
 }

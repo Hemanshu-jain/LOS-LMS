@@ -5,6 +5,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
+    @* Browser-tab icon. An explicit link (not just the implicit /favicon.ico guess) so it shows reliably
+       even on the auth-redirected login page; the version query busts the browser's aggressive favicon cache. *@
+    <link rel="icon" href="favicon.ico?v=@AssetVersion" type="image/x-icon" />
     @* Fonts are NOT loaded from Google's CDN: the CSP is self-only (no font/style host), and this is a
        LAN/offline product, so an external font would never load anyway. The CSS stacks fall back to the
        system UI font. To ship IBM Plex Sans, self-host the woff2 files under wwwroot and @font-face them. *@
@@ -54,6 +57,7 @@
     /// </remarks>
     private IComponentRenderMode? RenderModeForRequest =>
         HttpContext?.Request.Path.StartsWithSegments("/account") == true
+        || HttpContext?.Request.Path.StartsWithSegments("/Error") == true
             ? null
             : InteractiveServer;
 }
