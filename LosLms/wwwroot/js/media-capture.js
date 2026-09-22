@@ -55,6 +55,9 @@
     };
 
     // Grabs the current frame at native resolution as a lossless PNG and hands it to .NET as a stream.
+    // The blob is converted to a Uint8Array first: createJSStreamReference accepts typed arrays
+    // reliably across WebView2/browsers, whereas handing it a Blob directly can throw "Supplied value
+    // is not a typed array or blob."
     window.losCapturePhoto = (previewId) => {
         const el = document.getElementById(previewId);
         if (!el || !el.videoWidth) { return null; }
@@ -65,9 +68,11 @@
         canvas.getContext('2d').drawImage(el, 0, 0, canvas.width, canvas.height);
 
         return new Promise((resolve) => {
-            canvas.toBlob(
-                (blob) => resolve(blob ? DotNet.createJSStreamReference(blob) : null),
-                'image/png');
+            canvas.toBlob(async (blob) => {
+                if (!blob) { resolve(null); return; }
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                resolve(bytes.length > 0 ? DotNet.createJSStreamReference(bytes) : null);
+            }, 'image/png');
         });
     };
 
@@ -91,16 +96,19 @@
         }
     };
 
-    // Stops recording and hands the assembled clip to .NET as a stream reference.
+    // Stops recording and hands the assembled clip to .NET as a stream reference. Converted to a
+    // Uint8Array first for the same reason as the photo above.
     window.losStopRecording = (previewId) => {
         const recorder = recorders.get(previewId);
         if (!recorder) { return null; }
 
         return new Promise((resolve) => {
-            recorder.onstop = () => {
+            recorder.onstop = async () => {
                 const blob = new Blob(recorder.__chunks, { type: recorder.__mime });
                 recorders.delete(previewId);
-                resolve(blob.size > 0 ? DotNet.createJSStreamReference(blob) : null);
+                if (blob.size === 0) { resolve(null); return; }
+                const bytes = new Uint8Array(await blob.arrayBuffer());
+                resolve(DotNet.createJSStreamReference(bytes));
             };
             recorder.stop();
         });

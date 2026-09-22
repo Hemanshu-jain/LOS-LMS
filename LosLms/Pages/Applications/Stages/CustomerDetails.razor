@@ -1111,30 +1111,38 @@ else
     {
         _captureError = null;
         _livePhotoCameraOpen = true; // reveal the always-rendered <video> before attaching the stream
-        var error = await JS.InvokeAsync<string>("losStartCamera", LivePhotoCameraId, false);
-        if (!string.IsNullOrEmpty(error)) { _captureError = error; _livePhotoCameraOpen = false; }
+        try
+        {
+            var error = await JS.InvokeAsync<string>("losStartCamera", LivePhotoCameraId, false);
+            if (!string.IsNullOrEmpty(error)) { _captureError = error; _livePhotoCameraOpen = false; }
+        }
+        catch (JSException ex) { _captureError = CameraError(ex); _livePhotoCameraOpen = false; }
     }
 
     private async Task CaptureLivePhotoAsync(PartyForm party)
     {
         _captureError = null;
-        var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losCapturePhoto", LivePhotoCameraId);
-        var bytes = await ReadCaptureAsync(streamRef);
-        if (bytes is null) { return; }
-
-        // The live photo IS the party's photo — same field as an uploaded one, so there is a single
-        // canonical photograph. Stored lossless (PNG) at native resolution.
-        var relativePath = await SavePartyBytesAsync(party, bytes, ".png", UploadKind.Photo, "The captured photo was invalid.");
-        if (relativePath is not null)
+        try
         {
-            party.PhotoPreview = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+            var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losCapturePhoto", LivePhotoCameraId);
+            var bytes = await ReadCaptureAsync(streamRef);
+            if (bytes is null) { return; }
+
+            // The live photo IS the party's photo — same field as an uploaded one, so there is a single
+            // canonical photograph. Stored lossless (PNG) at native resolution.
+            var relativePath = await SavePartyBytesAsync(party, bytes, ".png", UploadKind.Photo, "The captured photo was invalid.");
+            if (relativePath is not null)
+            {
+                party.PhotoPreview = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+            }
         }
+        catch (JSException ex) { _captureError = CameraError(ex); }
         await CloseLivePhotoCameraAsync();
     }
 
     private async Task CloseLivePhotoCameraAsync()
     {
-        await JS.InvokeVoidAsync("losStopCamera", LivePhotoCameraId);
+        try { await JS.InvokeVoidAsync("losStopCamera", LivePhotoCameraId); } catch (JSException) { /* camera already gone */ }
         _livePhotoCameraOpen = false;
     }
 
@@ -1142,35 +1150,51 @@ else
     {
         _captureError = null;
         _videoKycCameraOpen = true; // reveal the always-rendered <video> before attaching the stream
-        var error = await JS.InvokeAsync<string>("losStartCamera", VideoKycCameraId, true);
-        if (!string.IsNullOrEmpty(error)) { _captureError = error; _videoKycCameraOpen = false; }
+        try
+        {
+            var error = await JS.InvokeAsync<string>("losStartCamera", VideoKycCameraId, true);
+            if (!string.IsNullOrEmpty(error)) { _captureError = error; _videoKycCameraOpen = false; }
+        }
+        catch (JSException ex) { _captureError = CameraError(ex); _videoKycCameraOpen = false; }
     }
 
     private async Task StartVideoKycAsync()
     {
         _captureError = null;
-        var error = await JS.InvokeAsync<string>("losStartRecording", VideoKycCameraId);
-        if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
-        _videoRecording = true;
+        try
+        {
+            var error = await JS.InvokeAsync<string>("losStartRecording", VideoKycCameraId);
+            if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
+            _videoRecording = true;
+        }
+        catch (JSException ex) { _captureError = CameraError(ex); }
     }
 
     private async Task StopVideoKycAsync(PartyForm party)
     {
-        var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losStopRecording", VideoKycCameraId);
         _videoRecording = false;
-        var bytes = await ReadCaptureAsync(streamRef);
-        if (bytes is null) { return; }
+        try
+        {
+            var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losStopRecording", VideoKycCameraId);
+            var bytes = await ReadCaptureAsync(streamRef);
+            if (bytes is null) { await CloseVideoKycCameraAsync(); return; }
 
-        await SavePartyBytesAsync(party, bytes, ".webm", UploadKind.VideoKyc, "The recorded clip was invalid.");
+            await SavePartyBytesAsync(party, bytes, ".webm", UploadKind.VideoKyc, "The recorded clip was invalid.");
+        }
+        catch (JSException ex) { _captureError = CameraError(ex); }
         await CloseVideoKycCameraAsync();
     }
 
     private async Task CloseVideoKycCameraAsync()
     {
-        await JS.InvokeVoidAsync("losStopCamera", VideoKycCameraId);
+        try { await JS.InvokeVoidAsync("losStopCamera", VideoKycCameraId); } catch (JSException) { /* camera already gone */ }
         _videoKycCameraOpen = false;
         _videoRecording = false;
     }
+
+    /// <summary>A short, safe message from a camera/interop failure — never the raw JS stack.</summary>
+    private static string CameraError(JSException ex) =>
+        $"Camera error: {ex.Message.Split('\n')[0]}";
 
     private async Task<byte[]?> ReadCaptureAsync(IJSStreamReference? streamRef)
     {
