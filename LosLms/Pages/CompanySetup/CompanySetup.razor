@@ -308,6 +308,11 @@
                            OnSaved="ShowToastAsync" />
             }
 
+            @if (_activeTab == SchemeChargesTab)
+            {
+                <SchemeChargesTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
+            }
+
             @if (_activeTab == RcuVendorTab)
             {
                 <LookupTab CompanyId="_company.Id" Kind="@LookupKind.RcuVendor"
@@ -339,11 +344,12 @@
     private const string VehicleTab = "Vehicle Loan Caps";
     private const string SourcingTab = "Sourcing Channels";
     private const string SchemeTab = "Schemes";
+    private const string SchemeChargesTab = "Scheme Charges";
     private const string RcuVendorTab = "RCU Vendors";
     private const string UsersTab = "User Management";
 
     private static readonly string[] Tabs =
-        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, RcuVendorTab, UsersTab };
+        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, RcuVendorTab, UsersTab };
 
     private string _activeTab = ProfileTab;
     private Company? _company;

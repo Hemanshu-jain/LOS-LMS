@@ -56,6 +56,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<MigratedLoan> MigratedLoans => Set<MigratedLoan>();
 
+    public DbSet<SchemeChargeTemplate> SchemeChargeTemplates => Set<SchemeChargeTemplate>();
+
     public DbSet<Application> Applications => Set<Application>();
 
     public DbSet<Party> Parties => Set<Party>();
@@ -824,6 +826,21 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<SchemeChargeTemplate>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+
+            // Templates are looked up by scheme within a company when seeding a file's charges.
+            entity.HasIndex(t => new { t.CompanyId, t.Scheme });
+
+            entity.Property(t => t.Value).HasPrecision(18, 2);
+
+            entity.HasOne(t => t.Company)
+                .WithMany()
+                .HasForeignKey(t => t.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<MigratedLoan>(entity =>
         {
             entity.HasKey(m => m.Id);
@@ -898,6 +915,9 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
         modelBuilder.Entity<MigratedLoan>()
             .HasQueryFilter(m => _isSuperAdmin || m.CompanyId == _companyId);
+
+        modelBuilder.Entity<SchemeChargeTemplate>()
+            .HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
 
         // The one deliberate exception, and it is narrow: when nobody is signed in the user filter is
         // open, because Identity's own sign-in path calls FindByEmailAsync on this very context before

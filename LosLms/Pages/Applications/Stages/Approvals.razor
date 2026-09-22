@@ -661,7 +661,7 @@ else
 
         if (!await db.Charges.AnyAsync(c => c.ApplicationId == ApplicationId))
         {
-            db.Charges.AddRange(SeedCharges());
+            db.Charges.AddRange(await SeedChargesAsync(db));
             created = true;
         }
 
@@ -697,31 +697,59 @@ else
     }
 
     /// <summary>
-    /// The four starter rows. Only the Processing fee is pulled — its amount is whatever Stage 2
-    /// recorded, so an application that never had one seeded shows zero rather than an invented
-    /// figure. The other three are editable starting points.
+    /// The starter charge rows. The Processing fee is always pulled — its amount is whatever Stage 2
+    /// recorded, so an application that never had one seeded shows zero rather than an invented figure.
+    /// The remaining rows come from the scheme's charge template (Settings → Scheme Charges) when one
+    /// is defined; otherwise the built-in three editable starting points are used.
     /// </summary>
-    private IEnumerable<Charge> SeedCharges()
+    private async Task<List<Charge>> SeedChargesAsync(LosDbContext db)
     {
         var processingFee = _application?.ProcessingFee ?? 0m;
 
-        yield return new Charge
+        var charges = new List<Charge>
         {
-            ApplicationId = ApplicationId,
-            Head = "Processing fee",
-            Basis = "Pulled from Loan & Security",
-            Amount = processingFee,
-            Gst = Gst(processingFee),
-            DeductedFrom = "Disbursement",
-            Locked = true,
+            new()
+            {
+                ApplicationId = ApplicationId,
+                Head = "Processing fee",
+                Basis = "Pulled from Loan & Security",
+                Amount = processingFee,
+                Gst = Gst(processingFee),
+                DeductedFrom = "Disbursement",
+                Locked = true,
+            },
         };
+
+        var scheme = _application?.Scheme;
+        var templates = string.IsNullOrWhiteSpace(scheme)
+            ? new List<SchemeChargeTemplate>()
+            : await db.SchemeChargeTemplates.AsNoTracking()
+                .Where(t => t.Scheme == scheme).OrderBy(t => t.Id).ToListAsync();
+
+        if (templates.Count > 0)
+        {
+            var loanAmount = _application?.LoanAmount ?? 0m;
+            foreach (var t in templates)
+            {
+                // A template head of "Processing fee" would duplicate the pulled row above; skip it.
+                if (string.Equals(t.Head, "Processing fee", StringComparison.OrdinalIgnoreCase)) { continue; }
+
+                var amount = t.IsPercent
+                    ? Math.Round(loanAmount * t.Value / 100m, MidpointRounding.AwayFromZero)
+                    : t.Value;
+                var basis = t.IsPercent ? $"{t.Value:0.##}% of loan" : "Flat";
+                charges.Add(NewCharge(t.Head, basis, amount, t.GstApplicable ? Gst(amount) : 0m));
+            }
+            return charges;
+        }
 
         // GST is derived, not typed. These three rows used to carry 450 and 540 as literals — which
         // is 18% baked in a second time — so changing the company's rate moved the processing fee and
         // left the other three at the old rate forever. Stamp duty stays exempt.
-        yield return NewCharge("Documentation charge", "Flat", 2500m, Gst(2500m));
-        yield return NewCharge("Stamp duty", "As per state rate", 5000m, 0m);
-        yield return NewCharge("Valuation fee", "Flat", 3000m, Gst(3000m));
+        charges.Add(NewCharge("Documentation charge", "Flat", 2500m, Gst(2500m)));
+        charges.Add(NewCharge("Stamp duty", "As per state rate", 5000m, 0m));
+        charges.Add(NewCharge("Valuation fee", "Flat", 3000m, Gst(3000m)));
+        return charges;
     }
 
     /// <summary>GST on an amount at this company's configured rate.</summary>
