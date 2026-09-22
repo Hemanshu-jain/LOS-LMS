@@ -12,6 +12,7 @@
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
 @inject IHttpClientFactory HttpClientFactory
+@inject IJSRuntime JS
 
 <PageTitle>Customer Details · @ApplicationId</PageTitle>
 
@@ -43,9 +44,12 @@ else
     <div class="stage-page">
         <div class="stage-card">
 
+            @* The complete button stays enabled even with blank fields: clicking it runs the
+               mandatory-field check, which jumps to and flashes the first gap (Google-Forms style)
+               rather than silently doing nothing behind a disabled button. The CIBIL gate still
+               disables it through StageSubHeader's own gate, and CompleteStageAsync re-guards server-side. *@
             <StageSubHeader ApplicationId="@_application.Id"
-                            CompleteBlocked="@(BlockedReason is not null)"
-                            BlockedReason="@BlockedReason"
+                            CompleteBlocked="false"
                             OnSaveDraft="SaveDraftAsync"
                             OnCompleteStage="CompleteStageAsync" />
 
@@ -108,17 +112,17 @@ else
                             </div>
 
                             <div class="field-grid">
-                                <FormField Label="Full name (as per PAN)" For="personal-fullname">
+                                <FormField Label="Full name (as per PAN)" For="personal-fullname" Required="true" Error="@ErrorFor("fullName")">
                                     <input id="personal-fullname" type="text" class="field-input"
                                            @bind="party.FullName" @bind:after="EvaluateAutoCollapse" />
                                 </FormField>
 
-                                <FormField Label="Date of birth" For="personal-dob">
+                                <FormField Label="Date of birth" For="personal-dob" Required="true" Error="@ErrorFor("dob")">
                                     <input id="personal-dob" type="date" class="field-input"
                                            @bind="party.DateOfBirth" @bind:after="EvaluateAutoCollapse" />
                                 </FormField>
 
-                                <FormField Label="Gender" For="personal-gender">
+                                <FormField Label="Gender" For="personal-gender" Required="true" Error="@ErrorFor("gender")">
                                     <select id="personal-gender" class="field-input"
                                             @bind="party.Gender" @bind:after="EvaluateAutoCollapse">
                                         <option value="">@BlankOption</option>
@@ -126,7 +130,7 @@ else
                                     </select>
                                 </FormField>
 
-                                <FormField Label="Marital status" For="personal-marital">
+                                <FormField Label="Marital status" For="personal-marital" Required="true" Error="@ErrorFor("marital")">
                                     <select id="personal-marital" class="field-input"
                                             @bind="party.MaritalStatus" @bind:after="EvaluateAutoCollapse">
                                         <option value="">@BlankOption</option>
@@ -134,12 +138,12 @@ else
                                     </select>
                                 </FormField>
 
-                                <FormField Label="Father / spouse name" For="personal-father">
+                                <FormField Label="Father / spouse name" For="personal-father" Required="true" Error="@ErrorFor("father")">
                                     <input id="personal-father" type="text" class="field-input"
                                            @bind="party.FatherSpouseName" @bind:after="EvaluateAutoCollapse" />
                                 </FormField>
 
-                                <FormField Label="Customer category" For="personal-category">
+                                <FormField Label="Customer category" For="personal-category" Required="true" Error="@ErrorFor("category")">
                                     <select id="personal-category" class="field-input"
                                             @bind="party.CustomerCategory" @bind:after="EvaluateAutoCollapse">
                                         <option value="">@BlankOption</option>
@@ -147,7 +151,7 @@ else
                                     </select>
                                 </FormField>
 
-                                <FormField Label="Nationality" For="personal-nationality">
+                                <FormField Label="Nationality" For="personal-nationality" Required="true" Error="@ErrorFor("nationality")">
                                     <select id="personal-nationality" class="field-input"
                                             @bind="party.Nationality" @bind:after="EvaluateAutoCollapse">
                                         <option value="">@BlankOption</option>
@@ -155,7 +159,7 @@ else
                                     </select>
                                 </FormField>
 
-                                <FormField Label="Mother tongue" For="personal-tongue">
+                                <FormField Label="Mother tongue" For="personal-tongue" Required="true" Error="@ErrorFor("tongue")">
                                     <select id="personal-tongue" class="field-input"
                                             @bind="party.MotherTongue" @bind:after="EvaluateAutoCollapse">
                                         <option value="">@BlankOption</option>
@@ -281,7 +285,7 @@ else
                                         SummaryText="@(party.IsContactComplete ? "10 fields · complete" : null)"
                                         OnToggle="() => ToggleContact()">
                         <div class="field-grid">
-                            <FormField Label="Mobile" For="contact-mobile" Error="@ErrorFor("mobile")" Verified="party.MobileVerified">
+                            <FormField Label="Mobile" For="contact-mobile" Required="true" Error="@ErrorFor("mobile")" Verified="party.MobileVerified">
                                 <div class="inline-input-row">
                                     <input id="contact-mobile" type="tel" class="field-input" maxlength="10"
                                            @bind="party.Mobile" @bind:after="AfterContactChanged" @onblur='() => Validate("mobile")' />
@@ -289,27 +293,27 @@ else
                                 </div>
                             </FormField>
 
-                            <FormField Label="Alternate mobile" For="contact-altmobile" Error="@ErrorFor("altMobile")">
+                            <FormField Label="Alternate mobile" For="contact-altmobile" Required="true" Error="@ErrorFor("altMobile")">
                                 <input id="contact-altmobile" type="tel" class="field-input" maxlength="10"
                                        @bind="party.AltMobile" @bind:after="AfterContactChanged" @onblur='() => Validate("altMobile")' />
                             </FormField>
 
-                            <FormField Label="Email" For="contact-email" Error="@ErrorFor("email")">
+                            <FormField Label="Email" For="contact-email" Required="true" Error="@ErrorFor("email")">
                                 <input id="contact-email" type="email" class="field-input"
                                        @bind="party.Email" @bind:after="AfterContactChanged" @onblur='() => Validate("email")' />
                             </FormField>
 
-                            <FormField Label="Address line 1" For="contact-address1">
+                            <FormField Label="Address line 1" For="contact-address1" Required="true" Error="@ErrorFor("address1")">
                                 <input id="contact-address1" type="text" class="field-input"
                                        @bind="party.Address1" @bind:after="AfterContactChanged" />
                             </FormField>
 
-                            <FormField Label="Address line 2" For="contact-address2">
+                            <FormField Label="Address line 2" For="contact-address2" Required="true" Error="@ErrorFor("address2")">
                                 <input id="contact-address2" type="text" class="field-input"
                                        @bind="party.Address2" @bind:after="AfterContactChanged" />
                             </FormField>
 
-                            <FormField Label="State" For="contact-state">
+                            <FormField Label="State" For="contact-state" Required="true" Error="@ErrorFor("state")">
                                 <select id="contact-state" class="field-input"
                                         @bind="party.State" @bind:after="OnStateChanged">
                                     <option value="">@BlankOption</option>
@@ -317,7 +321,7 @@ else
                                 </select>
                             </FormField>
 
-                            <FormField Label="City" For="contact-city">
+                            <FormField Label="City" For="contact-city" Required="true" Error="@ErrorFor("city")">
                                 <select id="contact-city" class="field-input"
                                         @bind="party.City" @bind:after="OnCityChanged">
                                     <option value="">@BlankOption</option>
@@ -325,7 +329,7 @@ else
                                 </select>
                             </FormField>
 
-                            <FormField Label="PIN code" For="contact-pin" Error="@ErrorFor("pinCode")">
+                            <FormField Label="PIN code" For="contact-pin" Required="true" Error="@ErrorFor("pinCode")">
                                 <input id="contact-pin" type="text" class="field-input" maxlength="6"
                                        @bind="party.PinCode" @bind:after="AfterContactChanged"
                                        @onblur='() => OnPinCodeChanged()' />
@@ -335,7 +339,7 @@ else
                                 }
                             </FormField>
 
-                            <FormField Label="Residence type" For="contact-residence">
+                            <FormField Label="Residence type" For="contact-residence" Required="true" Error="@ErrorFor("residence")">
                                 <select id="contact-residence" class="field-input"
                                         @bind="party.ResidenceType" @bind:after="AfterContactChanged">
                                     <option value="">@BlankOption</option>
@@ -343,7 +347,7 @@ else
                                 </select>
                             </FormField>
 
-                            <FormField Label="Years at address" For="contact-years">
+                            <FormField Label="Years at address" For="contact-years" Required="true" Error="@ErrorFor("years")">
                                 <input id="contact-years" type="number" min="0" step="1" class="field-input"
                                        @bind="party.YearsAtAddress" @bind:after="AfterContactChanged" />
                             </FormField>
@@ -356,22 +360,22 @@ else
                                         SummaryText="@(party.IsEmploymentComplete ? "6 fields · complete" : null)"
                                         OnToggle="() => ToggleEmployment()">
                         <div class="field-grid">
-                            <FormField Label="Employment type" For="emp-type">
+                            <FormField Label="Employment type" For="emp-type" Required="true" Error="@ErrorFor("empType")">
                                 <select id="emp-type" class="field-input" @bind="party.EmploymentType">
                                     <option value="">@BlankOption</option>
                                     @foreach (var o in EmploymentOptions) { <option value="@o">@o</option> }
                                 </select>
                             </FormField>
 
-                            <FormField Label="Employer / Business name" For="emp-employer">
+                            <FormField Label="Employer / Business name" For="emp-employer" Required="true" Error="@ErrorFor("empEmployer")">
                                 <input id="emp-employer" type="text" class="field-input" @bind="party.EmployerName" />
                             </FormField>
 
-                            <FormField Label="Designation / Nature of business" For="emp-designation">
+                            <FormField Label="Designation / Nature of business" For="emp-designation" Required="true" Error="@ErrorFor("empDesignation")">
                                 <input id="emp-designation" type="text" class="field-input" @bind="party.Designation" />
                             </FormField>
 
-                            <FormField Label="Monthly income" For="emp-income">
+                            <FormField Label="Monthly income" For="emp-income" Required="true" Error="@ErrorFor("empIncome")">
                                 <input id="emp-income" type="number" min="0" step="0.01" class="field-input"
                                        @bind="party.MonthlyIncome" />
                                 @if (party.MonthlyIncome.HasValue)
@@ -380,12 +384,12 @@ else
                                 }
                             </FormField>
 
-                            <FormField Label="Years in current job / business" For="emp-years">
+                            <FormField Label="Years in current job / business" For="emp-years" Required="true" Error="@ErrorFor("empYears")">
                                 <input id="emp-years" type="number" min="0" step="1" class="field-input"
                                        @bind="party.YearsInJob" />
                             </FormField>
 
-                            <FormField Label="Office / business address" For="emp-address">
+                            <FormField Label="Office / business address" For="emp-address" Required="true" Error="@ErrorFor("empAddress")">
                                 <input id="emp-address" type="text" class="field-input" @bind="party.OfficeAddress" />
                             </FormField>
                         </div>
@@ -755,12 +759,21 @@ else
             "altMobile" => party.AltMobile,
             "email" => party.Email,
             "pinCode" => party.PinCode,
+            "address1" => party.Address1,
             _ => null,
         };
 
         if (string.IsNullOrWhiteSpace(value))
         {
-            return;   // blank is allowed while drafting
+            if (field == "altMobile")
+            {
+                _errors[key] = "Alternate mobile is required.";
+            }
+            else if (field == "address1")
+            {
+                _errors[key] = "Address line 1 is required.";
+            }
+            return;   // other fields: blank is allowed while drafting (caught on completion instead)
         }
 
         var message = field switch
@@ -771,6 +784,7 @@ else
             "altMobile" when !MobilePattern.IsMatch(value) => "Mobile must be 10 digits starting 6-9.",
             "email" when !EmailPattern.IsMatch(value) => "Enter a valid email address.",
             "pinCode" when !PinPattern.IsMatch(value) => "PIN code must be exactly 6 digits.",
+            "address1" when !Regex.IsMatch(value, @"\d") => "Address line 1 must contain a door or plot number.",
             _ => null,
         };
 
@@ -1020,6 +1034,11 @@ else
             return $"{label}: contact details are incomplete.";
         }
 
+        if (!party.IsEmploymentComplete)
+        {
+            return $"{label}: employment details are incomplete.";
+        }
+
         return party.DedupeStatus switch
         {
             "Pass" => null,
@@ -1040,8 +1059,14 @@ else
 
     private async Task CompleteStageAsync()
     {
-        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
-        // event or a stale circuit must not get past it. One shared check, never re-implemented.
+        // First: a blank mandatory field flags every gap inline and jumps to the first one, then stops.
+        if (!await AllMandatoryFilledAsync())
+        {
+            return;
+        }
+
+        // Server-side gate (CIBIL). Defence in depth beyond the disabled state — a crafted event or a
+        // stale circuit must not advance either. One shared check, never re-implemented.
         await using (var gateDb = await DbFactory.CreateDbContextAsync())
         {
             if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
@@ -1049,15 +1074,127 @@ else
                 return;
             }
         }
-        // Defence in depth: the button carries a real disabled attribute, and the guard is
-        // repeated here so a crafted request cannot advance the stage either.
-        if (BlockedReason is not null)
+
+        // Fields are filled, so any remaining BlockedReason is the dedupe check — surface it as a toast
+        // rather than a silent no-op now that the button is no longer disabled.
+        if (BlockedReason is { } reason)
         {
+            await ShowToastAsync(reason);
             return;
         }
 
         await PersistAsync(completeStage: true);
         Navigation.NavigateTo($"/applications/{ApplicationId}/loan-security");
+    }
+
+    private enum FieldSection { Personal, Contact, Employment }
+
+    /// <summary>
+    /// Every field that must be filled to complete the stage, in the order the sections appear, with
+    /// the element id to jump to and which collapsible section holds it. Mirrors
+    /// <see cref="PartyForm.IsPersonalComplete"/> / <c>IsContactComplete</c> / <c>IsEmploymentComplete</c>.
+    /// </summary>
+    private static readonly (string Id, string Field, string Label, FieldSection Section)[] MandatoryFields =
+    {
+        ("personal-fullname", "fullName", "Full name", FieldSection.Personal),
+        ("personal-dob", "dob", "Date of birth", FieldSection.Personal),
+        ("personal-gender", "gender", "Gender", FieldSection.Personal),
+        ("personal-marital", "marital", "Marital status", FieldSection.Personal),
+        ("personal-father", "father", "Father / spouse name", FieldSection.Personal),
+        ("personal-category", "category", "Customer category", FieldSection.Personal),
+        ("personal-nationality", "nationality", "Nationality", FieldSection.Personal),
+        ("personal-tongue", "tongue", "Mother tongue", FieldSection.Personal),
+        ("contact-mobile", "mobile", "Mobile", FieldSection.Contact),
+        ("contact-altmobile", "altMobile", "Alternate mobile", FieldSection.Contact),
+        ("contact-email", "email", "Email", FieldSection.Contact),
+        ("contact-address1", "address1", "Address line 1", FieldSection.Contact),
+        ("contact-address2", "address2", "Address line 2", FieldSection.Contact),
+        ("contact-state", "state", "State", FieldSection.Contact),
+        ("contact-city", "city", "City", FieldSection.Contact),
+        ("contact-pin", "pinCode", "PIN code", FieldSection.Contact),
+        ("contact-residence", "residence", "Residence type", FieldSection.Contact),
+        ("contact-years", "years", "Years at address", FieldSection.Contact),
+        ("emp-type", "empType", "Employment type", FieldSection.Employment),
+        ("emp-employer", "empEmployer", "Employer / business name", FieldSection.Employment),
+        ("emp-designation", "empDesignation", "Designation", FieldSection.Employment),
+        ("emp-income", "empIncome", "Monthly income", FieldSection.Employment),
+        ("emp-years", "empYears", "Years in job / business", FieldSection.Employment),
+        ("emp-address", "empAddress", "Office / business address", FieldSection.Employment),
+    };
+
+    private static bool IsFieldSet(PartyForm p, string field) => field switch
+    {
+        "fullName" => !string.IsNullOrWhiteSpace(p.FullName),
+        "dob" => p.DateOfBirth.HasValue,
+        "gender" => !string.IsNullOrWhiteSpace(p.Gender),
+        "marital" => !string.IsNullOrWhiteSpace(p.MaritalStatus),
+        "father" => !string.IsNullOrWhiteSpace(p.FatherSpouseName),
+        "category" => !string.IsNullOrWhiteSpace(p.CustomerCategory),
+        "nationality" => !string.IsNullOrWhiteSpace(p.Nationality),
+        "tongue" => !string.IsNullOrWhiteSpace(p.MotherTongue),
+        "mobile" => !string.IsNullOrWhiteSpace(p.Mobile),
+        "altMobile" => !string.IsNullOrWhiteSpace(p.AltMobile),
+        "email" => !string.IsNullOrWhiteSpace(p.Email),
+        "address1" => !string.IsNullOrWhiteSpace(p.Address1),
+        "address2" => !string.IsNullOrWhiteSpace(p.Address2),
+        "state" => !string.IsNullOrWhiteSpace(p.State),
+        "city" => !string.IsNullOrWhiteSpace(p.City),
+        "pinCode" => !string.IsNullOrWhiteSpace(p.PinCode),
+        "residence" => !string.IsNullOrWhiteSpace(p.ResidenceType),
+        "years" => p.YearsAtAddress.HasValue,
+        "empType" => !string.IsNullOrWhiteSpace(p.EmploymentType),
+        "empEmployer" => !string.IsNullOrWhiteSpace(p.EmployerName),
+        "empDesignation" => !string.IsNullOrWhiteSpace(p.Designation),
+        "empIncome" => p.MonthlyIncome.HasValue,
+        "empYears" => p.YearsInJob.HasValue,
+        "empAddress" => !string.IsNullOrWhiteSpace(p.OfficeAddress),
+        _ => true,
+    };
+
+    /// <summary>
+    /// True when every required party has all mandatory fields filled. When a gap exists it flags each
+    /// blank field of the first offending party inline, switches to that tab, opens the section, and
+    /// scrolls/flashes the first blank field — then returns false so the caller does not advance.
+    /// </summary>
+    private async Task<bool> AllMandatoryFilledAsync()
+    {
+        // Same party order as BlockedReason: Applicant always; others only when they carry data.
+        foreach (var (key, _) in PartyTabs)
+        {
+            var party = _parties[key];
+            if (key != "Applicant" && !party.HasAnyData)
+            {
+                continue;
+            }
+
+            (string Id, string Field, string Label, FieldSection Section)? firstGap = null;
+            foreach (var f in MandatoryFields)
+            {
+                if (!IsFieldSet(party, f.Field))
+                {
+                    _errors[$"{key}.{f.Field}"] = $"{f.Label} is required.";
+                    firstGap ??= f;
+                }
+            }
+
+            if (firstGap is { } gap)
+            {
+                _activeTab = key;
+                var s = _sections[key];
+                switch (gap.Section)
+                {
+                    case FieldSection.Personal: s.PersonalCollapsed = false; break;
+                    case FieldSection.Contact: s.ContactCollapsed = false; break;
+                    case FieldSection.Employment: s.EmploymentCollapsed = false; break;
+                }
+
+                StateHasChanged();
+                await JS.InvokeVoidAsync("losFocusField", gap.Id);
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task PersistAsync(bool completeStage)

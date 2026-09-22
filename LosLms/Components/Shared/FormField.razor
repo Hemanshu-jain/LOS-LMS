@@ -4,6 +4,10 @@
 <div class="form-field">
     <label class="form-field-label" for="@For">
         @Label
+        @if (Required)
+        {
+            <span class="form-field-required" aria-hidden="true" title="Required">*</span>
+        }
         @if (Verified)
         {
             <span class="verified-badge">Verified</span>
@@ -26,6 +30,9 @@
 
     /// <summary>Inline validation message. Null or blank renders nothing.</summary>
     [Parameter] public string? Error { get; set; }
+
+    /// <summary>Renders a red asterisk after the label to mark a mandatory field.</summary>
+    [Parameter] public bool Required { get; set; }
 
     /// <summary>
     /// Renders the green "Verified" badge. Only ever true when a real verification succeeded —
