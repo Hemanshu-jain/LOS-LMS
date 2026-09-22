@@ -25,6 +25,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Lift the request-body cap so a full-quality Video KYC clip fits (Kestrel defaults to 30 MB). The
+// camera upload streams a raw binary body to the /api/party-media middleware. App-wide, which is fine —
+// this app also takes scan/PDF uploads.
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 157_286_400); // 150 MB
+
 // Flows the signed-in user down to every component, which is what <AuthorizeView> in the top bar and
 // <AuthorizeRouteView> in Routes.razor both read.
 builder.Services.AddCascadingAuthenticationState();
@@ -344,6 +349,88 @@ app.UseStaticFiles();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Camera media upload (live photo + Video KYC), handled here as its own middleware — BEFORE the
+// antiforgery middleware — and short-circuited, so Blazor SSR's antiforgery/named-form validation never
+// runs on it. That validation cannot be satisfied by a plain binary upload and could not be disabled
+// per-endpoint in this setup. The upload is safe on its own: it requires an authenticated user and
+// resolves the application through the tenant-filtered DbContext, so it only ever writes the caller's
+// own tenant data, and the path segments are whitelisted before composing a filesystem path.
+app.Use(async (context, next) =>
+{
+    if (!HttpMethods.IsPost(context.Request.Method)
+        || !context.Request.Path.StartsWithSegments("/api/party-media", out var rest))
+    {
+        await next();
+        return;
+    }
+
+    // Writes a status with a small JSON body. The body matters: the app's custom 4xx/5xx pages
+    // (StatusCodePages re-execute) only re-run the pipeline when the response has no body, and that
+    // re-run — a POST to the error route — would surface a misleading antiforgery failure. A body here
+    // keeps the real result, and the camera's fetch reads res.ok.
+    async Task RespondAsync(int status, object payload)
+    {
+        context.Response.StatusCode = status;
+        await context.Response.WriteAsJsonAsync(payload);
+    }
+
+    if (context.User?.Identity?.IsAuthenticated != true)
+    {
+        await RespondAsync(StatusCodes.Status401Unauthorized, new { error = "Not signed in." });
+        return;
+    }
+
+    var segments = rest.Value?.Trim('/').Split('/') ?? Array.Empty<string>();
+    if (segments.Length != 3)
+    {
+        await RespondAsync(StatusCodes.Status400BadRequest, new { error = "Malformed request." });
+        return;
+    }
+
+    var applicationId = Uri.UnescapeDataString(segments[0]);
+    var partyType = segments[1];
+    var kind = segments[2];
+
+    if (partyType is not ("Applicant" or "CoApplicant" or "Guarantor"))
+    {
+        await RespondAsync(StatusCodes.Status400BadRequest, new { error = "Unknown party." });
+        return;
+    }
+
+    var extension = kind switch { "photo" => ".png", "videokyc" => ".webm", _ => string.Empty };
+    if (extension.Length == 0)
+    {
+        await RespondAsync(StatusCodes.Status400BadRequest, new { error = "Unknown media kind." });
+        return;
+    }
+
+    var dbFactory = context.RequestServices.GetRequiredService<IDbContextFactory<LosDbContext>>();
+    await using var db = await dbFactory.CreateDbContextAsync();
+    if (!await db.Applications.AnyAsync(a => a.Id == applicationId))
+    {
+        // Tenant-filtered: a miss is 404 whether the file belongs to another tenant or does not exist.
+        await RespondAsync(StatusCodes.Status404NotFound, new { error = "Application not found." });
+        return;
+    }
+
+    using var buffer = new MemoryStream();
+    await context.Request.Body.CopyToAsync(buffer);
+    var bytes = buffer.ToArray();
+    if (bytes.Length == 0 || !LosLms.Services.FileSignature.Matches(extension, bytes))
+    {
+        await RespondAsync(StatusCodes.Status400BadRequest, new { error = "The captured file was invalid." });
+        return;
+    }
+
+    var environment = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
+    var folder = Path.Combine(environment.ContentRootPath, "App_Data", "uploads", applicationId, partyType);
+    Directory.CreateDirectory(folder);
+    var name = $"{kind}-{Guid.NewGuid():N}{extension}";
+    await File.WriteAllBytesAsync(Path.Combine(folder, name), bytes);
+
+    await context.Response.WriteAsJsonAsync(new { name });
+});
 
 // First-run gate. Until a company's setup is complete — a real name and at least one branch — every
 // company-scoped user is redirected to Company Setup and can reach nothing else, because there is

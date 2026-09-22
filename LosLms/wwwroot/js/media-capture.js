@@ -54,13 +54,28 @@
         }
     };
 
-    // Grabs the current frame at native resolution as a lossless PNG and hands it to .NET as a stream.
-    // The blob is converted to a Uint8Array first: createJSStreamReference accepts typed arrays
-    // reliably across WebView2/browsers, whereas handing it a Blob directly can throw "Supplied value
-    // is not a typed array or blob."
-    window.losCapturePhoto = (previewId) => {
+    // POSTs a captured blob to the server's party-media endpoint (same-origin, auth cookie). Returns
+    // { name } on success or { error } — the binary never crosses the Blazor JS-interop boundary, which
+    // could not reliably marshal a recorded Blob.
+    async function postCapture(url, blob) {
+        try {
+            // Raw binary body to a dedicated middleware endpoint (handled before antiforgery, so no token
+            // is needed). Content-Type marks it non-form so nothing tries to parse it as a form.
+            const res = await fetch(url, {
+                method: 'POST', body: blob, credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/octet-stream' },
+            });
+            if (!res.ok) { return { error: 'Upload failed (' + res.status + ').' }; }
+            return await res.json();
+        } catch (e) {
+            return { error: 'Upload failed: ' + (e && e.message ? e.message : e) };
+        }
+    }
+
+    // Grabs the current frame at native resolution as a lossless PNG and uploads it. Returns { name } / { error }.
+    window.losCapturePhoto = (previewId, url) => {
         const el = document.getElementById(previewId);
-        if (!el || !el.videoWidth) { return null; }
+        if (!el || !el.videoWidth) { return { error: 'Camera is not ready.' }; }
 
         const canvas = document.createElement('canvas');
         canvas.width = el.videoWidth;
@@ -69,9 +84,8 @@
 
         return new Promise((resolve) => {
             canvas.toBlob(async (blob) => {
-                if (!blob) { resolve(null); return; }
-                const bytes = new Uint8Array(await blob.arrayBuffer());
-                resolve(bytes.length > 0 ? DotNet.createJSStreamReference(bytes) : null);
+                if (!blob) { resolve({ error: 'Could not capture the frame.' }); return; }
+                resolve(await postCapture(url, blob));
             }, 'image/png');
         });
     };
@@ -96,19 +110,17 @@
         }
     };
 
-    // Stops recording and hands the assembled clip to .NET as a stream reference. Converted to a
-    // Uint8Array first for the same reason as the photo above.
-    window.losStopRecording = (previewId) => {
+    // Stops recording, assembles the clip and uploads it. Returns { name } / { error }.
+    window.losStopRecording = (previewId, url) => {
         const recorder = recorders.get(previewId);
-        if (!recorder) { return null; }
+        if (!recorder) { return { error: 'No active recording.' }; }
 
         return new Promise((resolve) => {
             recorder.onstop = async () => {
                 const blob = new Blob(recorder.__chunks, { type: recorder.__mime });
                 recorders.delete(previewId);
-                if (blob.size === 0) { resolve(null); return; }
-                const bytes = new Uint8Array(await blob.arrayBuffer());
-                resolve(DotNet.createJSStreamReference(bytes));
+                if (blob.size === 0) { resolve({ error: 'The recording was empty.' }); return; }
+                resolve(await postCapture(url, blob));
             };
             recorder.stop();
         });

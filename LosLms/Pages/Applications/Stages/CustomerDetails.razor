@@ -528,7 +528,7 @@ else
 
     private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
 
-    private enum UploadKind { Photo, PanScan, AadhaarScan, AddressProof, VideoKyc }
+    private enum UploadKind { Photo, PanScan, AadhaarScan, AddressProof }
 
     /// <summary>Masked Aadhaar is accepted only within this many days of generation.</summary>
     private const int AadhaarFreshnessDays = 5;
@@ -1081,7 +1081,6 @@ else
             case UploadKind.PanScan: party.PanScanPath = relativePath; break;
             case UploadKind.AadhaarScan: party.AadhaarScanPath = relativePath; break;
             case UploadKind.AddressProof: party.AddressProofPath = relativePath; break;
-            case UploadKind.VideoKyc: party.VideoKycPath = relativePath; break;
         }
 
         return relativePath;
@@ -1094,18 +1093,25 @@ else
     private const string LivePhotoCameraId = "photo-cam";
     private const string VideoKycCameraId = "videokyc-cam";
 
-    // Generous: a full-resolution PNG frame, or a short high-bitrate clip. Streamed in chunks via
-    // IJSStreamReference, so this cap is not bound by the SignalR message size.
-    private const long MaxCaptureBytes = 200L * 1024 * 1024;
-
     private bool _livePhotoCameraOpen;
     private bool _videoKycCameraOpen;
     private bool _videoRecording;
     private string? _captureError;
 
+    /// <summary>What the JS upload returns: the stored filename, or an error message.</summary>
+    private sealed record CaptureResult(string? Name, string? Error);
+
     /// <summary>URL for a stored capture, served by the authenticated /files endpoint.</summary>
     private string FileUrl(PartyForm party, string relativePath) =>
         $"/files/{_application!.Id}/{party.PartyType}/{Path.GetFileName(relativePath)}";
+
+    /// <summary>Endpoint the camera POSTs a captured photo/clip to.</summary>
+    private string MediaUploadUrl(PartyForm party, string kind) =>
+        $"/api/party-media/{_application!.Id}/{party.PartyType}/{kind}";
+
+    /// <summary>The relative PII path for a filename the media endpoint just stored.</summary>
+    private string StoredPath(PartyForm party, string name) =>
+        Path.Combine("App_Data", "uploads", _application!.Id, party.PartyType, name);
 
     private async Task OpenLivePhotoCameraAsync()
     {
@@ -1124,16 +1130,16 @@ else
         _captureError = null;
         try
         {
-            var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losCapturePhoto", LivePhotoCameraId);
-            var bytes = await ReadCaptureAsync(streamRef);
-            if (bytes is null) { return; }
-
             // The live photo IS the party's photo — same field as an uploaded one, so there is a single
-            // canonical photograph. Stored lossless (PNG) at native resolution.
-            var relativePath = await SavePartyBytesAsync(party, bytes, ".png", UploadKind.Photo, "The captured photo was invalid.");
-            if (relativePath is not null)
+            // canonical photograph (lossless PNG, native resolution). The server saves it and returns
+            // the filename; the frame then renders it straight from /files.
+            var url = MediaUploadUrl(party, "photo");
+            var result = await JS.InvokeAsync<CaptureResult>("losCapturePhoto", LivePhotoCameraId, url);
+            if (result.Error is { } err) { _captureError = err; }
+            else if (result.Name is { } name)
             {
-                party.PhotoPreview = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+                party.PhotoPath = StoredPath(party, name);
+                party.PhotoPreview = null; // shown from the stored file, not an in-memory preview
             }
         }
         catch (JSException ex) { _captureError = CameraError(ex); }
@@ -1175,11 +1181,13 @@ else
         _videoRecording = false;
         try
         {
-            var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losStopRecording", VideoKycCameraId);
-            var bytes = await ReadCaptureAsync(streamRef);
-            if (bytes is null) { await CloseVideoKycCameraAsync(); return; }
-
-            await SavePartyBytesAsync(party, bytes, ".webm", UploadKind.VideoKyc, "The recorded clip was invalid.");
+            var url = MediaUploadUrl(party, "videokyc");
+            var result = await JS.InvokeAsync<CaptureResult>("losStopRecording", VideoKycCameraId, url);
+            if (result.Error is { } err) { _captureError = err; }
+            else if (result.Name is { } name)
+            {
+                party.VideoKycPath = StoredPath(party, name);
+            }
         }
         catch (JSException ex) { _captureError = CameraError(ex); }
         await CloseVideoKycCameraAsync();
@@ -1195,18 +1203,6 @@ else
     /// <summary>A short, safe message from a camera/interop failure — never the raw JS stack.</summary>
     private static string CameraError(JSException ex) =>
         $"Camera error: {ex.Message.Split('\n')[0]}";
-
-    private async Task<byte[]?> ReadCaptureAsync(IJSStreamReference? streamRef)
-    {
-        if (streamRef is null) { _captureError = "Nothing was captured — is the camera on?"; return null; }
-
-        await using var stream = await streamRef.OpenReadStreamAsync(MaxCaptureBytes);
-        using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer);
-        var bytes = buffer.ToArray();
-        if (bytes.Length == 0) { _captureError = "The capture was empty."; return null; }
-        return bytes;
-    }
 
     // ---------------------------------------------------------------------
     // Stage completion gate

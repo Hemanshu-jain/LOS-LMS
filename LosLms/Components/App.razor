@@ -40,10 +40,27 @@
     // App.razor is always rendered statically, so ASP.NET Core cascades the live HttpContext into it.
     [CascadingParameter] private HttpContext? HttpContext { get; set; }
 
-    // The running build's version, appended to static-asset URLs to bust the browser/WebView2 cache on
-    // every release. Computed once — the version cannot change while the process runs.
-    private static readonly string AssetVersion =
-        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "1";
+    // Appended to static-asset URLs to bust the browser/WebView2 cache. The numeric version alone is
+    // not enough — it stays 1.1.x across many builds, so a changed .js/.css would keep serving stale
+    // from cache. Appending the build's file-write time makes the token change on every rebuild and
+    // every release automatically. Computed once — nothing here can change while the process runs.
+    private static readonly string AssetVersion = ComputeAssetVersion();
+
+    private static string ComputeAssetVersion()
+    {
+        var assembly = System.Reflection.Assembly.GetEntryAssembly();
+        var version = assembly?.GetName().Version?.ToString(3) ?? "1";
+        try
+        {
+            var location = assembly?.Location;
+            if (!string.IsNullOrEmpty(location) && File.Exists(location))
+            {
+                return $"{version}-{File.GetLastWriteTimeUtc(location).Ticks:x}";
+            }
+        }
+        catch { /* fall back to the plain version below */ }
+        return version;
+    }
 
     /// <summary>
     /// Interactive everywhere except the /account pages, which must render statically.
