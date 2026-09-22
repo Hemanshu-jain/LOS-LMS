@@ -20,6 +20,11 @@
             <div class="setup-inline-add">
                 <input class="field-input" placeholder="@($"{CapitalisedNoun} name")" maxlength="120"
                        @bind="_newName" @bind:event="oninput" />
+                @if (ShowCode)
+                {
+                    <input class="field-input" placeholder="Code (optional)" maxlength="40"
+                           @bind="_newCode" @bind:event="oninput" />
+                }
                 <button type="button" class="setup-save" disabled="@string.IsNullOrWhiteSpace(_newName)"
                         @onclick="AddAsync">Add</button>
                 <button type="button" class="setup-cancel" @onclick="CancelAdd">Cancel</button>
@@ -35,6 +40,7 @@
                 <thead>
                     <tr>
                         <th>@CapitalisedNoun</th>
+                        @if (ShowCode) { <th>Code</th> }
                         <th>Status</th>
                         <th></th>
                     </tr>
@@ -47,6 +53,13 @@
                             <td>
                                 <input class="cell-input" maxlength="120" @bind="v.Name" @bind:event="oninput" />
                             </td>
+                            @if (ShowCode)
+                            {
+                                <td>
+                                    <input class="cell-input" maxlength="40" placeholder="—"
+                                           @bind="v.Code" @bind:event="oninput" />
+                                </td>
+                            }
                             <td>
                                 <span class="status-pill @(v.IsActive ? "is-active" : "is-inactive")">
                                     @(v.IsActive ? "Active" : "Inactive")
@@ -62,7 +75,7 @@
 
                     @if (_values.Count == 0)
                     {
-                        <tr><td colspan="3" class="empty-row">Nothing added yet.</td></tr>
+                        <tr><td colspan="@(ShowCode ? 4 : 3)" class="empty-row">Nothing added yet.</td></tr>
                     }
                 </tbody>
             </table>
@@ -86,6 +99,9 @@
     /// <summary>Singular noun for the add button and column, e.g. "sourcing channel".</summary>
     [Parameter, EditorRequired] public string ItemNoun { get; set; } = "value";
 
+    /// <summary>Show the optional agent/reference <see cref="LookupValue.Code"/> column (DSA codes).</summary>
+    [Parameter] public bool ShowCode { get; set; }
+
     /// <summary>One-line explanation shown above the table.</summary>
     [Parameter] public string Description { get; set; } =
         "Deactivated, never deleted — a removed option disappears from new applications but stays on the ones that already used it.";
@@ -96,6 +112,7 @@
     private List<LookupValue> _values = new();
     private bool _adding;
     private string? _newName;
+    private string? _newCode;
     private string? _error;
 
     private string CapitalisedNoun =>
@@ -118,6 +135,7 @@
     {
         _adding = true;
         _newName = null;
+        _newCode = null;
         _error = null;
     }
 
@@ -125,6 +143,7 @@
     {
         _adding = false;
         _newName = null;
+        _newCode = null;
         _error = null;
     }
 
@@ -141,7 +160,12 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
         // CompanyId is stamped from the signed-in user's claims, never taken from the browser.
-        db.LookupValues.Add(new LookupValue { CompanyId = CompanyId, Kind = Kind, Name = name, IsActive = true });
+        var code = ShowCode ? _newCode?.Trim() : null;
+        db.LookupValues.Add(new LookupValue
+        {
+            CompanyId = CompanyId, Kind = Kind, Name = name,
+            Code = string.IsNullOrWhiteSpace(code) ? null : code, IsActive = true,
+        });
         await db.SaveChangesAsync();
 
         CancelAdd();
@@ -170,6 +194,11 @@
             if (stored is not null)
             {
                 stored.Name = edited.Name.Trim();
+                if (ShowCode)
+                {
+                    var code = edited.Code?.Trim();
+                    stored.Code = string.IsNullOrWhiteSpace(code) ? null : code;
+                }
             }
         }
 

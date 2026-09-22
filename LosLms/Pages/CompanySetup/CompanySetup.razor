@@ -294,9 +294,9 @@
             @* ---------- Editable dropdown lists (one table, three kinds) ---------- *@
             @if (_activeTab == SourcingTab)
             {
-                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.SourcingChannel"
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.SourcingChannel" ShowCode="true"
                            Title="DSA / sourcing channels" ItemNoun="sourcing channel"
-                           Description="Where your loan applications come from — a branch walk-in, a digital lead, or a specific DSA (direct selling agent who refers business to you). Whatever you list here becomes the choices in the 'DSA / sourcing channel' dropdown an officer picks when starting a new file, so you can later see which channel each loan came through. Deactivate one to stop offering it on new files without changing the files that already used it."
+                           Description="Where your loan applications come from — a branch walk-in, a digital lead, or a specific DSA (direct selling agent who refers business to you). Give each a Code (optional) — a DSA's agent code — and it shows on the file and in the 'DSA / sourcing channel' dropdown as 'Name — CODE', so you can attribute each loan to its channel and agent. Deactivate one to stop offering it on new files without changing the files that already used it."
                            OnSaved="ShowToastAsync" />
             }
 

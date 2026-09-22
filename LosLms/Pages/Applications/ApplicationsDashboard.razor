@@ -841,6 +841,12 @@
 
         var id = await NextApplicationIdAsync(db, Tenant.CompanyId);
 
+        // Snapshot the creating officer's employee code onto the file (blank until an admin sets it).
+        var officerCode = await db.Users
+            .Where(u => u.Id == Tenant.UserId)
+            .Select(u => u.EmployeeCode)
+            .FirstOrDefaultAsync();
+
         // Branch is left unset. It used to be stamped with a hardcoded "Nashik West", which was
         // wrong the moment a second company existed and had branches of its own. The officer picks
         // the real one from the company's branch list on Loan & Security, which is stage 2.
@@ -854,6 +860,7 @@
             CurrentStage = 1,
             AssignedOfficerId = Tenant.UserId,
             AssignedOfficer = Tenant.DisplayName,
+            OfficerEmployeeCode = officerCode,
         });
 
         await db.SaveChangesAsync();

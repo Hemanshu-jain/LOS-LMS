@@ -44,6 +44,8 @@
                        @bind="_invite.DisplayName" @bind:event="oninput" />
                 <input class="field-input" type="email" placeholder="Email" maxlength="200"
                        @bind="_invite.Email" @bind:event="oninput" />
+                <input class="field-input" type="text" placeholder="Employee code (optional)" maxlength="40"
+                       autocomplete="off" @bind="_invite.EmployeeCode" @bind:event="oninput" />
                 <input class="field-input" type="text" placeholder="Password for this user" maxlength="100"
                        autocomplete="off" @bind="_invite.Password" @bind:event="oninput" />
                 <select class="field-input" @bind="_invite.Role">
@@ -89,6 +91,7 @@
                     <tr>
                         <th>Name</th>
                         <th>Email</th>
+                        <th>Employee code</th>
                         <th>Role</th>
                         <th>Password</th>
                         <th>Status</th>
@@ -102,6 +105,18 @@
                         <tr>
                             <td>@u.User.DisplayName</td>
                             <td>@u.User.Email</td>
+                            <td>
+                                @if (u.Role == TenantContext.SuperAdminRole)
+                                {
+                                    <span class="field-caption">—</span>
+                                }
+                                else
+                                {
+                                    <input class="cell-input" maxlength="40" placeholder="—"
+                                           value="@u.User.EmployeeCode"
+                                           @onchange="e => SaveEmployeeCodeAsync(u, e.Value?.ToString())" />
+                                }
+                            </td>
                             <td>
                                 @if (u.Role == TenantContext.SuperAdminRole)
                                 {
@@ -160,7 +175,7 @@
 
                     @if (_users.Count == 0)
                     {
-                        <tr><td colspan="6" class="empty-row">No users.</td></tr>
+                        <tr><td colspan="7" class="empty-row">No users.</td></tr>
                     }
                 </tbody>
             </table>
@@ -177,6 +192,7 @@
     {
         public string DisplayName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
+        public string? EmployeeCode { get; set; }
         public string Password { get; set; } = string.Empty;
         public string Role { get; set; } = TenantContext.StaffRole;
     }
@@ -289,6 +305,7 @@
             Email = email,
             EmailConfirmed = true,
             DisplayName = _invite.DisplayName.Trim(),
+            EmployeeCode = string.IsNullOrWhiteSpace(_invite.EmployeeCode) ? null : _invite.EmployeeCode.Trim(),
             CompanyId = companyId,
             IsActive = true,
             MustChangePassword = false,
@@ -412,6 +429,24 @@
         // Roles ride in the authentication cookie, so the change lands on their next sign-in rather
         // than mid-session. Said out loud instead of leaving an admin wondering why nothing happened.
         await OnSaved.InvokeAsync($"{user.DisplayName} is now {role} — effective at their next sign-in");
+    }
+
+    /// <summary>Persists the employee code typed into a row's cell (blank clears it).</summary>
+    private async Task SaveEmployeeCodeAsync(UserRow row, string? value)
+    {
+        var code = value?.Trim();
+        code = string.IsNullOrWhiteSpace(code) ? null : code;
+        if (code == row.User.EmployeeCode) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.Users.FirstOrDefaultAsync(u => u.Id == row.User.Id);
+        if (stored is null) { return; }
+
+        stored.EmployeeCode = code;
+        await db.SaveChangesAsync();
+        row.User.EmployeeCode = code;
+
+        await OnSaved.InvokeAsync($"Employee code saved for {stored.DisplayName}");
     }
 
     /// <summary>

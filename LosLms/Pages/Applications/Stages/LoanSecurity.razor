@@ -99,7 +99,7 @@ else
                                 <FormField Label="DSA / sourcing channel" For="ls-dsa">
                                     <select id="ls-dsa" class="field-input" @bind="_application!.SourcingChannel">
                                         <option value="">@BlankOption</option>
-                                        @foreach (var o in _channelOptions) { <option value="@o">@o</option> }
+                                        @foreach (var o in _channelOptions) { <option value="@o">@ChannelLabel(o)</option> }
                                     </select>
                                 </FormField>
 
@@ -812,6 +812,15 @@ else
     // Loaded per load from the company's editable list (Settings → Sourcing Channels), not hardcoded.
     private List<string> _channelOptions = new();
 
+    // Channel name → its optional DSA/agent code, so the dropdown can show "Name — CODE" and the
+    // chosen channel's code can be stamped onto the application on save.
+    private Dictionary<string, string?> _channelCodes = new(StringComparer.OrdinalIgnoreCase);
+
+    private string ChannelLabel(string name) =>
+        _channelCodes.TryGetValue(name, out var code) && !string.IsNullOrWhiteSpace(code)
+            ? $"{name} — {code}"
+            : name;
+
     // Real rows from the Branches table, scoped to the signed-in user's company by the global query
     // filter. Loaded in OnParametersSetAsync alongside everything else this screen needs.
     private List<string> _branchOptions = new();
@@ -907,9 +916,11 @@ else
             // Sourcing channels and schemes now come from the company's editable lists. Same guard as
             // branch: a value stored on this file that has since been removed is re-inserted so the
             // select never renders blank and write a blank back on the next save.
-            _channelOptions = await db.LookupValues.AsNoTracking()
+            var channels = await db.LookupValues.AsNoTracking()
                 .Where(l => l.Kind == LookupKind.SourcingChannel && l.IsActive)
-                .OrderBy(l => l.Name).Select(l => l.Name).ToListAsync();
+                .OrderBy(l => l.Name).Select(l => new { l.Name, l.Code }).ToListAsync();
+            _channelOptions = channels.Select(c => c.Name).ToList();
+            _channelCodes = channels.ToDictionary(c => c.Name, c => c.Code, StringComparer.OrdinalIgnoreCase);
             if (_application.SourcingChannel is { Length: > 0 } channel
                 && !_channelOptions.Contains(channel, StringComparer.OrdinalIgnoreCase))
             {
@@ -1521,6 +1532,12 @@ else
 
         var application = await db.Applications.FirstAsync(a => a.Id == _application.Id);
         application.SourcingChannel = _application.SourcingChannel;
+        // Snapshot the chosen channel's agent code onto the file (empty when the channel has no code
+        // or is a legacy value no longer in the list).
+        application.SourcingAgentCode =
+            _application.SourcingChannel is { Length: > 0 } ch && _channelCodes.TryGetValue(ch, out var agentCode)
+                ? agentCode
+                : null;
         application.Branch = _application.Branch;
         application.Scheme = _application.Scheme;
         application.LoanAmount = _application.LoanAmount;

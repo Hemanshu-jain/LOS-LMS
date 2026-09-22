@@ -95,8 +95,24 @@ public class Application
     [MaxLength(60)]
     public string? SourcingChannel { get; set; }
 
+    /// <summary>
+    /// The DSA/agent code of the chosen <see cref="SourcingChannel"/>, copied from its
+    /// <see cref="LookupValue.Code"/> when Loan &amp; Security is saved. Recorded on the file (like
+    /// <see cref="AssignedOfficer"/>) so it survives the lookup being renamed or deactivated.
+    /// </summary>
+    [MaxLength(40)]
+    public string? SourcingAgentCode { get; set; }
+
     [MaxLength(100)]
     public string? AssignedOfficer { get; set; }
+
+    /// <summary>
+    /// The creating officer's <see cref="ApplicationUser.EmployeeCode"/>, stamped once at creation.
+    /// Kept as a snapshot alongside <see cref="AssignedOfficer"/> for the same reason — the file
+    /// records who sourced it even if the user's code later changes.
+    /// </summary>
+    [MaxLength(40)]
+    public string? OfficerEmployeeCode { get; set; }
 
     /// <summary>
     /// The assigned officer as a real foreign key into <see cref="ApplicationUser"/>, the source of

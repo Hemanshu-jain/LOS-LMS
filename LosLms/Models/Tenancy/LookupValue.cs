@@ -28,6 +28,14 @@ public class LookupValue
     [MaxLength(120)]
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Optional short agent/reference code. Only meaningful for <see cref="LookupKind.SourcingChannel"/>
+    /// (a DSA's code), where it is shown in the dropdown as "Name — CODE" and recorded on the
+    /// application as <see cref="Application.SourcingAgentCode"/>. Null for the other kinds.
+    /// </summary>
+    [MaxLength(40)]
+    public string? Code { get; set; }
+
     /// <summary>Cleared, never deleted — a retired option leaves historical applications intact.</summary>
     public bool IsActive { get; set; } = true;
 

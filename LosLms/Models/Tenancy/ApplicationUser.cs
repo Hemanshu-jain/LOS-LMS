@@ -24,6 +24,14 @@ public class ApplicationUser : IdentityUser
     public int? CompanyId { get; set; }
 
     /// <summary>
+    /// The staff member's internal employee code. Stamped onto every application this user creates
+    /// (<see cref="Application.OfficerEmployeeCode"/>) so sourcing/origination can be attributed per
+    /// employee code, not just per name. Optional — blank until the admin sets it in User Management.
+    /// </summary>
+    [MaxLength(40)]
+    public string? EmployeeCode { get; set; }
+
+    /// <summary>
     /// Cleared instead of deleting a user, so historical foreign keys (who verified this RCU, who
     /// waived this PDD) keep resolving to a real name.
     /// </summary>
