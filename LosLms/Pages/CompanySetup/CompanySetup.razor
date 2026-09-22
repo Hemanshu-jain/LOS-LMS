@@ -95,6 +95,33 @@
                         </FormField>
                     </div>
 
+                    @* Firm details — the single source of truth pre-filled onto every application's
+                       Approvals stage (#14), so an officer never retypes them per file. *@
+                    <p class="setup-note">These firm details are pre-filled onto the Approvals stage of every application.</p>
+                    <div class="field-grid">
+                        <FormField Label="Constitution" For="cs-constitution">
+                            <select id="cs-constitution" class="field-input" @bind="_company.Constitution">
+                                <option value="">— Select —</option>
+                                @foreach (var o in ConstitutionOptions) { <option value="@o">@o</option> }
+                            </select>
+                        </FormField>
+
+                        <FormField Label="GSTIN" For="cs-gstin">
+                            <input id="cs-gstin" class="field-input" maxlength="15" @bind="_company.Gstin" />
+                        </FormField>
+
+                        <FormField Label="Date of incorporation" For="cs-incorp">
+                            <input id="cs-incorp" type="date" class="field-input" @bind="_company.IncorpDate" />
+                        </FormField>
+
+                        <FormField Label="Business vintage" For="cs-vintage">
+                            <select id="cs-vintage" class="field-input" @bind="_company.Vintage">
+                                <option value="">— Select —</option>
+                                @foreach (var o in VintageOptions) { <option value="@o">@o</option> }
+                            </select>
+                        </FormField>
+                    </div>
+
                     @if (_profileError is not null)
                     {
                         <p class="inline-error" role="alert">@_profileError</p>
@@ -299,6 +326,13 @@
 </div>
 
 @code {
+    // Same option sets as the Approvals firm-details dropdowns, so a value set here always renders there.
+    private static readonly string[] ConstitutionOptions =
+        { "Proprietorship", "Partnership firm", "Private limited company", "HUF" };
+
+    private static readonly string[] VintageOptions =
+        { "< 1 year", "1-3 years", "3-5 years", "5-10 years", "10+ years" };
+
     private const string ProfileTab = "Company Profile";
     private const string BranchesTab = "Branches";
     private const string PolicyTab = "Policy Thresholds";
@@ -372,6 +406,12 @@
         stored.Address = _company.Address?.Trim();
         stored.ContactEmail = _company.ContactEmail?.Trim();
         stored.ContactPhone = _company.ContactPhone?.Trim();
+
+        // Firm details (#14) — pre-filled onto Approvals.
+        stored.Constitution = _company.Constitution?.Trim();
+        stored.Gstin = _company.Gstin?.Trim();
+        stored.Vintage = _company.Vintage?.Trim();
+        stored.IncorpDate = _company.IncorpDate;
 
         await db.SaveChangesAsync();
 

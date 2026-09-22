@@ -147,62 +147,15 @@ else
                                             @foreach (var o in VintageOptions) { <option value="@o">@o</option> }
                                         </select>
                                     </FormField>
-
-                                    <FormField Label="Annual turnover" For="ap-turnover">
-                                        <div class="currency-input">
-                                            <span class="currency-symbol">₹</span>
-                                            <input id="ap-turnover" type="number" min="0" step="1" class="field-input"
-                                                   @bind="_business.Turnover" @bind:event="oninput" />
-                                        </div>
-                                    </FormField>
                                 </div>
 
-                                <div class="sub-block">
-                                    <div class="sub-block-header">
-                                        <span class="sub-block-label">Partners / directors</span>
-                                        <button type="button" class="add-row-button" @onclick="AddPartner">
-                                            + Add partner / director
-                                        </button>
-                                    </div>
-
-                                    <div class="table-scroll">
-                                        <table class="row-table partner-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Name</th>
-                                                    <th>Role</th>
-                                                    <th>Shareholding %</th>
-                                                    <th>PAN</th>
-                                                    <th>DOB</th>
-                                                    <th>Contact</th>
-                                                    <th></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @if (_partners.Count == 0)
-                                                {
-                                                    <tr><td colspan="7" class="empty-row">No partners or directors recorded.</td></tr>
-                                                }
-
-                                                @foreach (var row in _partners)
-                                                {
-                                                    <tr @key="row">
-                                                        <td><input class="cell-input w-name" aria-label="Partner name" @bind="row.Name" @bind:event="oninput" /></td>
-                                                        <td><input class="cell-input w-name" aria-label="Partner role" @bind="row.Role" @bind:event="oninput" /></td>
-                                                        <td><input class="cell-input w-small" type="number" min="0" step="0.01" aria-label="Shareholding percentage" @bind="row.Shareholding" /></td>
-                                                        <td><input class="cell-input w-pan" maxlength="10" aria-label="Partner PAN" @bind="row.Pan" @bind:event="oninput" /></td>
-                                                        <td><input class="cell-input" type="date" aria-label="Partner date of birth" @bind="row.Dob" /></td>
-                                                        <td><input class="cell-input w-contact" maxlength="10" aria-label="Partner contact number" @bind="row.Contact" /></td>
-                                                        <td>
-                                                            <button type="button" class="remove-button" aria-label="Remove this partner"
-                                                                    @onclick="() => _partners.Remove(row)">×</button>
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
+                                @* Firm details are pre-filled from the Company profile (Settings) — #14
+                                   "approvals entered in backend only". Annual turnover and the
+                                   partners/directors table were removed at the client's request. *@
+                                <p class="setup-note" style="margin:0;">
+                                    Firm details come from your Company profile (Settings → Company Profile).
+                                    Edit them there and they flow onto every application.
+                                </p>
 
                                 <div class="sub-block">
                                     <span class="sub-block-label">Business process narrative</span>
@@ -696,6 +649,10 @@ else
         _business = await db.Businesses.FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId)
             ?? Track(db.Businesses, new Business { ApplicationId = ApplicationId }, ref created);
 
+        // #14: pre-fill blank firm details from the Company profile (the source of truth). Only blanks,
+        // so an officer's manual entry is never overwritten. A newly created row is saved below.
+        await PrefillBusinessFromCompanyAsync(db);
+
         _tvr = await db.Tvrs.FirstOrDefaultAsync(t => t.ApplicationId == ApplicationId)
             ?? Track(db.Tvrs, new Tvr { ApplicationId = ApplicationId }, ref created);
 
@@ -797,18 +754,55 @@ else
         _decision.SanctionedTenure ??= _application?.Tenure;
     }
 
+    /// <summary>
+    /// Fills any blank firm field on the application's Business row from its Company profile, so the
+    /// Approvals firm details come "from the backend" (#14). Company is not query-filtered, so it is
+    /// fetched by id directly. Only blanks are filled — a manual entry is never overwritten.
+    /// </summary>
+    private async Task PrefillBusinessFromCompanyAsync(LosDbContext db)
+    {
+        if (_application?.CompanyId is not { } companyId)
+        {
+            return;
+        }
+
+        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId);
+        if (company is null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_business.FirmName) && !string.IsNullOrWhiteSpace(company.Name))
+        {
+            _business.FirmName = company.Name;
+        }
+        if (string.IsNullOrWhiteSpace(_business.Constitution) && !string.IsNullOrWhiteSpace(company.Constitution))
+        {
+            _business.Constitution = company.Constitution!;
+        }
+        if (string.IsNullOrWhiteSpace(_business.Gstin) && !string.IsNullOrWhiteSpace(company.Gstin))
+        {
+            _business.Gstin = company.Gstin!;
+        }
+        if (string.IsNullOrWhiteSpace(_business.Vintage) && !string.IsNullOrWhiteSpace(company.Vintage))
+        {
+            _business.Vintage = company.Vintage!;
+        }
+        _business.IncorpDate ??= company.IncorpDate;
+    }
+
     // ---------------------------------------------------------------------
     // Completion conditions — the four that gate the sanction
     // ---------------------------------------------------------------------
 
+    // #14: turnover and the partners/directors table were removed; firm identity is pre-filled from the
+    // Company profile. Narrative stays a per-file writeup the officer completes.
     private bool BusinessComplete =>
         !string.IsNullOrWhiteSpace(_business.FirmName)
         && !string.IsNullOrWhiteSpace(_business.Constitution)
         && _business.IncorpDate.HasValue
         && !string.IsNullOrWhiteSpace(_business.Gstin)
         && !string.IsNullOrWhiteSpace(_business.Vintage)
-        && _business.Turnover > 0
-        && _partners.Any(p => !string.IsNullOrWhiteSpace(p.Name) && !string.IsNullOrWhiteSpace(p.Pan))
         && !string.IsNullOrWhiteSpace(_business.Narrative);
 
     private bool TvrComplete =>

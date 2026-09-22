@@ -42,6 +42,14 @@ public class Company
     [MaxLength(200)] public string? ContactEmail { get; set; }
     [MaxLength(20)] public string? ContactPhone { get; set; }
 
+    // ---- Firm details (mirror Business.*; the source of truth pre-filled onto Approvals so the
+    //      officer no longer retypes them per file — "approvals entered in backend only", #14) ----
+
+    [MaxLength(60)] public string? Constitution { get; set; }
+    [MaxLength(20)] public string? Gstin { get; set; }
+    [MaxLength(30)] public string? Vintage { get; set; }
+    public DateOnly? IncorpDate { get; set; }
+
     // ---- Policy: queue ----
 
     /// <summary>
