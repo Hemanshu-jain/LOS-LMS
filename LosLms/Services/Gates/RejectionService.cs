@@ -26,9 +26,12 @@ public static class RejectionService
         AdminRequestNotifier notifier,
         string applicationId,
         string? requestedByUserId,
-        string reason) =>
+        string reason,
+        string? category = null) =>
+        // The chosen CIBIL category rides in the request's subject key, so it survives until an Admin
+        // approves and ApplyAsync writes it onto the rejection log — no extra column needed.
         GateCheckService.RaiseRequestAsync(
-            db, notifier, applicationId, AdminRequest.Reject, requestedByUserId, reason);
+            db, notifier, applicationId, AdminRequest.Reject, requestedByUserId, reason, category);
 
     /// <summary>
     /// Logs the rejection, marks the application Rejected, and saves. <c>CurrentStage</c> is left
@@ -40,7 +43,7 @@ public static class RejectionService
     /// in, because by now the officer who asked is long gone and the file's own current stage is the
     /// only truthful answer.
     /// </remarks>
-    public static async Task ApplyAsync(LosDbContext db, string applicationId, string reason)
+    public static async Task ApplyAsync(LosDbContext db, string applicationId, string reason, string? category = null)
     {
         var application = await db.Applications.FirstAsync(a => a.Id == applicationId);
 
@@ -49,6 +52,7 @@ public static class RejectionService
             ApplicationId = applicationId,
             StageAtRejection = application.CurrentStage,
             Reason = reason.Trim(),
+            RejectionCategory = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
         });
 
         application.Status = "Rejected";

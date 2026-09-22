@@ -61,6 +61,13 @@
                 <button type="button" class="ghost-button" @onclick="() => ExportCsvAsync(filtered)">
                     <Icon Name="download" Size="14" /> Export
                 </button>
+
+                @if (Tenant.IsSuperAdmin || Tenant.IsAdmin)
+                {
+                    <button type="button" class="ghost-button" @onclick="ExportRejectionsCsvAsync">
+                        <Icon Name="download" Size="14" /> Rejections (CIBIL)
+                    </button>
+                }
             </div>
 
             <button type="button" class="primary-button" @onclick="CreateApplicationAsync">
@@ -1090,7 +1097,7 @@
         }
     }
 
-    private async Task ConfirmDrawerRejectAsync(string reason)
+    private async Task ConfirmDrawerRejectAsync(RejectDialog.Result result)
     {
         _showDrawerReject = false;
 
@@ -1107,12 +1114,12 @@
         await Tenant.EnsureLoadedAsync();
         if (Tenant.IsSuperAdmin || Tenant.IsAdmin)
         {
-            await RejectionService.ApplyAsync(db, app.Id, reason);
+            await RejectionService.ApplyAsync(db, app.Id, result.Reason, result.Category);
             await LoadAsync();
             return;
         }
 
-        await RejectionService.RequestAsync(db, Notifier, app.Id, Tenant.UserId, reason);
+        await RejectionService.RequestAsync(db, Notifier, app.Id, Tenant.UserId, result.Reason, result.Category);
 
         _drawerRejectRequested = true;
         await LoadAsync();
@@ -1149,6 +1156,54 @@
         }
 
         await JS.InvokeVoidAsync("downloadFile", "applications.csv", csv.ToString());
+    }
+
+    /// <summary>
+    /// The CIBIL rejection export — one row per rejection log, joined to its application, admin-only.
+    /// The category column is the structured reason bureaus need; the free-text reason rides alongside.
+    /// </summary>
+    private async Task ExportRejectionsCsvAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        // Query-filtered to this company (SuperAdmin sees all), so the export can never leak another
+        // tenant's rejections.
+        var rows = await db.RejectionLogs.AsNoTracking()
+            .OrderByDescending(r => r.RejectedAt)
+            .Select(r => new
+            {
+                r.ApplicationId,
+                r.Application!.CustomerName,
+                r.Application.LoanProduct,
+                r.Application.LoanAmount,
+                r.StageAtRejection,
+                r.RejectionCategory,
+                r.Reason,
+                r.RejectedAt,
+            })
+            .ToListAsync();
+
+        var csv = new StringBuilder();
+        csv.Append("App ID,Customer name,Product,Loan amount,Stage at rejection,Category,Reason,Rejected on\n");
+
+        foreach (var r in rows)
+        {
+            var fields = new[]
+            {
+                r.ApplicationId,
+                r.CustomerName ?? string.Empty,
+                r.LoanProduct ?? string.Empty,
+                r.LoanAmount.ToString("0", CultureInfo.InvariantCulture),
+                StageLabel(r.StageAtRejection),
+                r.RejectionCategory ?? string.Empty,
+                r.Reason,
+                r.RejectedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            };
+
+            csv.Append(string.Join(',', fields.Select(CsvQuote))).Append('\n');
+        }
+
+        await JS.InvokeVoidAsync("downloadFile", "rejections-cibil.csv", csv.ToString());
     }
 
     private static string CsvQuote(string value) => '"' + value.Replace("\"", "\"\"") + '"';

@@ -28,7 +28,37 @@ public class RejectionLog
     [MaxLength(1000)]
     public string Reason { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The structured rejection category for bureau reporting, chosen from a standard list at rejection
+    /// time (e.g. "Low bureau score", "High existing obligations"). Nullable because historical rows
+    /// pre-date it and a free-text <see cref="Reason"/> is always present. The concrete CIBIL reason
+    /// codes replace this list once the client supplies them — see <see cref="RejectionCategories"/>.
+    /// </summary>
+    [MaxLength(60)]
+    public string? RejectionCategory { get; set; }
+
     public DateTime RejectedAt { get; set; }
 
     public Application? Application { get; set; }
+}
+
+/// <summary>
+/// The standard rejection categories offered at rejection time and used in the CIBIL export. A
+/// starter list until the client supplies the exact bureau reason codes; swapping it changes only what
+/// new rejections offer — existing rows keep the string they recorded.
+/// </summary>
+public static class RejectionCategories
+{
+    public static readonly string[] All =
+    {
+        "Low bureau score",
+        "Adverse credit history (write-off / settlement / overdue)",
+        "High existing obligations (FOIR)",
+        "Insufficient income / eligibility",
+        "Insufficient or adverse documentation",
+        "Collateral / LTV shortfall",
+        "RCU / field verification negative",
+        "Policy norms not met",
+        "Other",
+    };
 }

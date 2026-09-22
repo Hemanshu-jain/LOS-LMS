@@ -11,6 +11,12 @@
 
         <div class="reject-title" id="reject-title">Reject this application?</div>
 
+        <label class="reject-label" for="reject-category">Rejection category (for CIBIL)</label>
+        <select id="reject-category" class="reject-input" @bind="_category">
+            <option value="">— Select a category —</option>
+            @foreach (var c in RejectionCategories.All) { <option value="@c">@c</option> }
+        </select>
+
         <label class="reject-label" for="reject-reason">Reason (required)</label>
         <textarea id="reject-reason" class="reject-input" rows="3"
                   placeholder="Why is this application being rejected?"
@@ -26,14 +32,18 @@
 </div>
 
 @code {
-    /// <summary>Invoked with the entered reason once the officer confirms.</summary>
-    [Parameter] public EventCallback<string> OnConfirm { get; set; }
+    /// <summary>The officer's rejection input: the mandatory reason and an optional CIBIL category.</summary>
+    public sealed record Result(string Reason, string? Category);
+
+    /// <summary>Invoked with the entered reason and category once the officer confirms.</summary>
+    [Parameter] public EventCallback<Result> OnConfirm { get; set; }
 
     [Parameter] public EventCallback OnCancel { get; set; }
 
     private ElementReference _panel;
     private bool _shouldFocus = true;
     private string _reason = string.Empty;
+    private string _category = string.Empty;
 
     private bool ConfirmDisabled => string.IsNullOrWhiteSpace(_reason);
 
@@ -55,7 +65,7 @@
             return;
         }
 
-        await OnConfirm.InvokeAsync(_reason.Trim());
+        await OnConfirm.InvokeAsync(new Result(_reason.Trim(), string.IsNullOrWhiteSpace(_category) ? null : _category));
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)

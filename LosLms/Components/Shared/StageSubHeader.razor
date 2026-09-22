@@ -446,8 +446,9 @@
                     break;
 
                 case AdminRequest.Reject:
+                    // The CIBIL category was stashed in the subject key when the request was raised.
                     await RejectionService.ApplyAsync(
-                        db, ApplicationId, stored.RequestReason ?? "Rejected by admin.");
+                        db, ApplicationId, stored.RequestReason ?? "Rejected by admin.", stored.SubjectKey);
                     break;
 
                 case AdminRequest.SanctionApproval:
@@ -506,7 +507,7 @@
         await db.SaveChangesAsync();
     }
 
-    private async Task ConfirmRejectAsync(string reason)
+    private async Task ConfirmRejectAsync(RejectDialog.Result result)
     {
         _showReject = false;
 
@@ -517,12 +518,12 @@
         // page instead of navigating away.
         if (_isAdmin)
         {
-            await RejectionService.ApplyAsync(db, ApplicationId, reason);
+            await RejectionService.ApplyAsync(db, ApplicationId, result.Reason, result.Category);
             await LoadGateAndRequestsAsync(db);
             return;
         }
 
-        await RejectionService.RequestAsync(db, Notifier, ApplicationId, Tenant.UserId, reason);
+        await RejectionService.RequestAsync(db, Notifier, ApplicationId, Tenant.UserId, result.Reason, result.Category);
 
         _rejectRequested = true;
         await LoadGateAndRequestsAsync(db);
