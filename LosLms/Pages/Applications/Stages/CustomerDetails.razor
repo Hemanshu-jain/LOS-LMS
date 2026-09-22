@@ -88,27 +88,52 @@ else
                                         SummaryText="@(party.IsPersonalComplete ? "8 fields · complete" : null)"
                                         OnToggle="() => TogglePersonal()">
                         <div class="personal-layout">
-                            <div class="photo-block">
-                                <div class="photo-frame">
-                                    @if (party.PhotoPreview is not null)
+                            <div class="photo-block @(_livePhotoCameraOpen ? "is-capturing" : null)">
+                                <div class="photo-frame @(_livePhotoCameraOpen ? "is-camera" : null)">
+                                    @* Always rendered (hidden until active) so the camera code can find it by id. *@
+                                    <video id="@LivePhotoCameraId" class="photo-cam @(_livePhotoCameraOpen ? null : "is-hidden")"
+                                           autoplay playsinline muted></video>
+                                    @if (!_livePhotoCameraOpen)
                                     {
-                                        <img src="@party.PhotoPreview" alt="Selected photograph" class="photo-preview" />
-                                    }
-                                    else if (!string.IsNullOrWhiteSpace(party.PhotoPath))
-                                    {
-                                        <span class="photo-onfile">On file<br />@Path.GetFileName(party.PhotoPath)</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="photo-empty">Photo</span>
+                                        @if (party.PhotoPreview is not null)
+                                        {
+                                            <img src="@party.PhotoPreview" alt="Selected photograph" class="photo-preview" />
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(party.PhotoPath))
+                                        {
+                                            <img src="@FileUrl(party, party.PhotoPath!)" alt="Photograph on file" class="photo-preview" />
+                                        }
+                                        else
+                                        {
+                                            <span class="photo-empty">Photo</span>
+                                        }
                                     }
                                 </div>
-                                <label class="upload-button">
-                                    Capture / upload
-                                    @* Live camera capture is out of scope this pass — file upload only. *@
-                                    <InputFile class="visually-hidden" accept="image/*"
-                                               OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.Photo))" />
-                                </label>
+
+                                @if (_livePhotoCameraOpen)
+                                {
+                                    <div class="photo-actions">
+                                        <button type="button" class="verify-button" @onclick="() => CaptureLivePhotoAsync(party)">Capture</button>
+                                        <button type="button" class="row-action" @onclick="CloseLivePhotoCameraAsync">Cancel</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="photo-actions">
+                                        <button type="button" class="verify-button" @onclick="OpenLivePhotoCameraAsync">
+                                            @(string.IsNullOrWhiteSpace(party.PhotoPath) ? "Take live photo" : "Retake")
+                                        </button>
+                                        <label class="upload-button">
+                                            Upload
+                                            <InputFile class="visually-hidden" accept="image/*"
+                                                       OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.Photo))" />
+                                        </label>
+                                    </div>
+                                }
+                                @if (_captureError is not null)
+                                {
+                                    <p class="inline-error" role="alert">@_captureError</p>
+                                }
                             </div>
 
                             <div class="field-grid">
@@ -275,85 +300,6 @@ else
                                 {
                                     <p class="inline-error" role="alert">@_uploadError</p>
                                 }
-
-                                <div class="panel-divider"></div>
-
-                                <div class="capture-block">
-                                    <span class="sub-block-label">Live photo &amp; Video KYC (evidence)</span>
-                                    <p class="field-caption">Captured live from the camera and stored with the file at full quality. The staff clicks the photo and records the KYC video here; both can be viewed any time.</p>
-
-                                    @* ---------- Live photo ---------- *@
-                                    <div class="capture-row">
-                                        <div class="capture-media @(_livePhotoCameraOpen ? null : "is-hidden")">
-                                            <video id="@LivePhotoCameraId" class="capture-video" autoplay playsinline muted></video>
-                                        </div>
-                                        @if (!_livePhotoCameraOpen && !string.IsNullOrWhiteSpace(party.LivePhotoPath))
-                                        {
-                                            <img class="capture-thumb" src="@FileUrl(party, party.LivePhotoPath!)" alt="Live photo on file" />
-                                        }
-                                        <div class="capture-actions">
-                                            @if (_livePhotoCameraOpen)
-                                            {
-                                                <button type="button" class="verify-button" @onclick="() => CaptureLivePhotoAsync(party)">Capture photo</button>
-                                                <button type="button" class="row-action" @onclick="CloseLivePhotoCameraAsync">Cancel</button>
-                                            }
-                                            else
-                                            {
-                                                <button type="button" class="verify-button" @onclick="OpenLivePhotoCameraAsync">
-                                                    @(string.IsNullOrWhiteSpace(party.LivePhotoPath) ? "Take live photo" : "Retake live photo")
-                                                </button>
-                                                @if (!string.IsNullOrWhiteSpace(party.LivePhotoPath))
-                                                {
-                                                    <a class="file-link" href="@FileUrl(party, party.LivePhotoPath!)" target="_blank">View</a>
-                                                }
-                                            }
-                                        </div>
-                                    </div>
-
-                                    @* ---------- Video KYC ---------- *@
-                                    <div class="capture-row">
-                                        <div class="capture-media @(_videoKycCameraOpen ? null : "is-hidden")">
-                                            <video id="@VideoKycCameraId" class="capture-video" autoplay playsinline muted></video>
-                                            @if (_videoRecording)
-                                            {
-                                                <span class="capture-rec">● REC</span>
-                                            }
-                                        </div>
-                                        @if (!_videoKycCameraOpen && !string.IsNullOrWhiteSpace(party.VideoKycPath))
-                                        {
-                                            <video class="capture-thumb" controls src="@FileUrl(party, party.VideoKycPath!)"></video>
-                                        }
-                                        <div class="capture-actions">
-                                            @if (_videoKycCameraOpen)
-                                            {
-                                                @if (!_videoRecording)
-                                                {
-                                                    <button type="button" class="verify-button" @onclick="StartVideoKycAsync">Start recording</button>
-                                                }
-                                                else
-                                                {
-                                                    <button type="button" class="verify-button" @onclick="() => StopVideoKycAsync(party)">Stop &amp; save</button>
-                                                }
-                                                <button type="button" class="row-action" @onclick="CloseVideoKycCameraAsync">Cancel</button>
-                                            }
-                                            else
-                                            {
-                                                <button type="button" class="verify-button" @onclick="OpenVideoKycCameraAsync">
-                                                    @(string.IsNullOrWhiteSpace(party.VideoKycPath) ? "Record Video KYC" : "Re-record Video KYC")
-                                                </button>
-                                                @if (!string.IsNullOrWhiteSpace(party.VideoKycPath))
-                                                {
-                                                    <a class="file-link" href="@FileUrl(party, party.VideoKycPath!)" target="_blank">View</a>
-                                                }
-                                            }
-                                        </div>
-                                    </div>
-
-                                    @if (_captureError is not null)
-                                    {
-                                        <p class="inline-error" role="alert">@_captureError</p>
-                                    }
-                                </div>
                             </div>
                         </div>
 
@@ -366,16 +312,48 @@ else
                                     <span class="gate-note">Blocks stage completion when a match exists</span>
                                 </div>
 
-                                <div class="gate gate-inactive">
+                                <div class="gate gate-@(string.IsNullOrWhiteSpace(party.VideoKycPath) ? "inactive" : "pass")">
                                     <span class="gate-label">Video KYC</span>
-                                    <span class="gate-note">Not initiated · agent-assisted call</span>
-                                    <button type="button" class="verify-button is-block"
-                                            @onclick='() => NotConfigured("video-kyc", VideoKycUnavailable)'>
-                                        Start video KYC
-                                    </button>
-                                    @if (_notices.TryGetValue("video-kyc", out var kycNotice))
+
+                                    @* Always rendered (hidden until active) so the camera code can find it by id. *@
+                                    <div class="capture-media @(_videoKycCameraOpen ? null : "is-hidden")">
+                                        <video id="@VideoKycCameraId" class="capture-video" autoplay playsinline muted></video>
+                                        @if (_videoRecording)
+                                        {
+                                            <span class="capture-rec">● REC</span>
+                                        }
+                                    </div>
+
+                                    @if (_videoKycCameraOpen)
                                     {
-                                        <p class="inline-error" role="alert">@kycNotice</p>
+                                        <div class="capture-actions">
+                                            @if (!_videoRecording)
+                                            {
+                                                <button type="button" class="verify-button" @onclick="StartVideoKycAsync">Start recording</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="verify-button" @onclick="() => StopVideoKycAsync(party)">Stop &amp; save</button>
+                                            }
+                                            <button type="button" class="row-action" @onclick="CloseVideoKycCameraAsync">Cancel</button>
+                                        </div>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(party.VideoKycPath))
+                                    {
+                                        <span class="gate-note">Recorded · stored with the file</span>
+                                        <video class="capture-thumb" controls src="@FileUrl(party, party.VideoKycPath!)"></video>
+                                        <button type="button" class="verify-button is-block" @onclick="OpenVideoKycCameraAsync">Re-record</button>
+                                    }
+                                    else
+                                    {
+                                        <span class="gate-note">Not initiated · record a live KYC video</span>
+                                        <button type="button" class="verify-button is-block" @onclick="OpenVideoKycCameraAsync">
+                                            Start video KYC
+                                        </button>
+                                    }
+                                    @if (_captureError is not null)
+                                    {
+                                        <p class="inline-error" role="alert">@_captureError</p>
                                     }
                                 </div>
                             </div>
@@ -522,7 +500,6 @@ else
     private const string PanOcrUnavailable = "PAN verification unavailable — API key not configured. Enter and save manually.";
     private const string AadhaarOcrUnavailable = "Aadhaar verification unavailable — API key not configured. Enter and save manually.";
     private const string MobileVerifyUnavailable = "Mobile verification unavailable — SMS provider not configured.";
-    private const string VideoKycUnavailable = "Video KYC unavailable — service not configured yet.";
 
     private const long MaxUploadBytes = 5 * 1024 * 1024;
 
@@ -551,7 +528,7 @@ else
 
     private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
 
-    private enum UploadKind { Photo, PanScan, AadhaarScan, AddressProof, LivePhoto, VideoKyc }
+    private enum UploadKind { Photo, PanScan, AadhaarScan, AddressProof, VideoKyc }
 
     /// <summary>Masked Aadhaar is accepted only within this many days of generation.</summary>
     private const int AadhaarFreshnessDays = 5;
@@ -1104,7 +1081,6 @@ else
             case UploadKind.PanScan: party.PanScanPath = relativePath; break;
             case UploadKind.AadhaarScan: party.AadhaarScanPath = relativePath; break;
             case UploadKind.AddressProof: party.AddressProofPath = relativePath; break;
-            case UploadKind.LivePhoto: party.LivePhotoPath = relativePath; break;
             case UploadKind.VideoKyc: party.VideoKycPath = relativePath; break;
         }
 
@@ -1115,7 +1091,7 @@ else
     // Live camera capture — live photo + Video KYC (evidence)
     // ---------------------------------------------------------------------
 
-    private const string LivePhotoCameraId = "livephoto-cam";
+    private const string LivePhotoCameraId = "photo-cam";
     private const string VideoKycCameraId = "videokyc-cam";
 
     // Generous: a full-resolution PNG frame, or a short high-bitrate clip. Streamed in chunks via
@@ -1134,9 +1110,9 @@ else
     private async Task OpenLivePhotoCameraAsync()
     {
         _captureError = null;
+        _livePhotoCameraOpen = true; // reveal the always-rendered <video> before attaching the stream
         var error = await JS.InvokeAsync<string>("losStartCamera", LivePhotoCameraId, false);
-        if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
-        _livePhotoCameraOpen = true;
+        if (!string.IsNullOrEmpty(error)) { _captureError = error; _livePhotoCameraOpen = false; }
     }
 
     private async Task CaptureLivePhotoAsync(PartyForm party)
@@ -1146,7 +1122,13 @@ else
         var bytes = await ReadCaptureAsync(streamRef);
         if (bytes is null) { return; }
 
-        await SavePartyBytesAsync(party, bytes, ".png", UploadKind.LivePhoto, "The captured photo was invalid.");
+        // The live photo IS the party's photo — same field as an uploaded one, so there is a single
+        // canonical photograph. Stored lossless (PNG) at native resolution.
+        var relativePath = await SavePartyBytesAsync(party, bytes, ".png", UploadKind.Photo, "The captured photo was invalid.");
+        if (relativePath is not null)
+        {
+            party.PhotoPreview = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+        }
         await CloseLivePhotoCameraAsync();
     }
 
@@ -1159,9 +1141,9 @@ else
     private async Task OpenVideoKycCameraAsync()
     {
         _captureError = null;
+        _videoKycCameraOpen = true; // reveal the always-rendered <video> before attaching the stream
         var error = await JS.InvokeAsync<string>("losStartCamera", VideoKycCameraId, true);
-        if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
-        _videoKycCameraOpen = true;
+        if (!string.IsNullOrEmpty(error)) { _captureError = error; _videoKycCameraOpen = false; }
     }
 
     private async Task StartVideoKycAsync()
@@ -1610,7 +1592,6 @@ else
         entity.PanScanPath = form.PanScanPath;
         entity.AadhaarScanPath = form.AadhaarScanPath;
         entity.AddressProofPath = form.AddressProofPath;
-        entity.LivePhotoPath = form.LivePhotoPath;
         entity.VideoKycPath = form.VideoKycPath;
         entity.AadhaarGeneratedOn = form.AadhaarGeneratedOn;
         entity.AddressChangedSinceAadhaar = form.AddressChangedSinceAadhaar;
@@ -1661,7 +1642,6 @@ else
         form.PanScanPath = entity.PanScanPath;
         form.AadhaarScanPath = entity.AadhaarScanPath;
         form.AddressProofPath = entity.AddressProofPath;
-        form.LivePhotoPath = entity.LivePhotoPath;
         form.VideoKycPath = entity.VideoKycPath;
         form.AadhaarGeneratedOn = entity.AadhaarGeneratedOn;
         form.AddressChangedSinceAadhaar = entity.AddressChangedSinceAadhaar;

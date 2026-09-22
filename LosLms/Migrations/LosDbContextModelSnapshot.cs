@@ -1720,10 +1720,6 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<string>("LivePhotoPath")
-                        .HasMaxLength(400)
-                        .HasColumnType("varchar(400)");
-
                     b.Property<string>("MaritalStatus")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
