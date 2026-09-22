@@ -55,6 +55,11 @@ public sealed class PartyForm
     public string? PhotoPath { get; set; }
     public string? PanScanPath { get; set; }
     public string? AadhaarScanPath { get; set; }
+    public string? AddressProofPath { get; set; }
+
+    // ---- Aadhaar freshness (#5) and address-change-with-proof (#2) ----
+    public DateOnly? AadhaarGeneratedOn { get; set; }
+    public bool AddressChangedSinceAadhaar { get; set; }
 
     /// <summary>Data URL of the just-selected photo. Never persisted — preview only.</summary>
     public string? PhotoPreview { get; set; }

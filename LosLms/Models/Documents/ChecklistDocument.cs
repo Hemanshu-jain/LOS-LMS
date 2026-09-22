@@ -43,6 +43,13 @@ public class ChecklistDocument
     /// <summary>Only ever 90, only ever on Address, and only once Address is actually collected.</summary>
     public int? ValidityDays { get; set; }
 
+    /// <summary>
+    /// Staff confirmation that the scanned document carries the required signature(s). Set by hand for
+    /// now; a later drop-in (Digio, or a Gemini read of the scan) can pre-fill it. Purely a checklist
+    /// flag — it gates nothing on its own.
+    /// </summary>
+    public bool SignedConfirmed { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

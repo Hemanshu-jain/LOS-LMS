@@ -48,6 +48,21 @@ public class Party
     [MaxLength(400)] public string? PanScanPath { get; set; }
     [MaxLength(400)] public string? AadhaarScanPath { get; set; }
 
+    /// <summary>
+    /// When the masked Aadhaar (offline e-KYC XML / masked PDF) was generated or downloaded. A masked
+    /// Aadhaar is only accepted within a few days of generation, so a stale date is flagged on the
+    /// screen. Entered by staff for now; auto-reading the generation timestamp is a later enhancement.
+    /// </summary>
+    public DateOnly? AadhaarGeneratedOn { get; set; }
+
+    /// <summary>
+    /// Set when the current address differs from the one on the (fetched) Aadhaar, which requires a
+    /// separate address proof to be attached at <see cref="AddressProofPath"/>.
+    /// </summary>
+    public bool AddressChangedSinceAadhaar { get; set; }
+
+    [MaxLength(400)] public string? AddressProofPath { get; set; }
+
     // ---- Contact ----
     [MaxLength(10)] public string? Mobile { get; set; }
     [MaxLength(10)] public string? AltMobile { get; set; }

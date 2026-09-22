@@ -133,6 +133,7 @@ else
                                             <th>Uploaded file</th>
                                             <th>Upload date</th>
                                             <th>Status</th>
+                                            <th>Signed</th>
                                             <th>Target date</th>
                                             <th>Remarks</th>
                                             <th>Action</th>
@@ -162,6 +163,17 @@ else
                                                     @if (overdue)
                                                     {
                                                         <span class="overdue-icon" title="Past target date">⚠</span>
+                                                    }
+                                                </td>
+                                                <td class="cell-signed">
+                                                    @if (!chaseable)
+                                                    {
+                                                        <input type="checkbox" @bind="doc.SignedConfirmed"
+                                                               aria-label="@($"{kyc.Label} signed")" title="Scanned copy is signed" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="is-empty">—</span>
                                                     }
                                                 </td>
                                                 <td>
@@ -841,6 +853,7 @@ else
                 && byType.TryGetValue(document.DocumentType, out var local))
             {
                 document.TargetDate = local.TargetDate;
+                document.SignedConfirmed = local.SignedConfirmed;
             }
         }
 

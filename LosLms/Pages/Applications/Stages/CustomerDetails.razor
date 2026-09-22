@@ -247,6 +247,30 @@ else
                                                    OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AadhaarScan))" />
                                     </label>
                                 </div>
+
+                                <div class="field-grid">
+                                    <FormField Label="Aadhaar generated / downloaded on" For="aadhaar-genon">
+                                        <input id="aadhaar-genon" type="date" class="field-input"
+                                               @bind="party.AadhaarGeneratedOn" />
+                                        @if (AadhaarStale(party))
+                                        {
+                                            <span class="field-caption field-caption-warn">Masked Aadhaar is more than @AadhaarFreshnessDays days old — request a freshly generated copy.</span>
+                                        }
+                                    </FormField>
+                                </div>
+
+                                <label class="scan-check">
+                                    <input type="checkbox" @bind="party.AddressChangedSinceAadhaar" />
+                                    <span>Current address differs from Aadhaar — attach proof</span>
+                                </label>
+                                @if (party.AddressChangedSinceAadhaar)
+                                {
+                                    <label class="scan-drop">
+                                        <span>@ScanLabel("Address proof", party.AddressProofPath)</span>
+                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AddressProof))" />
+                                    </label>
+                                }
                                 @if (_uploadError is not null)
                                 {
                                     <p class="inline-error" role="alert">@_uploadError</p>
@@ -448,7 +472,15 @@ else
 
     private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
 
-    private enum UploadKind { Photo, PanScan, AadhaarScan }
+    private enum UploadKind { Photo, PanScan, AadhaarScan, AddressProof }
+
+    /// <summary>Masked Aadhaar is accepted only within this many days of generation.</summary>
+    private const int AadhaarFreshnessDays = 5;
+
+    /// <summary>True when an Aadhaar-generated date is set and older than the freshness window.</summary>
+    private static bool AadhaarStale(PartyForm party) =>
+        party.AadhaarGeneratedOn is { } on
+        && DateOnly.FromDateTime(DateTime.Today).DayNumber - on.DayNumber > AadhaarFreshnessDays;
 
     /// <summary>Per-party collapse state, so collapsing on one tab doesn't move another.</summary>
     private sealed class SectionState
@@ -978,6 +1010,9 @@ else
             case UploadKind.AadhaarScan:
                 party.AadhaarScanPath = relativePath;
                 break;
+            case UploadKind.AddressProof:
+                party.AddressProofPath = relativePath;
+                break;
         }
     }
 
@@ -1388,6 +1423,9 @@ else
         entity.PhotoPath = form.PhotoPath;
         entity.PanScanPath = form.PanScanPath;
         entity.AadhaarScanPath = form.AadhaarScanPath;
+        entity.AddressProofPath = form.AddressProofPath;
+        entity.AadhaarGeneratedOn = form.AadhaarGeneratedOn;
+        entity.AddressChangedSinceAadhaar = form.AddressChangedSinceAadhaar;
 
         entity.Mobile = form.Mobile;
         entity.AltMobile = form.AltMobile;
@@ -1434,6 +1472,9 @@ else
         form.PhotoPath = entity.PhotoPath;
         form.PanScanPath = entity.PanScanPath;
         form.AadhaarScanPath = entity.AadhaarScanPath;
+        form.AddressProofPath = entity.AddressProofPath;
+        form.AadhaarGeneratedOn = entity.AadhaarGeneratedOn;
+        form.AddressChangedSinceAadhaar = entity.AddressChangedSinceAadhaar;
 
         form.Mobile = entity.Mobile;
         form.AltMobile = entity.AltMobile;

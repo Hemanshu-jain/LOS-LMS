@@ -378,6 +378,21 @@ select.field-input {
     background: #efefef;
 }
 
+.scan-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 9px;
+    font-size: 11px;
+    color: #5b6472;
+    cursor: pointer;
+}
+
+.field-caption-warn {
+    color: #c0392b;
+    font-weight: 600;
+}
+
 /* ---------- Gates ---------- */
 .gate {
     padding: 9px 10px;
