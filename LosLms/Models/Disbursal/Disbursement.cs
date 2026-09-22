@@ -46,6 +46,13 @@ public class Disbursement
     /// <summary>Anchors the repayment schedule's due dates.</summary>
     public DateOnly? FirstEmiDate { get; set; }
 
+    /// <summary>
+    /// The borrower's preferred EMI day of the month (e.g. 5 or 10). When set, the first EMI date is
+    /// derived as the next occurrence of that day on/after the value date, and every later instalment
+    /// falls on the same day. Null keeps whatever <see cref="FirstEmiDate"/> the officer picked directly.
+    /// </summary>
+    public int? EmiDayOfMonth { get; set; }
+
     // ---- Disbursement account & trade advance ----
 
     /// <summary>

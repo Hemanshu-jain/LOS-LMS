@@ -205,8 +205,20 @@ else
                                                     <input id="ps-utr" class="field-input" @bind="_disbursement.Utr" @bind:event="oninput" />
                                                 </FormField>
 
+                                                <FormField Label="Preferred EMI date" For="ps-emiday">
+                                                    <select id="ps-emiday" class="field-input" @bind="EmiDayChoice">
+                                                        <option value="">Use exact date below</option>
+                                                        <option value="5">5th of the month</option>
+                                                        <option value="10">10th of the month</option>
+                                                    </select>
+                                                </FormField>
+
                                                 <FormField Label="First EMI date" For="ps-firstemi">
                                                     <input id="ps-firstemi" type="date" class="field-input" @bind="_disbursement.FirstEmiDate" />
+                                                    @if (_disbursement.EmiDayOfMonth is { } day)
+                                                    {
+                                                        <span class="field-caption">Set to the next @Ordinal(day) on/after the value date; every EMI falls on the @Ordinal(day).</span>
+                                                    }
                                                 </FormField>
                                             </div>
 
@@ -309,6 +321,14 @@ else
                                                 over @SanctionedTenure months.
                                             </p>
 
+                                            @if (OverdueCount > 0)
+                                            {
+                                                <p class="schedule-overdue-summary">
+                                                    @OverdueCount instalment@(OverdueCount == 1 ? "" : "s") past due — oldest
+                                                    @MaxDaysOverdue day@(MaxDaysOverdue == 1 ? "" : "s") overdue.
+                                                </p>
+                                            }
+
                                             <div class="table-scroll schedule-scroll">
                                                 <table class="row-table schedule-table">
                                                     <thead>
@@ -319,18 +339,27 @@ else
                                                             <th class="align-right">Principal</th>
                                                             <th class="align-right">Interest</th>
                                                             <th class="align-right">Balance</th>
+                                                            <th class="align-right">Overdue</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         @foreach (var row in Schedule)
                                                         {
-                                                            <tr>
+                                                            var overdue = DaysOverdue(row.DueDate);
+                                                            <tr class="@(overdue > 0 ? "is-overdue" : null)">
                                                                 <td>@row.Month</td>
                                                                 <td>@(row.DueDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")</td>
                                                                 <td class="align-right">@FormatInr(row.Emi)</td>
                                                                 <td class="align-right">@FormatInr(row.Principal)</td>
                                                                 <td class="align-right">@FormatInr(row.Interest)</td>
                                                                 <td class="align-right">@FormatInr(row.ClosingBalance)</td>
+                                                                <td class="align-right">
+                                                                    @if (overdue > 0)
+                                                                    {
+                                                                        <span class="schedule-overdue">@overdue day@(overdue == 1 ? "" : "s")</span>
+                                                                    }
+                                                                    else { <span>—</span> }
+                                                                </td>
                                                             </tr>
                                                         }
                                                     </tbody>
@@ -855,6 +884,57 @@ else
                 _disbursement.FirstEmiOverride, _disbursement.EmiRoundedTo)
             : new List<AmortizationRow>();
 
+    /// <summary>
+    /// The preferred EMI day of month (5 / 10). Choosing one derives the first EMI date as the next
+    /// occurrence of that day on/after the value date (today if none), so every instalment lands on it.
+    /// </summary>
+    private string EmiDayChoice
+    {
+        get => _disbursement.EmiDayOfMonth?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        set
+        {
+            _disbursement.EmiDayOfMonth = int.TryParse(value, out var d) ? d : (int?)null;
+            if (_disbursement.EmiDayOfMonth is { } day)
+            {
+                var anchor = _disbursement.ValueDate ?? DateOnly.FromDateTime(DateTime.Today);
+                _disbursement.FirstEmiDate = NextDayOfMonth(anchor, day);
+            }
+        }
+    }
+
+    /// <summary>The first date on or after <paramref name="from"/> that falls on <paramref name="day"/>,
+    /// clamped to the month's length (a 31 becomes the 30th in a 30-day month).</summary>
+    private static DateOnly NextDayOfMonth(DateOnly from, int day)
+    {
+        var thisMonthDay = Math.Min(day, DateTime.DaysInMonth(from.Year, from.Month));
+        var candidate = new DateOnly(from.Year, from.Month, thisMonthDay);
+        if (candidate > from) { return candidate; }
+
+        var next = from.AddMonths(1);
+        var nextDay = Math.Min(day, DateTime.DaysInMonth(next.Year, next.Month));
+        return new DateOnly(next.Year, next.Month, nextDay);
+    }
+
+    private static string Ordinal(int n) => n switch
+    {
+        1 or 21 or 31 => $"{n}st",
+        2 or 22 => $"{n}nd",
+        3 or 23 => $"{n}rd",
+        _ => $"{n}th",
+    };
+
+    /// <summary>Days a due date is past today; 0 when it is today or in the future.</summary>
+    private static int DaysOverdue(DateOnly? dueDate)
+    {
+        if (dueDate is not { } due) { return 0; }
+        var days = DateOnly.FromDateTime(DateTime.Today).DayNumber - due.DayNumber;
+        return days > 0 ? days : 0;
+    }
+
+    private int OverdueCount => Schedule.Count(r => DaysOverdue(r.DueDate) > 0);
+
+    private int MaxDaysOverdue => Schedule.Select(r => DaysOverdue(r.DueDate)).DefaultIfEmpty(0).Max();
+
     /// <summary>The standard computed EMI, shown as the First-EMI field's placeholder.</summary>
     private decimal StandardEmi => LoanMath.Emi(SanctionedAmount, SanctionedRoi, SanctionedTenure);
 
@@ -1216,6 +1296,7 @@ else
         disbursement.ValueDate = _disbursement.ValueDate;
         disbursement.Utr = _disbursement.Utr;
         disbursement.FirstEmiDate = _disbursement.FirstEmiDate;
+        disbursement.EmiDayOfMonth = _disbursement.EmiDayOfMonth;
         disbursement.DisburseFromAccount = _disbursement.DisburseFromAccount;
         disbursement.TradeAdvance = _disbursement.TradeAdvance;
         disbursement.FirstEmiOverride = _disbursement.FirstEmiOverride;
