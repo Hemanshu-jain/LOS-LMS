@@ -21,6 +21,7 @@ public static class FileSignature
         ".webp" => content.Length >= 12
             && StartsWith(content, 0x52, 0x49, 0x46, 0x46)                              // RIFF
             && content[8] == 0x57 && content[9] == 0x45 && content[10] == 0x42 && content[11] == 0x50, // WEBP
+        ".webm" => StartsWith(content, 0x1A, 0x45, 0xDF, 0xA3),                         // EBML (Matroska/WebM)
         _ => false,
     };
 

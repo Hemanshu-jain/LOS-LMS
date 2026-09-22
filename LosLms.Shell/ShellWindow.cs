@@ -192,12 +192,31 @@ public sealed class ShellWindow : Form
         // still serves the file.
         _web.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
 
+        // The live-photo capture and Video KYC recording on Customer Details call getUserMedia. WebView2
+        // otherwise blocks (or prompts for) camera/microphone; this window only ever hosts our own app, so
+        // grant those two without a prompt and leave every other permission to the default.
+        _web.CoreWebView2.PermissionRequested += OnPermissionRequested;
+
         _coreReady = true;
 
         if (_pendingUrl is { } url)
         {
             _pendingUrl = null;
             _ = NavigateAsync(url);
+        }
+    }
+
+    /// <summary>
+    /// Auto-grants camera and microphone (needed by the live-photo capture and Video KYC recording),
+    /// without a prompt, since this window only ever loads the app's own origin. All other permission
+    /// kinds fall through to WebView2's default handling.
+    /// </summary>
+    private void OnPermissionRequested(object? sender, CoreWebView2PermissionRequestedEventArgs e)
+    {
+        if (e.PermissionKind is CoreWebView2PermissionKind.Camera
+            or CoreWebView2PermissionKind.Microphone)
+        {
+            e.State = CoreWebView2PermissionState.Allow;
         }
     }
 

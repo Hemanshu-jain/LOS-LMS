@@ -63,6 +63,16 @@ public class Party
 
     [MaxLength(400)] public string? AddressProofPath { get; set; }
 
+    /// <summary>
+    /// Camera-captured live photograph of the party (evidence), stored full-resolution as a lossless
+    /// PNG. Separate from <see cref="PhotoPath"/> (the uploaded passport-style photo) so both the
+    /// uploaded and the live-captured record are kept.
+    /// </summary>
+    [MaxLength(400)] public string? LivePhotoPath { get; set; }
+
+    /// <summary>Camera-recorded Video KYC clip (evidence), stored at high bitrate as WebM.</summary>
+    [MaxLength(400)] public string? VideoKycPath { get; set; }
+
     // ---- Contact ----
     [MaxLength(10)] public string? Mobile { get; set; }
     [MaxLength(10)] public string? AltMobile { get; set; }

@@ -56,6 +56,8 @@ public sealed class PartyForm
     public string? PanScanPath { get; set; }
     public string? AadhaarScanPath { get; set; }
     public string? AddressProofPath { get; set; }
+    public string? LivePhotoPath { get; set; }
+    public string? VideoKycPath { get; set; }
 
     // ---- Aadhaar freshness (#5) and address-change-with-proof (#2) ----
     public DateOnly? AadhaarGeneratedOn { get; set; }

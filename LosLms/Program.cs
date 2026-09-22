@@ -317,7 +317,10 @@ var csp =
     "base-uri 'self'; " +
     "object-src 'none'; " +
     "frame-ancestors 'none'; " +
-    "img-src 'self' data:; " +
+    "img-src 'self' data: blob:; " +
+    // media-src covers the recorded video/photo played back from /files and any blob: preview URL the
+    // capture code creates; blob: is also allowed on img-src for the live-photo preview.
+    "media-src 'self' blob:; " +
     "style-src 'self' 'unsafe-inline'; " +
     scriptSrc +
     frameSrc +
@@ -331,7 +334,9 @@ app.Use(async (context, next) =>
     headers["X-Content-Type-Options"] = "nosniff";
     headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "no-referrer";
-    headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
+    // Camera and microphone are allowed for THIS origin only — the live-photo capture and Video KYC
+    // recording on Customer Details need them. Geolocation stays fully denied.
+    headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()";
     await next();
 });
 
@@ -421,6 +426,8 @@ static string ContentTypeFor(string extension) => extension.ToLowerInvariant() s
     ".jpg" or ".jpeg" => "image/jpeg",
     ".png" => "image/png",
     ".webp" => "image/webp",
+    ".webm" => "video/webm",
+    ".mp4" => "video/mp4",
     _ => "application/octet-stream",
 };
 

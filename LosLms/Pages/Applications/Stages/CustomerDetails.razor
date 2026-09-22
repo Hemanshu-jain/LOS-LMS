@@ -275,6 +275,85 @@ else
                                 {
                                     <p class="inline-error" role="alert">@_uploadError</p>
                                 }
+
+                                <div class="panel-divider"></div>
+
+                                <div class="capture-block">
+                                    <span class="sub-block-label">Live photo &amp; Video KYC (evidence)</span>
+                                    <p class="field-caption">Captured live from the camera and stored with the file at full quality. The staff clicks the photo and records the KYC video here; both can be viewed any time.</p>
+
+                                    @* ---------- Live photo ---------- *@
+                                    <div class="capture-row">
+                                        <div class="capture-media @(_livePhotoCameraOpen ? null : "is-hidden")">
+                                            <video id="@LivePhotoCameraId" class="capture-video" autoplay playsinline muted></video>
+                                        </div>
+                                        @if (!_livePhotoCameraOpen && !string.IsNullOrWhiteSpace(party.LivePhotoPath))
+                                        {
+                                            <img class="capture-thumb" src="@FileUrl(party, party.LivePhotoPath!)" alt="Live photo on file" />
+                                        }
+                                        <div class="capture-actions">
+                                            @if (_livePhotoCameraOpen)
+                                            {
+                                                <button type="button" class="verify-button" @onclick="() => CaptureLivePhotoAsync(party)">Capture photo</button>
+                                                <button type="button" class="row-action" @onclick="CloseLivePhotoCameraAsync">Cancel</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="verify-button" @onclick="OpenLivePhotoCameraAsync">
+                                                    @(string.IsNullOrWhiteSpace(party.LivePhotoPath) ? "Take live photo" : "Retake live photo")
+                                                </button>
+                                                @if (!string.IsNullOrWhiteSpace(party.LivePhotoPath))
+                                                {
+                                                    <a class="file-link" href="@FileUrl(party, party.LivePhotoPath!)" target="_blank">View</a>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+
+                                    @* ---------- Video KYC ---------- *@
+                                    <div class="capture-row">
+                                        <div class="capture-media @(_videoKycCameraOpen ? null : "is-hidden")">
+                                            <video id="@VideoKycCameraId" class="capture-video" autoplay playsinline muted></video>
+                                            @if (_videoRecording)
+                                            {
+                                                <span class="capture-rec">● REC</span>
+                                            }
+                                        </div>
+                                        @if (!_videoKycCameraOpen && !string.IsNullOrWhiteSpace(party.VideoKycPath))
+                                        {
+                                            <video class="capture-thumb" controls src="@FileUrl(party, party.VideoKycPath!)"></video>
+                                        }
+                                        <div class="capture-actions">
+                                            @if (_videoKycCameraOpen)
+                                            {
+                                                @if (!_videoRecording)
+                                                {
+                                                    <button type="button" class="verify-button" @onclick="StartVideoKycAsync">Start recording</button>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="verify-button" @onclick="() => StopVideoKycAsync(party)">Stop &amp; save</button>
+                                                }
+                                                <button type="button" class="row-action" @onclick="CloseVideoKycCameraAsync">Cancel</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="verify-button" @onclick="OpenVideoKycCameraAsync">
+                                                    @(string.IsNullOrWhiteSpace(party.VideoKycPath) ? "Record Video KYC" : "Re-record Video KYC")
+                                                </button>
+                                                @if (!string.IsNullOrWhiteSpace(party.VideoKycPath))
+                                                {
+                                                    <a class="file-link" href="@FileUrl(party, party.VideoKycPath!)" target="_blank">View</a>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+
+                                    @if (_captureError is not null)
+                                    {
+                                        <p class="inline-error" role="alert">@_captureError</p>
+                                    }
+                                </div>
                             </div>
                         </div>
 
@@ -472,7 +551,7 @@ else
 
     private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
 
-    private enum UploadKind { Photo, PanScan, AadhaarScan, AddressProof }
+    private enum UploadKind { Photo, PanScan, AadhaarScan, AddressProof, LivePhoto, VideoKyc }
 
     /// <summary>Masked Aadhaar is accepted only within this many days of generation.</summary>
     private const int AadhaarFreshnessDays = 5;
@@ -978,42 +1057,149 @@ else
             bytes = buffer.ToArray();
         }
 
-        // Stored outside wwwroot on purpose: PAN and Aadhaar scans are PII, and anything under
-        // wwwroot is downloadable by anyone who guesses the URL. The client's filename is never
-        // used in the path — only its extension, after whitelisting.
+        var relativePath = await SavePartyBytesAsync(party, bytes, extension, kind,
+            "This file's contents don't match its type. Upload a genuine JPG, PNG, WEBP or PDF.");
+        if (relativePath is null)
+        {
+            return;
+        }
+
+        if (kind == UploadKind.Photo)
+        {
+            // Preview is held in memory only, never written to the database.
+            party.PhotoPreview = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
+        }
+    }
+
+    /// <summary>
+    /// Writes party bytes to the PII store outside wwwroot (never under wwwroot — these are PII, and the
+    /// filename is a server GUID so the /files URL cannot be guessed) and assigns the resulting relative
+    /// path to the field for <paramref name="kind"/>. Returns the path, or null with
+    /// <see cref="_uploadError"/> set when the bytes don't match the extension. Shared by file uploads
+    /// and live camera capture.
+    /// </summary>
+    private async Task<string?> SavePartyBytesAsync(
+        PartyForm party, byte[] bytes, string extension, UploadKind kind, string mismatchMessage)
+    {
+        if (_application is null) { return null; }
+
+        if (!FileSignature.Matches(extension, bytes))
+        {
+            _uploadError = mismatchMessage;
+            return null;
+        }
+
         var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
             _application.Id, party.PartyType);
         Directory.CreateDirectory(folder);
 
-        if (!FileSignature.Matches(extension, bytes))
-        {
-            _uploadError = "This file's contents don't match its type. Upload a genuine JPG, PNG, WEBP or PDF.";
-            return;
-        }
-
         var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
-        var fullPath = Path.Combine(folder, fileName);
-        await File.WriteAllBytesAsync(fullPath, bytes);
+        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
 
         var relativePath = Path.Combine("App_Data", "uploads", _application.Id, party.PartyType, fileName);
 
         switch (kind)
         {
-            case UploadKind.Photo:
-                party.PhotoPath = relativePath;
-                // Preview is held in memory only, never written to the database.
-                party.PhotoPreview = $"data:{file.ContentType};base64,{Convert.ToBase64String(bytes)}";
-                break;
-            case UploadKind.PanScan:
-                party.PanScanPath = relativePath;
-                break;
-            case UploadKind.AadhaarScan:
-                party.AadhaarScanPath = relativePath;
-                break;
-            case UploadKind.AddressProof:
-                party.AddressProofPath = relativePath;
-                break;
+            case UploadKind.Photo: party.PhotoPath = relativePath; break;
+            case UploadKind.PanScan: party.PanScanPath = relativePath; break;
+            case UploadKind.AadhaarScan: party.AadhaarScanPath = relativePath; break;
+            case UploadKind.AddressProof: party.AddressProofPath = relativePath; break;
+            case UploadKind.LivePhoto: party.LivePhotoPath = relativePath; break;
+            case UploadKind.VideoKyc: party.VideoKycPath = relativePath; break;
         }
+
+        return relativePath;
+    }
+
+    // ---------------------------------------------------------------------
+    // Live camera capture — live photo + Video KYC (evidence)
+    // ---------------------------------------------------------------------
+
+    private const string LivePhotoCameraId = "livephoto-cam";
+    private const string VideoKycCameraId = "videokyc-cam";
+
+    // Generous: a full-resolution PNG frame, or a short high-bitrate clip. Streamed in chunks via
+    // IJSStreamReference, so this cap is not bound by the SignalR message size.
+    private const long MaxCaptureBytes = 200L * 1024 * 1024;
+
+    private bool _livePhotoCameraOpen;
+    private bool _videoKycCameraOpen;
+    private bool _videoRecording;
+    private string? _captureError;
+
+    /// <summary>URL for a stored capture, served by the authenticated /files endpoint.</summary>
+    private string FileUrl(PartyForm party, string relativePath) =>
+        $"/files/{_application!.Id}/{party.PartyType}/{Path.GetFileName(relativePath)}";
+
+    private async Task OpenLivePhotoCameraAsync()
+    {
+        _captureError = null;
+        var error = await JS.InvokeAsync<string>("losStartCamera", LivePhotoCameraId, false);
+        if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
+        _livePhotoCameraOpen = true;
+    }
+
+    private async Task CaptureLivePhotoAsync(PartyForm party)
+    {
+        _captureError = null;
+        var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losCapturePhoto", LivePhotoCameraId);
+        var bytes = await ReadCaptureAsync(streamRef);
+        if (bytes is null) { return; }
+
+        await SavePartyBytesAsync(party, bytes, ".png", UploadKind.LivePhoto, "The captured photo was invalid.");
+        await CloseLivePhotoCameraAsync();
+    }
+
+    private async Task CloseLivePhotoCameraAsync()
+    {
+        await JS.InvokeVoidAsync("losStopCamera", LivePhotoCameraId);
+        _livePhotoCameraOpen = false;
+    }
+
+    private async Task OpenVideoKycCameraAsync()
+    {
+        _captureError = null;
+        var error = await JS.InvokeAsync<string>("losStartCamera", VideoKycCameraId, true);
+        if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
+        _videoKycCameraOpen = true;
+    }
+
+    private async Task StartVideoKycAsync()
+    {
+        _captureError = null;
+        var error = await JS.InvokeAsync<string>("losStartRecording", VideoKycCameraId);
+        if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
+        _videoRecording = true;
+    }
+
+    private async Task StopVideoKycAsync(PartyForm party)
+    {
+        var streamRef = await JS.InvokeAsync<IJSStreamReference?>("losStopRecording", VideoKycCameraId);
+        _videoRecording = false;
+        var bytes = await ReadCaptureAsync(streamRef);
+        if (bytes is null) { return; }
+
+        await SavePartyBytesAsync(party, bytes, ".webm", UploadKind.VideoKyc, "The recorded clip was invalid.");
+        await CloseVideoKycCameraAsync();
+    }
+
+    private async Task CloseVideoKycCameraAsync()
+    {
+        await JS.InvokeVoidAsync("losStopCamera", VideoKycCameraId);
+        _videoKycCameraOpen = false;
+        _videoRecording = false;
+    }
+
+    private async Task<byte[]?> ReadCaptureAsync(IJSStreamReference? streamRef)
+    {
+        if (streamRef is null) { _captureError = "Nothing was captured — is the camera on?"; return null; }
+
+        await using var stream = await streamRef.OpenReadStreamAsync(MaxCaptureBytes);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+        if (bytes.Length == 0) { _captureError = "The capture was empty."; return null; }
+        return bytes;
     }
 
     // ---------------------------------------------------------------------
@@ -1424,6 +1610,8 @@ else
         entity.PanScanPath = form.PanScanPath;
         entity.AadhaarScanPath = form.AadhaarScanPath;
         entity.AddressProofPath = form.AddressProofPath;
+        entity.LivePhotoPath = form.LivePhotoPath;
+        entity.VideoKycPath = form.VideoKycPath;
         entity.AadhaarGeneratedOn = form.AadhaarGeneratedOn;
         entity.AddressChangedSinceAadhaar = form.AddressChangedSinceAadhaar;
 
@@ -1473,6 +1661,8 @@ else
         form.PanScanPath = entity.PanScanPath;
         form.AadhaarScanPath = entity.AadhaarScanPath;
         form.AddressProofPath = entity.AddressProofPath;
+        form.LivePhotoPath = entity.LivePhotoPath;
+        form.VideoKycPath = entity.VideoKycPath;
         form.AadhaarGeneratedOn = entity.AadhaarGeneratedOn;
         form.AddressChangedSinceAadhaar = entity.AddressChangedSinceAadhaar;
 
