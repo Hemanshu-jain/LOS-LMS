@@ -9,6 +9,7 @@
 @inject NavigationManager Navigation
 @inject LicenseService License
 @inject UpdateNotificationService Notifications
+@inject MaintenanceState Maintenance
 
 @* Server-lifecycle management, SuperAdmin only — not a per-company Admin concern. Checks a public
    GitHub repo's latest Release, downloads the matching build zip, and (only on an explicit second
@@ -143,6 +144,30 @@
                 }
             </section>
 
+            @* Maintenance mode is a whole-server switch across every tenant, so it is SuperAdmin-only —
+               a company Admin (who also reaches this page) must not be able to take everyone offline. *@
+            <AuthorizeView Roles="@TenantContext.SuperAdminRole">
+                <section class="sys-card">
+                    <span class="sys-card-label">Availability</span>
+                    <div class="sys-card-head">
+                        <h2 class="sys-card-title">Maintenance mode</h2>
+                        <span class="sys-pill sys-pill--@(Maintenance.IsOn ? "warn" : "ok")">
+                            @(Maintenance.IsOn ? "On" : "Off")
+                        </span>
+                    </div>
+                    <p class="sys-card-body">
+                        When on, everyone except SuperAdmins sees a branded "under maintenance" page instead
+                        of the app — use it while you do planned work, then turn it off to reopen. Staff
+                        already signed in are not kicked out; it takes effect as they navigate. A restart
+                        also clears it.
+                    </p>
+                    <button type="button" class="sys-btn @(Maintenance.IsOn ? "" : "is-danger")"
+                            @onclick="ToggleMaintenance">
+                        @(Maintenance.IsOn ? "Turn maintenance off" : "Turn maintenance on")
+                    </button>
+                </section>
+            </AuthorizeView>
+
         </div>
     </div>
 </div>
@@ -168,6 +193,17 @@
     };
 
     private string ClientSuffix => string.IsNullOrEmpty(License.Client) ? "" : $" for {License.Client}";
+
+    // Whole-server switch (see the SuperAdmin-only card). Reuses _message for the same inline feedback
+    // the update flow uses. No async and no persistence — it flips one in-memory flag the maintenance
+    // middleware reads on the next request.
+    private void ToggleMaintenance()
+    {
+        Maintenance.Set(!Maintenance.IsOn);
+        _message = Maintenance.IsOn
+            ? "Maintenance mode is ON — staff now see the maintenance page. You keep full access."
+            : "Maintenance mode is OFF — the app is open to everyone again.";
+    }
 
     // ---- Presentation state (tone drives the semantic colour; no new behaviour) ----
 

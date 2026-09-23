@@ -351,6 +351,139 @@ a.auth-submit {
     color: #5b6472;
 }
 
+/* ---- Connection overlay (App.razor #components-reconnect-modal) --------------
+   Blazor toggles .components-reconnect-{show,failed,rejected} on the modal when the
+   SignalR circuit drops. Default hidden; shown as a full-screen scrim + auth-style
+   card for any of those states. Each per-state block is hidden unless its state is
+   active, so one card serves all three messages. */
+#components-reconnect-modal {
+    display: none;
+}
+
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-rejected {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    /* A calm scrim, not a hard black — the app stays faintly visible behind it. */
+    background: rgba(26, 31, 41, .55);
+    padding: 24px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.reconnect-card {
+    width: 100%;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid #d8dbe1;
+    padding: 26px 28px 24px;
+    text-align: center;
+    box-shadow: 0 18px 48px rgba(26, 31, 41, .25);
+}
+
+.reconnect-eyebrow {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    margin-bottom: 16px;
+}
+
+.reconnect-spinner {
+    width: 30px;
+    height: 30px;
+    margin: 0 auto 16px;
+    border: 3px solid #d8dbe1;
+    border-top-color: #1f3a5f;
+    border-radius: 50%;
+    animation: reconnect-spin 0.8s linear infinite;
+}
+
+@keyframes reconnect-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* The spinner is progress; a closed (rejected) session is not progressing, so hide it there. */
+#components-reconnect-modal.components-reconnect-rejected .reconnect-spinner {
+    display: none;
+}
+
+.reconnect-title {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 600;
+    color: #1a1f29;
+}
+
+.reconnect-msg {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #5b6472;
+}
+
+/* Per-state visibility. Hidden by default; revealed only under the matching modal class. */
+.reconnect-when-show,
+.reconnect-when-failed,
+.reconnect-when-rejected {
+    display: none;
+}
+
+.components-reconnect-show .reconnect-when-show,
+.components-reconnect-failed .reconnect-when-failed,
+.components-reconnect-rejected .reconnect-when-rejected {
+    display: revert;
+}
+
+.reconnect-button {
+    display: inline-block;
+    margin-top: 18px;
+    box-sizing: border-box;
+    height: 34px;
+    line-height: 34px;
+    padding: 0 20px;
+    border: 1px solid #1f3a5f;
+    background: #1f3a5f;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.reconnect-button:hover {
+    background: #172c48;
+}
+
+/* ---- Unhandled-error bar (App.razor #blazor-error-ui) ----
+   Blazor flips this to display:block inline when a client error occurs. */
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 1001;
+    padding: 12px 20px;
+    background: #1a1f29;
+    color: #fff;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 12.5px;
+    box-shadow: 0 -4px 20px rgba(26, 31, 41, .35);
+}
+
+#blazor-error-ui .blazor-error-reload {
+    margin-left: 14px;
+    color: #fff;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
 /* Same treatment the stage screens use for a blocking message, repeated globally for /account. */
 .auth-page .inline-error {
     margin: 0 0 14px;

@@ -26,6 +26,46 @@
        fallback auth policy 302-redirects to the login HTML, producing a console MIME error every time. *@
     @if (RenderModeForRequest is not null)
     {
+        @* Branded connection overlay. Blazor Server toggles the three state classes on the element with
+           this exact id when the SignalR circuit drops (a server restart/update closes it with WebSocket
+           1011). Without our own element here the framework shows its bare default; with it, staff see a
+           calm, on-brand "we're reconnecting / the server is updating" instead of a raw error.
+           Reload is a plain <a href=""> — it reloads the current URL for a fresh circuit, with no inline
+           script, so the self-only Content-Security-Policy stays intact. *@
+        <div id="components-reconnect-modal" class="reconnect-overlay">
+            <div class="reconnect-card">
+                <span class="reconnect-eyebrow">LOS/LMS</span>
+
+                <div class="reconnect-spinner" aria-hidden="true"></div>
+
+                <h2 class="reconnect-title reconnect-when-show">Reconnecting…</h2>
+                <p class="reconnect-msg reconnect-when-show">
+                    The connection dropped for a moment — the server may be restarting. We're getting you
+                    back automatically. Nothing you'd saved is lost.
+                </p>
+
+                <h2 class="reconnect-title reconnect-when-failed">Still trying…</h2>
+                <p class="reconnect-msg reconnect-when-failed">
+                    We haven't reconnected yet. This usually clears within a few seconds while the system
+                    updates — hold on, we're still trying.
+                </p>
+
+                <h2 class="reconnect-title reconnect-when-rejected">Connection closed</h2>
+                <p class="reconnect-msg reconnect-when-rejected">
+                    Your session ended, most likely because the server was just updated. Reload to pick up
+                    where you left off — your data is safe.
+                </p>
+                <a href="" class="reconnect-button reconnect-when-rejected">Reload LOS/LMS</a>
+            </div>
+        </div>
+
+        @* The bar Blazor shows (display toggled inline by the framework) for an unhandled client error.
+           Reworded and restyled from the raw template default. *@
+        <div id="blazor-error-ui">
+            <span>Something went wrong. Reloading usually fixes it.</span>
+            <a href="" class="blazor-error-reload">Reload</a>
+        </div>
+
         <script src="_framework/blazor.web.js"></script>
     }
     <script src="js/download.js?v=@AssetVersion"></script>

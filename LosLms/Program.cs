@@ -84,6 +84,12 @@ builder.Services.AddSingleton<LicenseService>();
 // (masked, briefly revealed). Recoverable by design — see PasswordVault's own remarks for the trade-off.
 builder.Services.AddSingleton<PasswordVault>();
 
+// Maintenance mode: a live operator switch (a SuperAdmin toggles it on the System Updates page) that
+// puts a branded "under maintenance" page in front of everyone but SuperAdmins. Starts from config so a
+// deployer can bring the app up already in maintenance; otherwise a restart clears it, which is the safe
+// direction — a server that just came back up should serve, not sit behind a page nobody remembers.
+builder.Services.AddSingleton(new MaintenanceState(builder.Configuration.GetValue("Maintenance:Enabled", false)));
+
 // Which company each SuperAdmin is currently "acting as" (set from the company picker). Singleton +
 // single-server, like the notifier above; TenantContext reads it to scope the SuperAdmin to one company.
 builder.Services.AddSingleton<ActingCompanyStore>();
@@ -353,6 +359,57 @@ app.Use(async (context, next) =>
 app.UseStaticFiles();
 app.UseRateLimiter();
 app.UseAuthentication();
+
+// Maintenance gate. When maintenance mode is on, everyone except a signed-in SuperAdmin gets the branded
+// maintenance page (503 + Retry-After) instead of the app, so planned downtime reads as deliberate rather
+// than broken. Placed AFTER authentication (so the SuperAdmin exemption can read the user's role) but
+// BEFORE authorization — otherwise the fallback "must be signed in" policy would 302 an anonymous visitor
+// to the login page before this runs, and they'd never see the maintenance page. Static assets are already
+// served by UseStaticFiles above, so they never reach here; /account and the Blazor framework/SignalR
+// paths stay open so a SuperAdmin can still sign in and switch it back off. The 503 carries a real HTML
+// body, so UseStatusCodePages does not re-execute it to the error page.
+var maintenance = app.Services.GetRequiredService<MaintenanceState>();
+var maintenancePage = new Lazy<string>(() =>
+{
+    var path = Path.Combine(app.Environment.WebRootPath, "maintenance.html");
+    return File.Exists(path)
+        ? File.ReadAllText(path)
+        : "<!doctype html><meta charset=utf-8><title>Under maintenance</title>"
+          + "<h1>We'll be right back</h1><p>LOS/LMS is briefly offline for maintenance. Please try again shortly.</p>";
+});
+
+static bool IsMaintenanceExempt(HttpContext context)
+{
+    // A signed-in SuperAdmin keeps full access — they are the one who turns maintenance off again.
+    if (context.User.IsInRole(TenantContext.SuperAdminRole))
+    {
+        return true;
+    }
+
+    var path = context.Request.Path;
+    return path.StartsWithSegments("/account")       // sign in to reach the toggle
+        || path.StartsWithSegments("/_framework")    // Blazor runtime
+        || path.StartsWithSegments("/_blazor")       // SignalR circuit
+        || path.StartsWithSegments("/_content")      // component library assets
+        || path.StartsWithSegments("/Error");        // never mask a real error with the maintenance page
+}
+
+app.Use(async (context, next) =>
+{
+    if (maintenance.IsOn && !IsMaintenanceExempt(context))
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.Headers["Retry-After"] = "120";
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync(maintenancePage.Value);
+        return;
+    }
+
+    await next();
+});
+
+// After the maintenance gate: an anonymous, non-exempt request in maintenance mode must see the
+// maintenance page rather than be bounced to login by the fallback policy, which is why this runs here.
 app.UseAuthorization();
 
 // Camera media upload (live photo + Video KYC), handled here as its own middleware — BEFORE the
