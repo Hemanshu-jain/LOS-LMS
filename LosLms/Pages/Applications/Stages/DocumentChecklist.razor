@@ -11,6 +11,7 @@
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
 @inject IJSRuntime JS
+@inject SignatureDetectionService SignatureDetection
 
 <PageTitle>Document Checklist · @ApplicationId</PageTitle>
 
@@ -170,6 +171,12 @@ else
                                                     {
                                                         <input type="checkbox" @bind="doc.SignedConfirmed"
                                                                aria-label="@($"{kyc.Label} signed")" title="Scanned copy is signed" />
+                                                        <button type="button" class="row-action" title="Ask Gemini whether the scan is signed"
+                                                                @onclick="() => CheckSignatureAsync(_activeTab, type, doc)">Auto-check</button>
+                                                        @if (_signatureNotes.TryGetValue(doc.Id, out var sigNote))
+                                                        {
+                                                            <div class="field-caption">@sigNote</div>
+                                                        }
                                                     }
                                                     else
                                                     {
@@ -492,6 +499,52 @@ else
     // ---------------------------------------------------------------------
     // Status derivation
     // ---------------------------------------------------------------------
+
+    // Per-document result of the last Gemini signature auto-check, keyed by document id.
+    private readonly Dictionary<int, string> _signatureNotes = new();
+
+    /// <summary>
+    /// Asks Gemini whether the stored scan is signed and, on a confident yes, pre-ticks "Signed" (the
+    /// officer can untick, and nothing persists until Save). With no key configured the service reports
+    /// so and the tick stays fully manual — item #6.
+    /// </summary>
+    private async Task CheckSignatureAsync(string partyType, string documentType, ChecklistDocument doc)
+    {
+        var relativePath = FilePathFor(partyType, documentType);
+        if (relativePath is null)
+        {
+            _signatureNotes[doc.Id] = "Upload the document first.";
+            return;
+        }
+
+        var fullPath = Path.Combine(HostEnvironment.ContentRootPath, relativePath);
+        if (!File.Exists(fullPath))
+        {
+            _signatureNotes[doc.Id] = "File not found on the server.";
+            return;
+        }
+
+        _signatureNotes[doc.Id] = "Checking…";
+        await InvokeAsync(StateHasChanged);
+
+        var bytes = await File.ReadAllBytesAsync(fullPath);
+        var result = await SignatureDetection.DetectAsync(bytes, MimeFor(Path.GetExtension(fullPath)));
+
+        _signatureNotes[doc.Id] = result.Message ?? result.Status.ToString();
+        if (result.Status == SignatureStatus.Signed)
+        {
+            doc.SignedConfirmed = true; // a suggestion the officer confirms by saving; still overridable
+        }
+    }
+
+    private static string MimeFor(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".pdf" => "application/pdf",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".png" => "image/png",
+        ".webp" => "image/webp",
+        _ => "application/octet-stream",
+    };
 
     /// <summary>Where the file actually lives — Parties for the KYC three, Documents for the rest.</summary>
     private string? FilePathFor(string partyType, string documentType)

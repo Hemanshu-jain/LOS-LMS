@@ -100,6 +100,11 @@ builder.Services.AddScoped<TurnstileVerifier>();
 // so AllowSelfRegistration defaults false and the register page / sign-in link stay closed there.
 builder.Services.Configure<WebOptions>(builder.Configuration.GetSection(WebOptions.Section));
 
+// Gemini-backed signature detection (#6). No key => the service reports NotConfigured and the Document
+// Checklist keeps the manual "Signed" tick; drop the key in (Gemini__ApiKey) to turn auto-detect on.
+builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.Section));
+builder.Services.AddScoped<SignatureDetectionService>();
+
 // Provisions a brand-new tenant (company + owning admin) for the public sign-up page and the demo
 // seeder. Scoped, because it creates the admin through the scoped UserManager.
 builder.Services.AddScoped<CompanyProvisioningService>();
