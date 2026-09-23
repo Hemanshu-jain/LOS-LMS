@@ -149,6 +149,18 @@ else
                                     </FormField>
                                 </div>
 
+                                @* Company / ROC verification (#12). Honest stub until Digio Business KYC is
+                                   onboarded — checks the firm's GSTIN/CIN against the Registrar of Companies. *@
+                                <div class="roc-row">
+                                    <button type="button" class="verify-button" @onclick="VerifyRocAsync">
+                                        Verify company (ROC)
+                                    </button>
+                                    @if (_rocNotice is not null)
+                                    {
+                                        <span class="inline-error" role="alert">@_rocNotice</span>
+                                    }
+                                </div>
+
                                 @* Firm details are pre-filled from the Company profile (Settings) — #14
                                    "approvals entered in backend only". Annual turnover and the
                                    partners/directors table were removed at the client's request. *@
@@ -571,6 +583,7 @@ else
     private string _activeTab = BusinessTab;
 
     private Business _business = new();
+    private string? _rocNotice;
     private Tvr _tvr = new();
     private ApprovalDecision _decision = new();
     private List<Partner> _partners = new();
@@ -817,6 +830,30 @@ else
             _business.Vintage = company.Vintage!;
         }
         _business.IncorpDate ??= company.IncorpDate;
+    }
+
+    /// <summary>
+    /// Company / ROC verification (#12). Honest stub: with no Business-KYC provider wired it reports
+    /// "not configured" and never fabricates a result; on a real success it fills blank firm fields.
+    /// When Digio Business KYC is onboarded, this call verifies GSTIN/CIN against the Registrar of
+    /// Companies — see <see cref="BusinessKycService"/>.
+    /// </summary>
+    private async Task VerifyRocAsync()
+    {
+        _rocNotice = null;
+
+        if (string.IsNullOrWhiteSpace(_business.Gstin))
+        {
+            _rocNotice = "Enter the firm's GSTIN first.";
+            return;
+        }
+
+        var result = await BusinessKycService.VerifyAsync(_business.Gstin);
+        BusinessKycService.Apply(_business, result);
+
+        _rocNotice = result.IsConfigured
+            ? "Company verified against the Registrar of Companies."
+            : "Company/ROC verification unavailable — provider not configured. Enter details manually.";
     }
 
     // ---------------------------------------------------------------------
