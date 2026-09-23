@@ -42,6 +42,10 @@ internal sealed class BackendSupervisor
     private int _rapidFailures;
     private volatile bool _stopping;
 
+    // Serves the branded "we'll be right back" page on the loopback port while the backend is stopped,
+    // so the tunnel never returns a raw Cloudflare origin-down page during an update swap.
+    private readonly MaintenanceResponder _maintenance = new(LocalPort);
+
     public int Port { get; private set; }
 
     public string LocalUrl => $"http://127.0.0.1:{Port}";
@@ -126,6 +130,7 @@ internal sealed class BackendSupervisor
     public void Stop()
     {
         _stopping = true;
+        _maintenance.Stop();
         StopBackend(_backend);
     }
 
@@ -133,6 +138,10 @@ internal sealed class BackendSupervisor
 
     private Process StartBackend()
     {
+        // The backend is about to bind LocalPort, so the maintenance responder must not be holding it.
+        // No-op when it was never started (normal boots and restarts).
+        _maintenance.Stop();
+
         var info = new ProcessStartInfo
         {
             FileName = Paths.BackendExe,
@@ -256,6 +265,12 @@ internal sealed class BackendSupervisor
 
         Log.Info("Stopping the backend to apply the update…");
         StopBackend(_backend);
+
+        // Backend is down and the app folder is about to be moved aside for the swap — put the branded
+        // maintenance page on the port for the duration so remote users don't see Cloudflare's raw error.
+        // Every path out of here goes through StartBackend, which stops it again before re-binding.
+        _maintenance.Start();
+
         DeleteDirIfExists(_backupDir);
 
         try
