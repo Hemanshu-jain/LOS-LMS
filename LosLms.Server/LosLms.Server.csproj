@@ -13,7 +13,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>LOS-LMS</AssemblyName>
     <RootNamespace>LosLms.Server</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <!-- The product logo as the exe's file icon in Explorer. The window/tray icon is read from the exe
          itself at runtime, so no separate app.ico file is shipped (keeps the folder clean). -->
     <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
