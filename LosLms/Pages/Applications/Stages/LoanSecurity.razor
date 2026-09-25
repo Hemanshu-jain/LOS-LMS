@@ -170,6 +170,19 @@ else
                                     <input id="ls-disbursal" type="date" class="field-input"
                                            @bind="_application!.DisbursalDate" />
                                 </FormField>
+
+                                <FormField Label="Preferred EMI date" For="ls-emiday">
+                                    <select id="ls-emiday" class="field-input" @bind="EmiDayChoice">
+                                        <option value="">Use exact date below</option>
+                                        <option value="5">5th of the month</option>
+                                        <option value="10">10th of the month</option>
+                                    </select>
+                                </FormField>
+
+                                <FormField Label="First EMI date" For="ls-firstemi">
+                                    <input id="ls-firstemi" type="date" class="field-input"
+                                           @bind="_application!.FirstEmiDate" />
+                                </FormField>
                             </div>
                         </Panel>
                     }
@@ -820,6 +833,39 @@ else
         _channelCodes.TryGetValue(name, out var code) && !string.IsNullOrWhiteSpace(code)
             ? $"{name} — {code}"
             : name;
+
+    /// <summary>
+    /// The borrower's preferred EMI day (5 / 10). Choosing one derives the first EMI date as the next
+    /// occurrence of that day on/after the expected disbursal date (today if none), so the EMI start is
+    /// set here at structuring and flows to the Post-Sanction schedule.
+    /// </summary>
+    private string EmiDayChoice
+    {
+        get => _application?.EmiDayOfMonth?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        set
+        {
+            if (_application is null) { return; }
+            _application.EmiDayOfMonth = int.TryParse(value, out var d) ? d : (int?)null;
+            if (_application.EmiDayOfMonth is { } day)
+            {
+                var anchor = _application.DisbursalDate ?? DateOnly.FromDateTime(DateTime.Today);
+                _application.FirstEmiDate = NextDayOfMonth(anchor, day);
+            }
+        }
+    }
+
+    /// <summary>First date on/after <paramref name="from"/> that lands on <paramref name="day"/>,
+    /// clamped to the month length (a 31 becomes the 30th in a 30-day month).</summary>
+    private static DateOnly NextDayOfMonth(DateOnly from, int day)
+    {
+        var thisMonthDay = Math.Min(day, DateTime.DaysInMonth(from.Year, from.Month));
+        var candidate = new DateOnly(from.Year, from.Month, thisMonthDay);
+        if (candidate > from) { return candidate; }
+
+        var next = from.AddMonths(1);
+        var nextDay = Math.Min(day, DateTime.DaysInMonth(next.Year, next.Month));
+        return new DateOnly(next.Year, next.Month, nextDay);
+    }
 
     // Real rows from the Branches table, scoped to the signed-in user's company by the global query
     // filter. Loaded in OnParametersSetAsync alongside everything else this screen needs.
@@ -1547,6 +1593,8 @@ else
         application.AdvanceEmi = _application.AdvanceEmi;
         application.RepaymentMode = _application.RepaymentMode;
         application.DisbursalDate = _application.DisbursalDate;
+        application.FirstEmiDate = _application.FirstEmiDate;
+        application.EmiDayOfMonth = _application.EmiDayOfMonth;
 
         if (completeStage)
         {

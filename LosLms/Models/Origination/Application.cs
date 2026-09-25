@@ -59,6 +59,16 @@ public class Application
 
     public DateOnly? DisbursalDate { get; set; }
 
+    /// <summary>
+    /// EMI schedule anchors, set at loan structuring on Loan &amp; Security and carried down to the
+    /// Post-Sanction repayment schedule. <see cref="FirstEmiDate"/> is when the first instalment falls;
+    /// <see cref="EmiDayOfMonth"/> (e.g. 5 or 10) is the borrower's preferred day, which derives the
+    /// first date. Both nullable — an officer may leave them until disbursement.
+    /// </summary>
+    public DateOnly? FirstEmiDate { get; set; }
+
+    public int? EmiDayOfMonth { get; set; }
+
     /// <summary>1-8. Stage 1 is Customer Details.</summary>
     public int CurrentStage { get; set; } = 1;
 

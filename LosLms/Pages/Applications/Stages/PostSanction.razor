@@ -657,7 +657,7 @@ else
     private static readonly string[] PddStatuses = { "Open", "Received", "Waived" };
 
     private static readonly string[] DisbursementTypes =
-        { "Direct to dealer", "Direct to customer", "Direct to seller" };
+        { "Direct to dealer", "Direct to customer", "Direct to seller", "Trade Advance (TA)" };
 
     private static readonly string[] PaymentModes = { "NEFT", "RTGS", "UTR Transfer", "Cheque" };
 
@@ -764,6 +764,14 @@ else
 
         _disbursement = await db.Disbursements.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
             ?? Track(db.Disbursements, new Disbursement { ApplicationId = ApplicationId }, ref created);
+
+        // Carry the EMI start set at Loan & Security (stage 2) into the schedule, unless an officer has
+        // already chosen one here — Post-Sanction stays free to override it.
+        if (_disbursement.FirstEmiDate is null && _application?.FirstEmiDate is { } stage2Emi)
+        {
+            _disbursement.FirstEmiDate = stage2Emi;
+            _disbursement.EmiDayOfMonth = _application.EmiDayOfMonth;
+        }
 
         _enach = await db.EnachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId)
             ?? Track(db.EnachMandates, new EnachMandate { ApplicationId = ApplicationId }, ref created);
