@@ -1,37 +1,40 @@
 namespace LosLms.Services;
 
-/// <summary>Outcome of dispatching an agreement to an e-signature provider.</summary>
-/// <param name="IsConfigured">False whenever no provider is wired — the only state reachable here.</param>
-public sealed record EsignDispatchResult(bool IsConfigured)
-{
-    public static readonly EsignDispatchResult NotConfigured = new(false);
-}
-
 /// <summary>
-/// Dispatching a generated agreement for e-signature. An honest stub — no provider is configured.
+/// Sends a generated agreement to Digio for Aadhaar e-Sign (POST /v2/client/document/uploadpdf, base64 PDF).
 /// </summary>
 /// <remarks>
-/// The agreement PDF itself is generated for real (<see cref="LoanAgreementPdf"/>). Only the dispatch
-/// to an e-sign vendor is stubbed: <see cref="DispatchAsync"/> reports "not configured" and the
-/// disbursement's <c>AgreementEsignStatus</c> stays <c>NotSent</c>.
-///
-/// This one carries real legal weight, so the discipline is absolute: nothing in this build may ever
-/// set the status to <c>Signed</c>. Only a verified webhook from a real provider is allowed to, and
-/// that path does not exist yet.
+/// This carries legal weight, so the discipline is absolute: nothing here sets the agreement 'Signed'.
+/// Digio's verified DOC.SIGNED webhook is the only thing allowed to (<see cref="DigioClient.ApplyWebhookAsync"/>),
+/// and that is also when the e-Sign credit is metered — not on upload.
 /// </remarks>
 public static class EsignService
 {
-    public const string Unavailable = "E-Signature dispatch unavailable — provider not configured.";
+    public const string Unavailable = "E-Signature dispatch unavailable — Digio is not configured for this company.";
 
-    /// <summary>
-    /// Attempts to dispatch the agreement for signature. Always "not configured" in this build.
-    /// </summary>
-    public static Task<EsignDispatchResult> DispatchAsync(string? agreementFilePath)
+    /// <param name="signerIdentifier">Applicant's mobile or email — Digio sends the signing link there.</param>
+    public static async Task<DigioResult> DispatchAsync(
+        DigioClient digio, int companyId, string applicationId, string agreementFullPath,
+        string signerIdentifier, string? signerName)
     {
-        // REAL PROVIDER: upload the agreement PDF to the e-sign vendor, create a signature request for
-        // the signatories, and return new EsignDispatchResult(IsConfigured: true) once accepted. The
-        // vendor's signature-completion WEBHOOK — verified — is the only thing allowed to move
-        // AgreementEsignStatus to 'Signed'. Never set 'Signed' from here or optimistically in the UI.
-        return Task.FromResult(EsignDispatchResult.NotConfigured);
+        if (digio.Credentials(companyId) is null)
+        {
+            return DigioResult.NotConfigured; // don't read the PDF for nothing
+        }
+
+        var body = new
+        {
+            file_name = Path.GetFileName(agreementFullPath),
+            file_data = Convert.ToBase64String(await File.ReadAllBytesAsync(agreementFullPath)),
+            signers = new[]
+            {
+                new { identifier = signerIdentifier, name = signerName, reason = "Loan agreement", sign_type = "aadhaar" },
+            },
+            expire_in_days = 10,
+            notify_signers = true,
+            send_sign_link = true,
+        };
+
+        return await digio.PostAsync(companyId, apiCode: null, "/v2/client/document/uploadpdf", body, applicationId);
     }
 }

@@ -7,6 +7,7 @@
 @inject UpdateNotificationService Updates
 @inject LicenseService License
 @inject TenantContext Tenant
+@inject ApiBillingService Billing
 
 @* Subscription freeze. Once the licence has expired the whole app is paused — this replaces every
    screen with the renewal card. A SuperAdmin can paste a renewal key here; everyone else is told to
@@ -37,6 +38,21 @@
                 <p class="license-hint">Please contact your administrator to renew the subscription.</p>
             }
 
+            <a class="license-signout" href="/account/logout">Sign out</a>
+        </div>
+    </div>
+}
+else if (_apiAccess is { Allowed: false } paused)
+{
+    @* Postpaid API bill unpaid past the grace window: the company's whole app is paused until the vendor
+       records the payment (SuperAdmin → API Usage → Mark paid). SuperAdmin is never paused. *@
+    <div class="license-frozen">
+        <div class="license-card">
+            <h1>Service paused — payment pending</h1>
+            <p>@paused.Reason</p>
+            <p>Amount outstanding: <strong>₹@paused.AmountDue.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-IN"))</strong> (incl. GST).
+                Your data is safe and untouched.</p>
+            <p class="license-hint">Please clear the bill with your LOS/LMS provider; access resumes as soon as the payment is recorded.</p>
             <a class="license-signout" href="/account/logout">Sign out</a>
         </div>
     </div>
@@ -81,6 +97,7 @@ else
             @* Vendor-only: jump back to the company picker to open a different company. *@
             <AuthorizeView Roles="@TenantContext.SuperAdminRole" Context="sa">
                 <Authorized>
+                    <a class="app-nav-link" href="/system/digio">Digio keys</a>
                     <a class="app-nav-link" href="/companies">Switch company</a>
                 </Authorized>
             </AuthorizeView>
@@ -120,6 +137,16 @@ else
     </div>
 }
 
+@* Grace window: an API bill is unpaid but not yet overdue. Admins only — they pay. *@
+@if (_role == "Admin" && _apiAccess is { Allowed: true, DueDate: { } due } pending)
+{
+    <div class="license-banner" role="status">
+        ⚠️ API bill of <strong>₹@pending.AmountDue.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-IN"))</strong>
+        is due by <strong>@due.ToString("d MMM yyyy")</strong>. Unpaid after that, the app pauses.
+        <a href="/admin/api-usage">View bill →</a>
+    </div>
+}
+
 @Body
 
 <div id="blazor-error-ui">
@@ -137,6 +164,7 @@ else
     private string _role = string.Empty;
     private string _companyName = string.Empty;
     private bool _updateDismissed;
+    private ApiAccess? _apiAccess;
 
     private string _licClient = string.Empty;
     private string _renewKey = string.Empty;
@@ -207,6 +235,8 @@ else
                 .Where(c => c.Id == companyId)
                 .Select(c => c.Name)
                 .FirstOrDefaultAsync() ?? string.Empty;
+
+            _apiAccess = await Billing.CheckAccessAsync(companyId);
 
             if (!setupExempt && !await CompanySetupState.IsCompleteAsync(db, companyId))
             {

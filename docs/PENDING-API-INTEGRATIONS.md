@@ -29,6 +29,29 @@ and pre-fill fields). Same key. Flag before building — needs its own UI.
 
 ---
 
+## Digio — what is BUILT, switches on by entering keys
+
+- **Keys:** SuperAdmin → **Digio keys** (`/system/digio`) — per company: client id, client secret, webhook
+  secret, sandbox/production. Stored encrypted in the credential vault (`App_Data`), never in the DB.
+- **One gate for every call:** `Services/Integrations/DigioClient.cs` → `PostAsync`. No keys → "not configured",
+  nothing sent. Overdue bill → paused, nothing sent. Otherwise HTTP Basic call + usage logged.
+  Sandbox `https://ext.digio.in:444`, production `https://api.digio.in`.
+- **Penny drop — LIVE when keys set:** Bank & Financial → Run penny-drop check →
+  `POST /v4/client/verify/bank_account` (PENNY_DROP, name vs Stage 1 KYC name). Billed ₹2.50.
+- **e-Sign — LIVE when keys set:** Post-Sanction → Send for e-Signature → `POST /v2/client/document/uploadpdf`
+  (base64 agreement, Aadhaar sign, link to applicant's mobile/email). Status becomes **Sent**; only Digio's
+  webhook sets **Signed** — and that is when the ₹10.60 credit is metered.
+- **Webhook:** `POST /webhooks/digio/{companyId}` — verified by `X-Digio-Checksum` (HMAC-SHA256 of body with the
+  company's webhook secret). Paste the URL shown on the Digio keys page into Digio dashboard → Profile → Webhooks
+  and enable DOC.SIGNED / DOC.SIGN.FAILED / DOC.SIGN.REJECTED.
+- **Billing:** usage report `/admin/api-usage`; postpaid bill per closed month, due month-end + 7 days
+  (`ApiBilling:GraceDays`); unpaid after that the company's app is paused until SuperAdmin clicks **Mark paid**.
+
+**Still stubbed — endpoint not in Digio's public docs (they share it at onboarding):** Aadhaar/PAN fetch
+(needs a DigiStudio KYC *template* + their web SDK, `POST /client/kyc/v2/request/with_template`), Aadhaar
+masking, ID OCR/PAN verify, Business KYC (GSTIN/CIN), bank statement analyzer (Account Aggregator FIU).
+Wire each through `DigioClient.PostAsync` with its rate code from `DigioRates`.
+
 ## Digio (production credentials via onboarding)
 
 Contact: Surendra D, Digio. Onboarding = send documents → sign MSA → pay onboarding fee → receive

@@ -13,6 +13,7 @@
 @inject IWebHostEnvironment HostEnvironment
 @inject IJSRuntime JS
 @inject IHttpClientFactory HttpClientFactory
+@inject DigioClient Digio
 
 <PageTitle>Bank &amp; Financial · @ApplicationId</PageTitle>
 
@@ -156,16 +157,30 @@ else
                                 <div class="pennydrop-card">
                                     <span class="pennydrop-label">Penny-drop name match</span>
 
-                                    @if (_bank.PennyDropStatus == "Unavailable")
+                                    @switch (_bank.PennyDropStatus)
                                     {
-                                        <span class="pennydrop-value is-unavailable">@PennyDropUnavailable</span>
-                                        <span class="pennydrop-note is-muted">Compared against KYC name from Stage 1</span>
+                                        case "Matched":
+                                            <span class="pennydrop-value">✓ Verified — name matches</span>
+                                            <span class="pennydrop-note">@_pennyDropNote</span>
+                                            break;
+                                        case "NotMatched":
+                                            <span class="pennydrop-value is-unavailable">Name did not match / account not verified</span>
+                                            <span class="pennydrop-note">@_pennyDropNote</span>
+                                            break;
+                                        case "Unavailable":
+                                            <span class="pennydrop-value is-unavailable">@PennyDropUnavailable</span>
+                                            <span class="pennydrop-note is-muted">Compared against KYC name from Stage 1</span>
+                                            break;
+                                        default:
+                                            <span class="pennydrop-value">Not yet verified</span>
+                                            <span class="pennydrop-note">@(_pennyDropNote ?? "Compared against KYC name from Stage 1")</span>
+                                            break;
                                     }
-                                    else
+                                    @if (_bank.PennyDropStatus != "Matched")
                                     {
-                                        <span class="pennydrop-value">Not yet verified</span>
-                                        <span class="pennydrop-note">Compared against KYC name from Stage 1</span>
-                                        <button type="button" class="pennydrop-button" @onclick="RunPennyDrop">Run penny-drop check</button>
+                                        <button type="button" class="pennydrop-button" disabled="@_pennyDropRunning" @onclick="RunPennyDropAsync">
+                                            @(_bank.PennyDropStatus == "NotRun" ? "Run penny-drop check" : "Run again")
+                                        </button>
                                     }
                                 </div>
                             </div>
@@ -716,15 +731,73 @@ else
         _bank.BankAddress = null;
     }
 
+    private string? _pennyDropNote;
+    private bool _pennyDropRunning;
+
     /// <remarks>
-    /// No provider is configured, so this reports unavailable and nothing else. It must never set
-    /// Matched — a fabricated name match on a lending file is worse than no check at all.
-    /// The run button then disappears; there is nothing to retry until a real provider exists.
+    /// Digio penny drop (POST /v4/client/verify/bank_account), name compared against the Stage 1 KYC
+    /// name. Matched ONLY on Digio's verified + fuzzy-match answer — a fabricated match on a lending file
+    /// is worse than no check at all. No Digio keys → Unavailable, as before. Saved with the page.
     /// </remarks>
-    private void RunPennyDrop()
+    private async Task RunPennyDropAsync()
     {
-        _bank.PennyDropStatus = "Unavailable";
-        _bank.PennyDropCheckedAt = DateTime.UtcNow;
+        if (_application is null) { return; }
+        if (string.IsNullOrWhiteSpace(_bank.AccountNumber) || string.IsNullOrWhiteSpace(_bank.Ifsc))
+        {
+            _pennyDropNote = "Enter the account number and IFSC first.";
+            return;
+        }
+
+        _pennyDropRunning = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var kycName = await db.Parties.AsNoTracking()
+                .Where(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant")
+                .Select(p => p.FullName).FirstOrDefaultAsync();
+
+            var result = await Digio.PostAsync(_application.CompanyId, DigioRates.PennyDrop, "/v4/client/verify/bank_account",
+                new
+                {
+                    beneficiary_account_no = _bank.AccountNumber,
+                    beneficiary_ifsc = _bank.Ifsc,
+                    beneficiary_name = kycName ?? _bank.AccountHolderName,
+                    validation_mode = "PENNY_DROP",
+                },
+                ApplicationId);
+
+            switch (result.Status)
+            {
+                case DigioStatus.NotConfigured:
+                    _bank.PennyDropStatus = "Unavailable";
+                    _bank.PennyDropCheckedAt = DateTime.UtcNow;
+                    _pennyDropNote = null;
+                    break;
+                case DigioStatus.Ok:
+                    var verified = result.Bool("verified") == true;
+                    _bank.PennyDropStatus = verified && result.Bool("fuzzy_match_result") == true ? "Matched" : "NotMatched";
+                    _bank.PennyDropCheckedAt = DateTime.UtcNow;
+                    _pennyDropNote = verified
+                        ? $"Name at bank: {result.Str("beneficiary_name_with_bank") ?? "—"} · KYC name: {kycName ?? "—"}"
+                        : result.Str("error_msg") ?? "Bank could not verify this account.";
+                    break;
+                default: // Paused or Failed: nothing verified, status untouched
+                    _pennyDropNote = result.Error;
+                    return;
+            }
+
+            // Persist the (paid-for) answer now if the bank row exists; otherwise it saves with the page.
+            if (await db.BankDetails.FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId) is { } row)
+            {
+                row.PennyDropStatus = _bank.PennyDropStatus;
+                row.PennyDropCheckedAt = _bank.PennyDropCheckedAt;
+                await db.SaveChangesAsync();
+            }
+        }
+        finally
+        {
+            _pennyDropRunning = false;
+        }
     }
 
     // ---------------------------------------------------------------------

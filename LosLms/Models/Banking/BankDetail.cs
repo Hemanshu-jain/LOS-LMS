@@ -44,9 +44,8 @@ public class BankDetail
     /// One of: NotRun, Unavailable, Matched, NotMatched.
     /// </summary>
     /// <remarks>
-    /// Only <c>NotRun</c> and <c>Unavailable</c> are reachable in this build. No provider is
-    /// configured, so nothing is actually verified and no code path may set Matched or NotMatched —
-    /// those exist only so a real provider can populate them later without a migration.
+    /// Matched / NotMatched come ONLY from Digio's penny-drop answer (Bank &amp; Financial); with no Digio
+    /// keys the check reports Unavailable. Nothing may set Matched otherwise.
     /// </remarks>
     [MaxLength(20)]
     public string PennyDropStatus { get; set; } = "NotRun";

@@ -1,0 +1,133 @@
+@page "/system/digio"
+@using LosLms.Data
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject DigioClient Digio
+@inject NavigationManager Nav
+
+<PageTitle>Digio keys · LOS/LMS</PageTitle>
+
+@* Vendor-only. Digio issues each NBFC its own client id/secret (sandbox first, then production) and its
+   own webhook secret. Secrets are write-only here: stored encrypted in the credential vault, never shown
+   back. Leave a secret blank to keep the saved one. *@
+
+<div class="dk-page">
+    <div class="dk-card">
+        <span class="system-label">LOS/LMS · Integrations</span>
+        <h1 class="dk-title">Digio keys</h1>
+        <p class="dk-muted">Per company. Until a company has keys, its Digio features stay “not configured” and nothing is sent or billed.</p>
+
+        @if (_rows is null)
+        {
+            <p class="dk-muted">Loading…</p>
+        }
+        else
+        {
+            @foreach (var r in _rows)
+            {
+                <section class="dk-company">
+                    <header>
+                        <strong>@r.Name</strong> <span class="dk-code">@r.Code</span>
+                        @if (r.Configured)
+                        {
+                            <span class="pill pill-ok">@(r.Production ? "Production" : "Sandbox") keys set</span>
+                        }
+                        else
+                        {
+                            <span class="pill">Not configured</span>
+                        }
+                    </header>
+
+                    <div class="dk-grid">
+                        <label>Client ID<input class="field-input" @bind="r.ClientId" autocomplete="off" /></label>
+                        <label>Client secret<input class="field-input" type="password" @bind="r.ClientSecret"
+                                                   placeholder="@(r.Configured ? "•••••• (unchanged)" : "")" autocomplete="new-password" /></label>
+                        <label>Webhook secret<input class="field-input" type="password" @bind="r.WebhookSecret"
+                                                    placeholder="@(r.HasWebhookSecret ? "•••••• (unchanged)" : "")" autocomplete="new-password" /></label>
+                        <label class="dk-check"><input type="checkbox" @bind="r.Production" /> Production (untick = sandbox)</label>
+                    </div>
+
+                    <p class="dk-muted">Webhook URL for the Digio dashboard (Profile → Webhooks):
+                        <code>@(Nav.BaseUri)webhooks/digio/@r.Id</code></p>
+
+                    <button type="button" class="dk-btn" @onclick="() => Save(r)">Save</button>
+                    @if (r.Message is not null) { <span class="dk-msg">@r.Message</span> }
+                </section>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .dk-page { min-height: 100vh; padding: 20px 24px 40px; background: #eef1f5; }
+    .dk-card { max-width: 900px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+    .dk-card .system-label { font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6b7686; }
+    .dk-title { margin: 4px 0 4px; font-size: 17px; font-weight: 600; color: #1d2733; }
+    .dk-muted { color: #6b7686; font-size: 12.5px; margin: 6px 0; }
+    .dk-company { border-top: 1px solid #e4e8ee; padding: 14px 0; }
+    .dk-company header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .dk-code { font: 600 .72rem/1 ui-monospace, monospace; background: #eef1f5; border-radius: 4px; padding: 4px 6px; }
+    .dk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px 14px; }
+    .dk-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 600; color: #3a4553; }
+    .dk-grid .dk-check { flex-direction: row; align-items: center; gap: 6px; font-weight: 500; }
+    .dk-btn { margin-top: 6px; padding: 5px 14px; font-size: 12px; font-weight: 600; color: #fff; background: #1d2733; border: 0; border-radius: 3px; cursor: pointer; }
+    .dk-btn:hover { background: #0f161e; }
+    .dk-btn:focus-visible { outline: 2px solid #1d2733; outline-offset: 2px; }
+    .dk-msg { margin-left: 10px; font-size: 12.5px; color: #1d6b2c; }
+    .pill { display: inline-block; padding: 1px 9px; border-radius: 9px; font-size: 11px; font-weight: 600; background: #eef1f5; color: #5b6472; }
+    .pill-ok { background: #e3f4e6; color: #1d6b2c; }
+    code { font-size: 12px; background: #f4f6f9; padding: 1px 5px; border-radius: 3px; word-break: break-all; }
+</style>
+
+@code {
+    private List<Row>? _rows;
+
+    private sealed class Row
+    {
+        public int Id; public string Name = ""; public string? Code;
+        public bool Configured; public bool HasWebhookSecret;
+        public string ClientId = ""; public string ClientSecret = ""; public string WebhookSecret = "";
+        public bool Production; public string? Message;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var companies = await db.Companies.AsNoTracking().Where(c => c.Name != "").OrderBy(c => c.Name)
+            .Select(c => new { c.Id, c.Name, c.Code }).ToListAsync();
+
+        _rows = companies.Select(c =>
+        {
+            var saved = Digio.Credentials(c.Id);
+            return new Row
+            {
+                Id = c.Id, Name = c.Name, Code = c.Code,
+                Configured = saved is not null,
+                HasWebhookSecret = !string.IsNullOrEmpty(saved?.WebhookSecret),
+                ClientId = saved?.ClientId ?? "",
+                Production = saved?.Production ?? false,
+            };
+        }).ToList();
+    }
+
+    private void Save(Row r)
+    {
+        var saved = Digio.Credentials(r.Id);
+        var secret = string.IsNullOrWhiteSpace(r.ClientSecret) ? saved?.ClientSecret : r.ClientSecret.Trim();
+        if (string.IsNullOrWhiteSpace(r.ClientId) || string.IsNullOrWhiteSpace(secret))
+        {
+            r.Message = "Client ID and client secret are both required.";
+            return;
+        }
+
+        var webhook = string.IsNullOrWhiteSpace(r.WebhookSecret) ? saved?.WebhookSecret : r.WebhookSecret.Trim();
+        Digio.SaveCredentials(r.Id, new DigioCredentials(r.ClientId.Trim(), secret!, webhook, r.Production));
+
+        r.ClientSecret = r.WebhookSecret = "";
+        r.Configured = true;
+        r.HasWebhookSecret = !string.IsNullOrEmpty(webhook);
+        r.Message = "Saved.";
+    }
+}
