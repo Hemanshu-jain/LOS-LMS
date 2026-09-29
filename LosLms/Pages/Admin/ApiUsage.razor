@@ -1,0 +1,232 @@
+@page "/admin/api-usage"
+@using System.Globalization
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = TenantContext.AdminRoles)]
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject TenantContext Tenant
+@inject ApiBillingService Billing
+
+<PageTitle>API usage · LOS/LMS</PageTitle>
+
+@* Monthly provider-API usage and what is payable. Admin / SuperAdmin only (the page itself carries the
+   role check — the nav link is just convenience). An Admin sees their own company; a SuperAdmin who has
+   not picked a company sees every company. Clients pay exactly the provider rate, so one price. *@
+
+<div class="usage-page">
+    <div class="usage-card">
+
+        <div class="usage-head">
+            <div>
+                <span class="system-label">LOS/LMS · Billing</span>
+                <h1 class="usage-title">API usage &amp; charges</h1>
+            </div>
+            <label class="usage-month">
+                <span class="field-caption">Month</span>
+                <input class="field-input" type="month" value="@_monthText" max="@CurrentMonthText"
+                       @onchange="OnMonthChangedAsync" />
+            </label>
+        </div>
+
+        @if (_loading)
+        {
+            <p class="usage-empty">Loading…</p>
+        }
+        else
+        {
+            @if (_access is { } access && access.DueDate is not null)
+            {
+                <div class="usage-banner @(access.Allowed ? "usage-banner-warn" : "usage-banner-stop")" role="status">
+                    @if (access.Allowed)
+                    {
+                        <span>A bill of <strong>@Money(access.AmountDue)</strong> (incl. GST) is pending. Please pay by
+                            <strong>@access.DueDate.Value.ToString("d MMM yyyy", Ci)</strong> to avoid interruption.</span>
+                    }
+                    else
+                    {
+                        <span>@access.Reason Amount outstanding: <strong>@Money(access.AmountDue)</strong>.</span>
+                    }
+                </div>
+            }
+
+            <h2 class="usage-sub">Usage in @_month.ToString("MMMM yyyy", Ci)
+                @if (_month == CurrentMonth)
+                {
+                    <span class="usage-tag">in progress</span>
+                }
+            </h2>
+
+            @if (_lines.Count == 0)
+            {
+                <p class="usage-empty">No provider API calls in this month.</p>
+            }
+            else
+            {
+                <table class="usage-table">
+                    <thead>
+                        <tr>
+                            @if (_allCompanies) { <th>Company</th> }
+                            <th>Product</th>
+                            <th>API</th>
+                            <th class="num">Calls</th>
+                            <th class="num">Rate</th>
+                            <th class="num">Amount</th>
+                            <th class="num" title="Failed calls are not billed">Failed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in _lines)
+                        {
+                            <tr>
+                                @if (_allCompanies) { <td>@CompanyName(l.CompanyId)</td> }
+                                <td>@l.Product</td>
+                                <td>@l.Name</td>
+                                <td class="num">@l.Calls</td>
+                                <td class="num">@Money(l.UnitRate)</td>
+                                <td class="num">@Money(l.Amount)</td>
+                                <td class="num muted">@(l.Failed == 0 ? "—" : l.Failed.ToString())</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="@(_allCompanies ? 5 : 4)" class="num">Subtotal</td>
+                            <td class="num">@Money(Subtotal)</td><td></td>
+                        </tr>
+                        <tr>
+                            <td colspan="@(_allCompanies ? 5 : 4)" class="num">GST</td>
+                            <td class="num">@Money(Billing.GstOn(Subtotal))</td><td></td>
+                        </tr>
+                        <tr class="usage-total">
+                            <td colspan="@(_allCompanies ? 5 : 4)" class="num">Payable</td>
+                            <td class="num">@Money(Subtotal + Billing.GstOn(Subtotal))</td><td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            }
+
+            <h2 class="usage-sub">Bills</h2>
+            @if (_invoices.Count == 0)
+            {
+                <p class="usage-empty">No bills yet. A bill is raised when a month with usage closes.</p>
+            }
+            else
+            {
+                <table class="usage-table">
+                    <thead>
+                        <tr>
+                            @if (_allCompanies) { <th>Company</th> }
+                            <th>Month</th>
+                            <th class="num">Amount (incl. GST)</th>
+                            <th>Due by</th>
+                            <th>Status</th>
+                            @if (Tenant.IsSuperAdmin) { <th></th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in _invoices)
+                        {
+                            var overdue = i.PaidAt is null && i.DueDate < ApiBillingService.TodayIst();
+                            <tr>
+                                @if (_allCompanies) { <td>@CompanyName(i.CompanyId)</td> }
+                                <td>@i.PeriodStart.ToString("MMMM yyyy", Ci)</td>
+                                <td class="num">@Money(i.Total)</td>
+                                <td>@i.DueDate.ToString("d MMM yyyy", Ci)</td>
+                                <td>
+                                    @if (i.PaidAt is not null) { <span class="pill pill-ok">Paid @i.PaidAt.Value.ToLocalTime().ToString("d MMM", Ci)</span> }
+                                    else if (overdue) { <span class="pill pill-stop">Overdue — API paused</span> }
+                                    else { <span class="pill pill-warn">Payment due</span> }
+                                </td>
+                                @if (Tenant.IsSuperAdmin)
+                                {
+                                    <td class="num">
+                                        @if (i.PaidAt is null)
+                                        {
+                                            <button type="button" class="usage-btn" @onclick="() => MarkPaidAsync(i.Id)">Mark paid</button>
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo Ci = new("en-IN");
+
+    private bool _loading = true;
+    private bool _allCompanies;
+    private DateOnly _month;
+    private List<UsageLine> _lines = new();
+    private IReadOnlyList<ApiInvoice> _invoices = Array.Empty<ApiInvoice>();
+    private Dictionary<int, string> _companyNames = new();
+    private ApiAccess? _access;
+
+    private static DateOnly CurrentMonth
+    {
+        get { var t = ApiBillingService.TodayIst(); return new DateOnly(t.Year, t.Month, 1); }
+    }
+
+    private string CurrentMonthText => CurrentMonth.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+
+    private string _monthText => _month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+
+    private decimal Subtotal => _lines.Sum(l => l.Amount);
+
+    private static string Money(decimal v) => "₹" + v.ToString("N2", Ci);
+
+    private string CompanyName(int id) => _companyNames.TryGetValue(id, out var n) ? n : $"#{id}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        _month = CurrentMonth;
+        await LoadAsync();
+    }
+
+    private async Task OnMonthChangedAsync(ChangeEventArgs e)
+    {
+        if (DateOnly.TryParseExact((e.Value?.ToString() ?? "") + "-01", "yyyy-MM-dd",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var m) && m <= CurrentMonth)
+        {
+            _month = m;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+
+        // A SuperAdmin not acting as a company sees all of them; everyone else is one company.
+        _allCompanies = Tenant.IsSuperAdmin && Tenant.CompanyId is null;
+        int? scope = _allCompanies ? null : Tenant.CompanyId;
+
+        _lines = (await Billing.UsageForMonthAsync(scope, _month)).ToList();
+        _invoices = await Billing.InvoicesAsync(scope);
+        _access = scope is { } id ? await Billing.CheckAccessAsync(id) : null;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _companyNames = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
+
+        _loading = false;
+    }
+
+    private async Task MarkPaidAsync(int invoiceId)
+    {
+        if (!Tenant.IsSuperAdmin)
+        {
+            return; // only the vendor records a payment — that is what lifts the pause
+        }
+
+        await Billing.MarkPaidAsync(invoiceId, note: null);
+        await LoadAsync();
+    }
+}

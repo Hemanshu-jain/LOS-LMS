@@ -115,6 +115,11 @@ builder.Services.AddScoped<SignatureDetectionService>();
 // seeder. Scoped, because it creates the admin through the scoped UserManager.
 builder.Services.AddScoped<CompanyProvisioningService>();
 
+// Provider (Digio) API metering + postpaid monthly billing: usage log, rate card, invoices and the
+// pause-after-grace gate. Nothing calls a provider yet; the service is ready for when keys arrive.
+builder.Services.Configure<ApiBillingOptions>(builder.Configuration.GetSection(ApiBillingOptions.Section));
+builder.Services.AddScoped<ApiBillingService>();
+
 // Identity's UserStore and RoleStore resolve LosDbContext directly rather than through the factory,
 // so hand them one built the same way.
 builder.Services.AddScoped(sp =>

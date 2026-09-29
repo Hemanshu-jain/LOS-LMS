@@ -124,6 +124,12 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<AdminRequest> AdminRequests => Set<AdminRequest>();
 
+    public DbSet<ApiRate> ApiRates => Set<ApiRate>();
+
+    public DbSet<ApiUsageLog> ApiUsageLogs => Set<ApiUsageLog>();
+
+    public DbSet<ApiInvoice> ApiInvoices => Set<ApiInvoice>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -885,6 +891,47 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // ---- Provider API metering & postpaid billing ----
+        modelBuilder.Entity<ApiRate>(entity =>
+        {
+            entity.ToTable("ApiRate");
+            entity.Property(r => r.UnitRate).HasPrecision(18, 2);
+
+            // Global reference data (no company): seeded from the Digio quote, editable by the vendor.
+            entity.HasData(DigioRates.Seed);
+        });
+
+        modelBuilder.Entity<ApiUsageLog>(entity =>
+        {
+            entity.ToTable("ApiUsageLog");
+            entity.Property(l => l.UnitRate).HasPrecision(18, 2);
+
+            // The monthly report reads one company's rows in a date window.
+            entity.HasIndex(l => new { l.CompanyId, l.CreatedAt });
+
+            // Restrict, not cascade: deleting a company must never erase what we are owed for.
+            entity.HasOne(l => l.Company)
+                .WithMany()
+                .HasForeignKey(l => l.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ApiInvoice>(entity =>
+        {
+            entity.ToTable("ApiInvoice");
+            entity.Property(i => i.Subtotal).HasPrecision(18, 2);
+            entity.Property(i => i.Gst).HasPrecision(18, 2);
+            entity.Ignore(i => i.Total);
+
+            // One bill per company per month — also what makes concurrent lazy generation safe.
+            entity.HasIndex(i => new { i.CompanyId, i.PeriodStart }).IsUnique();
+
+            entity.HasOne(i => i.Company)
+                .WithMany()
+                .HasForeignKey(i => i.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
         modelBuilder.Entity<ApplicationUser>(entity =>
         {
             entity.HasIndex(u => u.CompanyId);
@@ -918,6 +965,12 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
         modelBuilder.Entity<SchemeChargeTemplate>()
             .HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
+
+        modelBuilder.Entity<ApiUsageLog>()
+            .HasQueryFilter(l => _isSuperAdmin || l.CompanyId == _companyId);
+
+        modelBuilder.Entity<ApiInvoice>()
+            .HasQueryFilter(i => _isSuperAdmin || i.CompanyId == _companyId);
 
         // The one deliberate exception, and it is narrow: when nobody is signed in the user filter is
         // open, because Identity's own sign-in path calls FindByEmailAsync on this very context before
