@@ -48,6 +48,10 @@ internal sealed class BackendSupervisor
 
     public int Port { get; private set; }
 
+    /// <summary>Takes a database dump and returns its path (null on failure). Set by the orchestrator once
+    /// the backup manager exists; an update is refused if no dump can be taken.</summary>
+    public Func<string?>? PreUpdateDump { get; set; }
+
     public string LocalUrl => $"http://127.0.0.1:{Port}";
 
     /// <summary>Raised (on a background thread) after the backend is restarted, so the shell can reload.</summary>
@@ -263,6 +267,16 @@ internal sealed class BackendSupervisor
             return;
         }
 
+        // The new build runs EF migrations on start, and a file rollback cannot undo those. Take a dump
+        // first (backend still up, MySQL is its own process) so the operator has something to restore from.
+        // ponytail: no dump = no update; the 6-hourly auto-apply poll retries once backups work again.
+        var dumpPath = PreUpdateDump?.Invoke();
+        if (dumpPath is null)
+        {
+            Log.Error("Could not take the pre-update database backup. Update NOT applied; keeping the current version.");
+            return;
+        }
+
         Log.Info("Stopping the backend to apply the update…");
         StopBackend(_backend);
 
@@ -310,12 +324,9 @@ internal sealed class BackendSupervisor
                 throw new FileNotFoundException("the extracted build has no LosLms.exe", Paths.BackendExe);
             }
 
+            var expected = ExpectedVersion(Paths.BackendExe);
             _backend = StartBackend();
-            Thread.Sleep(8000);
-            if (_backend.HasExited)
-            {
-                throw new InvalidOperationException($"the updated backend exited immediately (code {_backend.ExitCode}).");
-            }
+            WaitForVersionAsync(expected).GetAwaiter().GetResult();
 
             DeleteDirIfExists(_backupDir);
             DeleteDirIfExists(_applyTempDir);
@@ -324,7 +335,10 @@ internal sealed class BackendSupervisor
         }
         catch (Exception ex)
         {
-            Log.Error($"Applying the update failed: {ex.Message}. Rolling back.");
+            Log.Error($"Applying the update failed: {ex.Message}. Rolling back the files.");
+            Log.Error(
+                $"The new build may already have migrated the database. The pre-update backup is at {dumpPath} — "
+                + "restore it manually if the previous version misbehaves (the database was NOT rolled back).");
             try
             {
                 DeleteDirIfExists(Paths.AppDir);
@@ -341,6 +355,50 @@ internal sealed class BackendSupervisor
                     + $"{_backupDir} — restore it manually (rename it back to 'app').");
             }
         }
+    }
+
+    // The update counts as applied only when the NEW build answers /health with its own version — a live
+    // process alone is not proof (it can be up but stuck failing a migration).
+    private async Task WaitForVersionAsync(string expected)
+    {
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var deadline = DateTime.UtcNow + HttpReadyTimeout;
+        string last = "no response";
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_backend is { HasExited: true })
+            {
+                throw new InvalidOperationException($"the updated backend exited (code {_backend.ExitCode}).");
+            }
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync($"{LocalUrl}/health"));
+                var version = doc.RootElement.GetProperty("version").GetString();
+                if (version == expected)
+                {
+                    return;
+                }
+
+                last = $"reported version {version}";
+            }
+            catch (Exception ex)
+            {
+                last = ex.Message;
+            }
+
+            await Task.Delay(1000);
+        }
+
+        throw new TimeoutException($"/health never reported version {expected} ({last}).");
+    }
+
+    // Same major.minor.build the backend reports (AssemblyVersion ToString(3)), read from the extracted exe.
+    private static string ExpectedVersion(string exe)
+    {
+        var v = FileVersionInfo.GetVersionInfo(exe);
+        return $"{v.FileMajorPart}.{v.FileMinorPart}.{v.FileBuildPart}";
     }
 
     // ---- helpers -----------------------------------------------------------------------------------

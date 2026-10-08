@@ -348,6 +348,14 @@ var csp =
     "connect-src 'self'; " +
     "form-action 'self'";
 
+// Anonymous liveness/version probe for release checks and the launcher's post-update verification.
+// Branched off BEFORE auth, the maintenance gate and the company-setup redirect so it always answers;
+// returns only status + version, never data.
+var runningVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown";
+app.MapWhen(
+    c => c.Request.Path == "/health",
+    b => b.Run(c => c.Response.WriteAsJsonAsync(new { status = "ok", version = runningVersion })));
+
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
