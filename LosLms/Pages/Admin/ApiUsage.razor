@@ -210,6 +210,7 @@
         int? scope = _allCompanies ? null : Tenant.CompanyId;
 
         _lines = (await Billing.UsageForMonthAsync(scope, _month)).ToList();
+        await Billing.EnsureInvoicesAsync(scope);
         _invoices = await Billing.InvoicesAsync(scope);
         _access = scope is { } id ? await Billing.CheckAccessAsync(id) : null;
 

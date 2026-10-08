@@ -175,9 +175,9 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
         }
     }
 
+    /// <summary>Plain read — raising invoices is <see cref="EnsureInvoicesAsync"/>'s job, on the caller's clock.</summary>
     public async Task<IReadOnlyList<ApiInvoice>> InvoicesAsync(int? companyId, int take = 12)
     {
-        await EnsureInvoicesAsync(companyId);
         await using var db = await dbFactory.CreateDbContextAsync();
         var q = db.ApiInvoices.AsNoTracking().AsQueryable();
         if (companyId is { } id)
