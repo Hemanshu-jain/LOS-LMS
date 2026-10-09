@@ -10,7 +10,7 @@ namespace LosLms.Services;
 /// </summary>
 /// <remarks>
 /// Auto-apply reuses the same verified path as the manual button: <see cref="UpdateService.DownloadAsync"/>
-/// checks the vendor signature before staging, and the watchdog's swap rolls back on any failure — so an
+/// checks the vendor signature before staging, and the launcher's swap rolls back on any failure — so an
 /// unsigned or broken release is never applied. Set <c>Updates:AutoApply=false</c> to fall back to the
 /// notify-only, one-click behaviour. A failed check or apply is swallowed; the previous state is kept.
 /// </remarks>
@@ -63,8 +63,8 @@ public sealed class UpdateCheckBackgroundService(
     }
 
     /// <summary>
-    /// Downloads the newer release (verifying the vendor signature) and signals the watchdog to swap it
-    /// in. The watchdog stops the backend, applies, and restarts — so a new version reaches this install
+    /// Downloads the newer release (verifying the vendor signature) and signals the launcher to swap it
+    /// in. The launcher stops the backend, applies, and restarts — so a new version reaches this install
     /// with no one clicking anything. A failure here just leaves the current version running.
     /// </summary>
     private async Task TryAutoApplyAsync(
@@ -75,7 +75,7 @@ public sealed class UpdateCheckBackgroundService(
             var stagingFolder = Path.Combine(env.ContentRootPath, config["Updates:StagingFolder"] ?? "updates");
             var zip = await UpdateService.DownloadAsync(http, url, name, stagingFolder, ct);
             await UpdateService.WriteApplySignal(stagingFolder, zip, ct);
-            // The watchdog will now stop this process to apply; nothing more to do.
+            // The launcher will now stop this process to apply; nothing more to do.
         }
         catch (Exception)
         {

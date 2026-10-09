@@ -44,6 +44,27 @@ internal sealed class BackupManager
 
     public void Stop() => _timer?.Dispose();
 
+    /// <summary>
+    /// One-off dump taken right before an update swap. Named <c>pre-update-*</c> so the nightly rotation
+    /// (which only matches <c>los_lms-*</c>) never deletes it. Returns the path, or null if it failed.
+    /// </summary>
+    public string? DumpNow(string label)
+    {
+        try
+        {
+            Directory.CreateDirectory(Paths.BackupsDir);
+            var path = Path.Combine(Paths.BackupsDir, $"{label}-{DateTime.Now:yyyyMMdd-HHmmss}.sql.gz");
+            Dump(path);
+            Log.Info($"Pre-update backup written: {path} ({new FileInfo(path).Length / 1024} KB).");
+            return path;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Pre-update backup failed", ex);
+            return null;
+        }
+    }
+
     private void RunSafely()
     {
         try
