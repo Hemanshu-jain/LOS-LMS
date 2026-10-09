@@ -229,7 +229,7 @@ internal sealed class BackendSupervisor
             $"The backend did not serve a response within {HttpReadyTimeout.TotalSeconds:0}s. Last error: {last?.Message}");
     }
 
-    // ---- update swap, with rollback (lifted from LosLms.Watchdog) ----------------------------------
+    // ---- update swap, with rollback ----------------------------------------------------------------
 
     private void ApplyUpdate()
     {

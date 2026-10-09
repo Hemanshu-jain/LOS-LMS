@@ -27,7 +27,7 @@ public sealed record UpdateCheckResult(
 /// <summary>
 /// Checks for and downloads updates from a public GitHub repository's Releases. Applying an update is
 /// deliberately NOT here — a running Windows exe cannot overwrite itself, so the actual swap is done by
-/// the separate watchdog process, which this only signals (see <see cref="WriteApplySignal"/>).
+/// the separate launcher process (LOS-LMS.exe), which this only signals (see <see cref="WriteApplySignal"/>).
 /// </summary>
 /// <remarks>
 /// Owner/repo come from configuration (<c>Updates:GitHubOwner</c> / <c>Updates:GitHubRepo</c>), never
