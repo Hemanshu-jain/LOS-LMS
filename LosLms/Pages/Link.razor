@@ -36,8 +36,13 @@
                 <p class="inline-error" role="alert">@_error</p>
             }
 
-            @if (_request is { } r)
+            @if (_request is not null || _decideCode is not null)
             {
+                @* The 'decide' form must exist in the render that handles its own POST (Blazor dispatches a named
+                   form against that render), and _request is gone by then, so the posted code keeps it alive. *@
+                var r = _request;
+                @if (r is not null)
+                {
                 <p class="auth-sub"><strong>@r.ClientName</strong> wants to connect to your company and:</p>
                 <ul>
                     @foreach (var scope in r.Scopes)
@@ -47,10 +52,11 @@
                 </ul>
                 <p class="auth-sub">Code <strong>@r.UserCode</strong>, requested @r.RequestedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")@(r.RequesterIp is null ? "" : $" from {r.RequesterIp}").
                     Only continue if this is the code shown in @r.ClientName on your computer.</p>
+                }
 
                 <form method="post" @onsubmit="DecideAsync" @formname="decide">
                     <AntiforgeryToken />
-                    <input type="hidden" name="code" value="@r.UserCode" />
+                    <input type="hidden" name="code" value="@(r?.UserCode ?? _decideCode)" />
                     <button type="submit" class="auth-submit" name="decision" value="allow">Allow</button>
                     <button type="submit" class="auth-secondary" name="decision" value="deny">Deny</button>
                 </form>
@@ -78,11 +84,21 @@
     [SupplyParameterFromQuery(Name = "code")] private string? Code { get; set; }
 
     private DeviceRequest? _request;
+    private string? _decideCode;
     private string? _error;
     private string? _outcome;
     private bool _isAdmin;
 
-    protected override void OnInitialized() => _isAdmin = Http?.User.IsInRole(TenantContext.AdminRole) == true;
+    protected override void OnInitialized()
+    {
+        _isAdmin = Http?.User.IsInRole(TenantContext.AdminRole) == true;
+
+        // A POST carrying a decision: remember the code so the decide form is rendered for the handler (see above).
+        if (Http is { Request: { Method: "POST" } req } && req.HasFormContentType && req.Form.ContainsKey("decision"))
+        {
+            _decideCode = req.Form["code"].ToString();
+        }
+    }
 
     private string[] GuessKeys()
     {
@@ -126,6 +142,7 @@
 
     private async Task DecideAsync()
     {
+        _decideCode = null; // handled: the next render shows the outcome (or the code box again on an error)
         if (!_isAdmin || Http is null || Paused())
         {
             return;
