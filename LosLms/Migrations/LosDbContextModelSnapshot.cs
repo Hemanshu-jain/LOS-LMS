@@ -2062,6 +2062,10 @@ namespace LosLms.Migrations
                     b.Property<int>("PollInterval")
                         .HasColumnType("int");
 
+                    b.Property<string>("RequesterIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("varchar(45)");
+
                     b.Property<string>("Scopes")
                         .IsRequired()
                         .HasMaxLength(255)

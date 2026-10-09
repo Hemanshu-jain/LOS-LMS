@@ -31,10 +31,14 @@ public sealed record TokenResponse(
     [property: JsonPropertyName("scope")] string Scope);
 
 /// <summary>What /link shows the Admin before Allow/Deny.</summary>
-public sealed record DeviceRequest(string UserCode, string ClientName, IReadOnlyList<string> Scopes, DateTime RequestedAt);
+public sealed record DeviceRequest(string UserCode, string ClientName, IReadOnlyList<string> Scopes, DateTime RequestedAt, string? RequesterIp);
 
 /// <summary>A live access token's connection: what the data API trusts. Tenant = <see cref="CompanyId"/>.</summary>
-public sealed record PartnerIdentity(int CompanyId, string ConnectionId, string PartnerName, IReadOnlyList<string> Scopes);
+public sealed record PartnerIdentity(
+    int CompanyId, string ConnectionId, string PartnerName, IReadOnlyList<string> Scopes, PartnerBlock? Blocked = null);
+
+/// <summary>A valid token whose company may not use the API right now (→ 403 with this error and message).</summary>
+public sealed record PartnerBlock(string Error, string Message);
 
 public sealed record ConnectedApp(string Id, string AppName, string ApprovedBy, DateTime ConnectedAt, DateTime? LastUsedAt);
 
@@ -47,8 +51,12 @@ public enum DecideResult { Done, NotAdmin, Gone }
 /// match Handoff's wire contract exactly so Paavan's VB.NET module only changes base URL, client id and scope.
 /// Every code and token is stored as SHA-256 only. Every method takes the clock as a parameter.
 /// </summary>
-public sealed class PartnerOAuthService(IDbContextFactory<LosDbContext> dbFactory)
+public sealed class PartnerOAuthService(
+    IDbContextFactory<LosDbContext> dbFactory, LicenseService? license = null, ApiBillingService? billing = null)
 {
+    /// <summary>Live pending device codes one app may hold; past it a new request is refused.</summary>
+    public const int MaxPendingPerClient = 1000;
+
     public const string ScopeWrite = "loans:write";
     public const string ScopeRead = "loans:read";
     public static readonly IReadOnlyList<string> AllScopes = [ScopeWrite, ScopeRead];
@@ -138,7 +146,8 @@ public sealed class PartnerOAuthService(IDbContextFactory<LosDbContext> dbFactor
 
     // ---- Device authorization: POST /oauth/device_authorization ----
 
-    public async Task<DeviceAuthorizationResponse> StartDeviceAsync(string? clientId, string? scope, string verificationUri, DateTime now)
+    public async Task<DeviceAuthorizationResponse> StartDeviceAsync(
+        string? clientId, string? scope, string verificationUri, DateTime now, string? requesterIp = null)
     {
         await using var probe = await dbFactory.CreateDbContextAsync();
         var client = await probe.PartnerClients.AsNoTracking()
@@ -152,6 +161,13 @@ public sealed class PartnerOAuthService(IDbContextFactory<LosDbContext> dbFactor
             throw new OAuthException("invalid_scope", $"This app may only ask for: {string.Join(' ', allowed)}.");
         }
 
+        // Bounds the table against someone minting codes in a loop. temporarily_unavailable (RFC 6749 §4.1.2.1) is
+        // the standard answer for "try again later"; slow_down belongs to the token endpoint's polling.
+        if (await probe.PartnerDeviceCodes.CountAsync(d => d.ClientId == client.Id && d.Status == "pending" && d.ExpiresAt > now) >= MaxPendingPerClient)
+        {
+            throw new OAuthException("temporarily_unavailable", "Too many connection requests are waiting. Try again in a few minutes.", 503);
+        }
+
         var deviceCode = Token(DevicePrefix);
         for (var attempt = 0; ; attempt++)
         {
@@ -161,6 +177,7 @@ public sealed class PartnerOAuthService(IDbContextFactory<LosDbContext> dbFactor
             {
                 DeviceHash = Hash(deviceCode), UserCodeHash = Hash(userCode), ClientId = client.Id,
                 Scopes = string.Join(' ', wanted), PollInterval = PollSeconds, CreatedAt = now, ExpiresAt = now + DeviceLifetime,
+                RequesterIp = requesterIp,
             });
             try
             {
@@ -193,8 +210,8 @@ public sealed class PartnerOAuthService(IDbContextFactory<LosDbContext> dbFactor
         var row = await (from d in db.PartnerDeviceCodes.AsNoTracking()
                          join c in db.PartnerClients on d.ClientId equals c.Id
                          where d.UserCodeHash == hash && d.Status == "pending" && d.ExpiresAt > now && c.DisabledAt == null
-                         select new { c.Name, d.Scopes, d.CreatedAt }).FirstOrDefaultAsync();
-        return row is null ? null : new DeviceRequest(FormatUserCode(code), row.Name, Split(row.Scopes), row.CreatedAt);
+                         select new { c.Name, d.Scopes, d.CreatedAt, d.RequesterIp }).FirstOrDefaultAsync();
+        return row is null ? null : new DeviceRequest(FormatUserCode(code), row.Name, Split(row.Scopes), row.CreatedAt, row.RequesterIp);
     }
 
     /// <summary>
@@ -463,7 +480,22 @@ public sealed class PartnerOAuthService(IDbContextFactory<LosDbContext> dbFactor
 
         await db.PartnerConnections.Where(k => k.Id == row.Id).ExecuteUpdateAsync(s => s.SetProperty(k => k.LastUsedAt, now));
         var allowed = Split(row.ConnectionScopes);
-        return new PartnerIdentity(row.CompanyId, row.Id, row.Name, Split(row.TokenScopes).Where(allowed.Contains).ToArray());
+        return new PartnerIdentity(row.CompanyId, row.Id, row.Name, Split(row.TokenScopes).Where(allowed.Contains).ToArray(),
+            await BlockedAsync(row.CompanyId, now));
+    }
+
+    // Company has no suspended/disabled flag; what can switch a company's API off is the licence (the whole
+    // install freezes once it has expired) and an unpaid API bill past its grace date.
+    private async Task<PartnerBlock?> BlockedAsync(int companyId, DateTime now)
+    {
+        if (license is { IsFrozen: true })
+        {
+            return new PartnerBlock("subscription_ended", "This LOS-LMS subscription has ended. Ask your company Admin to renew it.");
+        }
+
+        return billing is not null && await billing.CheckAccessAsync(companyId, now) is { Allowed: false } access
+            ? new PartnerBlock("api_paused", access.Reason ?? "API access is paused for an unpaid bill.")
+            : null;
     }
 
     // ---- Housekeeping ----

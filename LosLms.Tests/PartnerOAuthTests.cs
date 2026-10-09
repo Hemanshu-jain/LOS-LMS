@@ -14,6 +14,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -527,9 +528,10 @@ public sealed class PartnerOAuthTests : IDisposable
     }
 
     private async Task<(int Status, string Body, JsonElement Json, string? CacheControl)> Post(
-        IServiceProvider services, string path, string body, string contentType = "application/x-www-form-urlencoded")
+        IServiceProvider services, string path, string body, string contentType = "application/x-www-form-urlencoded", string peer = "127.0.0.1")
     {
         var http = new DefaultHttpContext { RequestServices = services };
+        http.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(peer);
         http.Request.Method = "POST";
         http.Request.Path = path;
         http.Request.Scheme = "https";
@@ -543,6 +545,114 @@ public sealed class PartnerOAuthTests : IDisposable
         http.Response.Body.Position = 0;
         var text = await new StreamReader(http.Response.Body).ReadToEndAsync();
         return (http.Response.StatusCode, text, JsonDocument.Parse(text).RootElement.Clone(), http.Response.Headers.CacheControl.ToString());
+    }
+
+    // ---- hardening: pending cap, client IP, body size, requester IP, switched-off companies ----
+
+    [Fact]
+    public async Task PendingCodes_CappedPerClient_ExpiredAndOtherAppsDontCount()
+    {
+        var other = await _svc.CreateClientAsync("Other App", "super-only", T0);
+        await using (var db = NewContext())
+        {
+            db.PartnerDeviceCodes.AddRange(Enumerable.Range(0, PartnerOAuthService.MaxPendingPerClient - 1).Select(i => Pending(_clientId, T0.AddMinutes(10))));
+            db.PartnerDeviceCodes.AddRange(Enumerable.Range(0, 50).Select(i => Pending(_clientId, T0.AddMinutes(-1)))); // expired
+            db.PartnerDeviceCodes.AddRange(Enumerable.Range(0, 50).Select(i => Pending(other, T0.AddMinutes(10))));
+            await db.SaveChangesAsync();
+        }
+
+        await StartAsync(); // the 1000th live one is still allowed
+        var full = await Assert.ThrowsAsync<OAuthException>(() => StartAsync());
+        Assert.Equal(("temporarily_unavailable", 503), (full.Name, full.Status));
+
+        await _svc.StartDeviceAsync(other, null, "https://x/link", T0); // another app is unaffected
+        await _svc.StartDeviceAsync(_clientId, null, "https://x/link", T0.AddMinutes(11)); // room again once codes expire
+    }
+
+    private PartnerDeviceCode Pending(string clientId, DateTime expires) => new()
+    {
+        DeviceHash = Guid.NewGuid().ToString("N"), UserCodeHash = Guid.NewGuid().ToString("N"),
+        ClientId = clientId, Scopes = "loans:read", PollInterval = 5, CreatedAt = T0, ExpiresAt = expires,
+    };
+
+    [Theory]
+    [InlineData("127.0.0.1", "198.51.100.7", "198.51.100.7")]   // through the tunnel: the header is the visitor
+    [InlineData("::1", "2001:db8::5", "2001:db8::5")]
+    [InlineData("203.0.113.9", "198.51.100.7", "203.0.113.9")]  // direct caller typed the header: ignored
+    [InlineData("127.0.0.1", null, "127.0.0.1")]
+    [InlineData("127.0.0.1", "not-an-ip", "127.0.0.1")]
+    public void ClientIp_TrustsCfHeaderOnlyFromLoopback(string peer, string? header, string expected)
+    {
+        var http = new DefaultHttpContext();
+        http.Connection.RemoteIpAddress = System.Net.IPAddress.Parse(peer);
+        if (header is not null) { http.Request.Headers["CF-Connecting-IP"] = header; }
+
+        Assert.Equal(expected, ClientIp.Of(http));
+    }
+
+    [Fact]
+    public async Task Body_LimitedToTwentyKb_EvenWithoutContentLength()
+    {
+        var services = new ServiceCollection().AddSingleton(_svc).BuildServiceProvider();
+        var padding = new string('a', 25_000);
+
+        var chunked = await Post(services, "/oauth/token", $"client_id={_clientId}&pad={padding}"); // Post() sends no Content-Length
+        Assert.Equal(413, chunked.Status);
+        Assert.Equal("invalid_request", chunked.Json.GetProperty("error").GetString());
+
+        var ok = await Post(services, "/oauth/token", $"grant_type=x&client_id={_clientId}&pad={new string('a', 15_000)}");
+        Assert.Equal("unsupported_grant_type", ok.Json.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task RequesterIp_IsStoredAndShownOnTheLinkRequest()
+    {
+        var services = new ServiceCollection().AddSingleton(_svc).BuildServiceProvider();
+        var start = await Post(services, "/oauth/device_authorization", $"client_id={_clientId}", peer: "203.0.113.9");
+
+        var seen = await _svc.FindDeviceAsync(start.Json.GetProperty("user_code").GetString(), DateTime.UtcNow);
+
+        Assert.Equal("203.0.113.9", seen!.RequesterIp);
+        Assert.Null((await _svc.FindDeviceAsync((await StartAsync()).UserCode, T0))!.RequesterIp); // callers that pass none
+    }
+
+    [Fact]
+    public async Task OverdueApiBill_BlocksTheCompany_UntilPaid_AndTheBearerHandlerAnswers403()
+    {
+        var billing = new ApiBillingService(new TestFactory(this), Options.Create(new ApiBillingOptions()));
+        var svc = new PartnerOAuthService(new TestFactory(this), null, billing);
+        var now = DateTime.UtcNow;
+        var start = await svc.StartDeviceAsync(_clientId, null, "https://x/link", now.AddMinutes(-1));
+        await svc.DecideAsync(start.UserCode, true, Admin1, now.AddMinutes(-1));
+        var tokens = await svc.TokenAsync(PartnerOAuthService.DeviceGrant, _clientId, start.DeviceCode, null, now);
+
+        Assert.Null((await svc.AuthenticateAsync(tokens.AccessToken, now))!.Blocked); // no bill: fine
+
+        await billing.RecordAsync(1, DigioRates.IdOcr, true, nowUtc: now.AddMonths(-3)); // an old month, long past grace
+        var blocked = (await svc.AuthenticateAsync(tokens.AccessToken, now))!.Blocked;
+        Assert.Equal("api_paused", blocked!.Error);
+        Assert.Contains("paused", blocked.Message);
+
+        await using var provider = new ServiceCollection()
+            .AddLogging().AddSingleton<IDbContextFactory<LosDbContext>>(new TestFactory(this)).AddSingleton(Options.Create(new ApiBillingOptions()))
+            .AddScoped<ApiBillingService>().AddScoped<PartnerOAuthService>().AddPartnerAuth().BuildServiceProvider();
+        var http = new DefaultHttpContext { RequestServices = provider.CreateScope().ServiceProvider };
+        http.Response.Body = new MemoryStream();
+        http.Request.Headers.Authorization = "Bearer " + tokens.AccessToken;
+        Assert.NotNull((await http.AuthenticateAsync(PartnerAuth.Scheme)).Failure); // what the authorization middleware does first
+        await http.ChallengeAsync(PartnerAuth.Scheme);
+        http.Response.Body.Position = 0;
+        var body = JsonDocument.Parse(await new StreamReader(http.Response.Body).ReadToEndAsync()).RootElement;
+        Assert.Equal(403, http.Response.StatusCode);
+        Assert.Equal("api_paused", body.GetProperty("error").GetString());
+
+        await using (var db = NewContext())
+        {
+            var invoice = db.ApiInvoices.Single();
+            Assert.True(await billing.MarkPaidAsync(invoice.Id, "paid", now));
+        }
+
+        Assert.Null((await svc.AuthenticateAsync(tokens.AccessToken, now))!.Blocked);
     }
 
     // ---- plumbing ----
