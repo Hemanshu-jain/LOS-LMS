@@ -130,6 +130,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<ApiInvoice> ApiInvoices => Set<ApiInvoice>();
 
+    public DbSet<PaymentDetails> PaymentDetails => Set<PaymentDetails>();
+
     public DbSet<PartnerClient> PartnerClients => Set<PartnerClient>();
 
     public DbSet<PartnerConnection> PartnerConnections => Set<PartnerConnection>();
@@ -924,12 +926,16 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // Global (vendor-wide) payee details: one row, no company, so no tenant filter.
+        modelBuilder.Entity<PaymentDetails>().ToTable("PaymentDetails");
+
         modelBuilder.Entity<ApiInvoice>(entity =>
         {
             entity.ToTable("ApiInvoice");
             entity.Property(i => i.Subtotal).HasPrecision(18, 2);
             entity.Property(i => i.Gst).HasPrecision(18, 2);
             entity.Ignore(i => i.Total);
+            entity.Ignore(i => i.Reference);
 
             // One bill per company per month — also what makes concurrent lazy generation safe.
             entity.HasIndex(i => new { i.CompanyId, i.PeriodStart }).IsUnique();

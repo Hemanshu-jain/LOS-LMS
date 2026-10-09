@@ -691,6 +691,15 @@ static string ContentTypeFor(string extension) => extension.ToLowerInvariant() s
 
 app.MapPartnerLoanApi();
 
+// The vendor's uploaded UPI QR image, shown on the payment page. Any signed-in user may fetch it (it is just
+// the vendor's public pay-to code, and a paused company must be able to see it).
+app.MapGet("/billing/qr", async (IDbContextFactory<LosDbContext> dbFactory) =>
+{
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var qr = await db.PaymentDetails.AsNoTracking().Select(p => new { p.QrImage, p.QrContentType }).FirstOrDefaultAsync();
+    return qr?.QrImage is { Length: > 0 } bytes ? Results.File(bytes, qr.QrContentType ?? "image/png") : Results.NotFound();
+}).RequireAuthorization();
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 

@@ -139,6 +139,13 @@
                                     @if (i.PaidAt is not null) { <span class="pill pill-ok">Paid @i.PaidAt.Value.ToLocalTime().ToString("d MMM", Ci)</span> }
                                     else if (overdue) { <span class="pill pill-stop">Overdue — API paused</span> }
                                     else { <span class="pill pill-warn">Payment due</span> }
+                                    @if (i.PaidAt is null && i.ClaimedAt is not null)
+                                    {
+                                        @* The customer says they paid; nothing changes until Mark paid. *@
+                                        <div class="usage-claim">Claimed paid: UTR <code>@i.ClaimUtr</code>, @i.ClaimPaidOn?.ToString("d MMM yyyy", Ci)
+                                            (by @i.ClaimedBy, @i.ClaimedAt.Value.ToLocalTime().ToString("d MMM, h:mm tt", Ci))
+                                            @if (!string.IsNullOrEmpty(i.ClaimNote)) { <span>— @i.ClaimNote</span> }</div>
+                                    }
                                 </td>
                                 @if (Tenant.IsSuperAdmin)
                                 {

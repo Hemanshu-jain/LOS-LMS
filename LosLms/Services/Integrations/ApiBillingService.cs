@@ -22,7 +22,9 @@ public sealed record UsageLine(
     int CompanyId, string ApiCode, string Name, string Product, decimal UnitRate, int Calls, int Failed, decimal Amount);
 
 /// <summary>Whether a company may call provider APIs right now, and if a bill is pending, which.</summary>
-public sealed record ApiAccess(bool Allowed, string? Reason, DateOnly? DueDate, decimal AmountDue)
+/// <param name="ClaimedAt">When the customer said they had paid, if EVERY unpaid bill carries such a claim
+/// (latest one). Informational only: access stays as <paramref name="Allowed"/> says until Mark paid.</param>
+public sealed record ApiAccess(bool Allowed, string? Reason, DateOnly? DueDate, decimal AmountDue, DateTime? ClaimedAt = null)
 {
     public static readonly ApiAccess Open = new(true, null, null, 0m);
 }
@@ -211,13 +213,107 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
         var today = TodayIst(nowUtc);
         var first = unpaid[0];
         var due = unpaid.Sum(i => i.Total);
+        var claimedAt = unpaid.All(i => i.ClaimedAt is not null) ? unpaid.Max(i => i.ClaimedAt) : null;
 
         return first.DueDate < today
             ? new ApiAccess(false,
                 $"API usage is paused: the {first.PeriodStart:MMMM yyyy} bill was due {first.DueDate:d MMM yyyy}. " +
-                "It resumes once the payment is recorded.", first.DueDate, due)
-            : new ApiAccess(true, null, first.DueDate, due);
+                "It resumes once the payment is recorded.", first.DueDate, due, claimedAt)
+            : new ApiAccess(true, null, first.DueDate, due, claimedAt);
     }
+
+    /// <summary>A company's unpaid bills, oldest first — what the payment page lists. Company-scoped.</summary>
+    public async Task<IReadOnlyList<ApiInvoice>> UnpaidInvoicesAsync(int companyId, DateTime? nowUtc = null)
+    {
+        await EnsureInvoicesAsync(companyId, nowUtc);
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return (await db.ApiInvoices.AsNoTracking().Where(i => i.CompanyId == companyId && i.PaidAt == null).ToListAsync())
+            .OrderBy(i => i.PeriodStart).ToList();
+    }
+
+    public enum ClaimResult { Recorded, Invalid, NotFound, AlreadyPaid }
+
+    /// <summary>
+    /// "I've paid": records who says they paid, with which UTR/reference and when. Changes nothing about access
+    /// (that is Mark paid's job). The invoice must belong to <paramref name="companyId"/> — another company's
+    /// id is simply NotFound. UTR is required; the paid-on date cannot be in the future (India time).
+    /// </summary>
+    public async Task<ClaimResult> SubmitClaimAsync(
+        int invoiceId, int companyId, string? utr, DateOnly paidOn, string? note, string claimedBy, DateTime? nowUtc = null)
+    {
+        var now = nowUtc ?? DateTime.UtcNow;
+        utr = utr?.Trim();
+        if (string.IsNullOrEmpty(utr) || utr.Length > 60 || paidOn > TodayIst(now) || (note?.Length ?? 0) > 200)
+        {
+            return ClaimResult.Invalid;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var invoice = await db.ApiInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId && i.CompanyId == companyId);
+        if (invoice is null)
+        {
+            return ClaimResult.NotFound;
+        }
+
+        if (invoice.PaidAt is not null)
+        {
+            return ClaimResult.AlreadyPaid;
+        }
+
+        invoice.ClaimUtr = utr;
+        invoice.ClaimPaidOn = paidOn;
+        invoice.ClaimNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        invoice.ClaimedBy = claimedBy.Length > 100 ? claimedBy[..100] : claimedBy;
+        invoice.ClaimedAt = now;
+        await db.SaveChangesAsync();
+        return ClaimResult.Recorded;
+    }
+
+    public async Task<PaymentDetails> GetPaymentDetailsAsync()
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return await db.PaymentDetails.AsNoTracking().FirstOrDefaultAsync() ?? new PaymentDetails();
+    }
+
+    /// <summary>Saves the vendor's payee details. A null <paramref name="qrImage"/> keeps the saved QR.</summary>
+    public async Task SavePaymentDetailsAsync(PaymentDetails input, byte[]? qrImage, string? qrContentType, DateTime? nowUtc = null)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var row = await db.PaymentDetails.FirstOrDefaultAsync();
+        if (row is null)
+        {
+            row = new PaymentDetails();
+            db.PaymentDetails.Add(row);
+        }
+
+        row.UpiId = Clean(input.UpiId);
+        row.PayeeName = Clean(input.PayeeName);
+        row.BankName = Clean(input.BankName);
+        row.AccountNumber = Clean(input.AccountNumber);
+        row.Ifsc = Clean(input.Ifsc)?.ToUpperInvariant();
+        if (qrImage is not null)
+        {
+            row.QrImage = qrImage;
+            row.QrContentType = qrContentType;
+        }
+
+        row.UpdatedAt = nowUtc ?? DateTime.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// The upi://pay deep link for one bill (pa = payee UPI id, pn = payee name, am = total, tn = the invoice
+    /// reference, cu = INR), or null when no UPI id is set.
+    /// </summary>
+    public static string? UpiLink(PaymentDetails details, ApiInvoice invoice) =>
+        string.IsNullOrWhiteSpace(details.UpiId) ? null
+            : "upi://pay?pa=" + Uri.EscapeDataString(details.UpiId)
+              + "&pn=" + Uri.EscapeDataString(details.PayeeName ?? "")
+              + "&am=" + invoice.Total.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+              + "&tn=" + Uri.EscapeDataString(invoice.Reference)
+              + "&cu=INR";
 
     /// <summary>Vendor records a payment — this is what lifts the pause.</summary>
     public async Task<bool> MarkPaidAsync(int invoiceId, string? note, DateTime? nowUtc = null)

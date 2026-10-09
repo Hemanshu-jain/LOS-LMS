@@ -1,0 +1,198 @@
+@page "/billing/pay"
+@using System.Globalization
+@using LosLms.Models
+@using LosLms.Services
+@inject ApiBillingService Billing
+@inject TenantContext Tenant
+
+<PageTitle>Pay your bill · LOS/LMS</PageTitle>
+
+@* Where a company pays its API bill by UPI / bank transfer and tells us it has. Open to every signed-in user of
+   the company, including while the company is paused (MainLayout keeps this one page reachable). A company only
+   ever sees its own bills. "I've paid" records a claim and nothing else — access resumes when the vendor confirms
+   the payment (API Usage → Mark paid). *@
+
+<div class="pay-page">
+    <div class="pay-card">
+        <span class="system-label">LOS/LMS · Billing</span>
+        <h1 class="pay-title">Pay your bill</h1>
+
+        @if (_loading)
+        {
+            <p class="pay-muted">Loading…</p>
+        }
+        else if (_companyId is null)
+        {
+            <p class="pay-muted">Open a company first to see its bills.</p>
+        }
+        else if (_bills.Count == 0)
+        {
+            <p class="pay-muted">Nothing to pay. All bills are settled.</p>
+        }
+        else
+        {
+            @foreach (var f in _bills)
+            {
+                var i = f.Invoice;
+                var overdue = i.DueDate < ApiBillingService.TodayIst();
+                <section class="pay-bill">
+                    <header>
+                        <strong>@i.PeriodStart.ToString("MMMM yyyy", Ci)</strong>
+                        <span class="pay-pill @(overdue ? "pay-stop" : "pay-warn")">@(overdue ? "Overdue" : "Due")  @i.DueDate.ToString("d MMM yyyy", Ci)</span>
+                    </header>
+                    <table class="pay-amounts">
+                        <tr><td>Subtotal</td><td class="num">@Money(i.Subtotal)</td></tr>
+                        <tr><td>GST</td><td class="num">@Money(i.Gst)</td></tr>
+                        <tr class="pay-total"><td>Total</td><td class="num">@Money(i.Total)</td></tr>
+                    </table>
+                    <p class="pay-muted">Payment reference: <code>@i.Reference</code> — put it in the UPI remark or transfer narration.</p>
+
+                    @if (ApiBillingService.UpiLink(_details, i) is { } upi)
+                    {
+                        <p><a class="pay-btn pay-primary" href="@upi">Pay @Money(i.Total) with UPI</a></p>
+                    }
+
+                    @if (i.ClaimedAt is { } at)
+                    {
+                        <p class="pay-claimed" role="status">Payment submitted on <strong>@at.ToLocalTime().ToString("d MMM yyyy", Ci)</strong>
+                            (reference <code>@i.ClaimUtr</code>, paid on @i.ClaimPaidOn?.ToString("d MMM yyyy", Ci)), awaiting confirmation.</p>
+                    }
+
+                    <h3 class="pay-sub">@(i.ClaimedAt is null ? "I've paid" : "Update my payment details")</h3>
+                    <div class="pay-form">
+                        <label>UTR / transaction reference *<input class="field-input" @bind="f.Utr" maxlength="60" autocomplete="off" /></label>
+                        <label>Paid on *<input class="field-input" type="date" @bind="f.PaidOn" max="@TodayText" /></label>
+                        <label class="pay-wide">Note (optional)<input class="field-input" @bind="f.Note" maxlength="200" /></label>
+                    </div>
+                    <button type="button" class="pay-btn" @onclick="() => ClaimAsync(f)">I've paid</button>
+                    @if (f.Message is not null) { <span class="pay-ok" role="status">@f.Message</span> }
+                    @if (f.Error is not null) { <p class="inline-error" role="alert">@f.Error</p> }
+                </section>
+            }
+
+            <section class="pay-bill">
+                <h3 class="pay-sub">Where to pay</h3>
+                @if (!_details.HasAnything)
+                {
+                    <p class="pay-muted">Payment details have not been set up yet. Please contact your LOS/LMS provider.</p>
+                }
+                else
+                {
+                    <div class="pay-where">
+                        <dl>
+                            @if (_details.UpiId is not null) { <dt>UPI ID</dt><dd><code>@_details.UpiId</code></dd> }
+                            @if (_details.PayeeName is not null) { <dt>Payee</dt><dd>@_details.PayeeName</dd> }
+                            @if (_details.BankName is not null) { <dt>Bank</dt><dd>@_details.BankName</dd> }
+                            @if (_details.AccountNumber is not null) { <dt>Account number</dt><dd><code>@_details.AccountNumber</code></dd> }
+                            @if (_details.Ifsc is not null) { <dt>IFSC</dt><dd><code>@_details.Ifsc</code></dd> }
+                        </dl>
+                        @if (_details.HasQr)
+                        {
+                            <img class="pay-qr" src="/billing/qr?v=@_details.UpdatedAt.Ticks" alt="UPI QR code" width="160" height="160" />
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+</div>
+
+<style>
+    .pay-page { padding: 20px 24px 40px; background: #eef1f5; min-height: 80vh; }
+    .pay-card { max-width: 760px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+    .pay-title { margin: 4px 0 8px; font-size: 17px; font-weight: 600; color: #1d2733; }
+    .pay-muted { color: #6b7686; font-size: 12.5px; margin: 6px 0; }
+    .pay-bill { border-top: 1px solid #e4e8ee; padding: 14px 0; font-size: 12.5px; }
+    .pay-bill header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 14px; }
+    .pay-pill { padding: 1px 9px; border-radius: 9px; font-size: 11px; font-weight: 600; }
+    .pay-warn { background: #fdf0d5; color: #7a5200; }
+    .pay-stop { background: #fbe0e0; color: #8a1f1f; }
+    .pay-amounts { border-collapse: collapse; min-width: 260px; }
+    .pay-amounts td { padding: 3px 18px 3px 0; }
+    .pay-amounts .num { text-align: right; padding-right: 0; font-variant-numeric: tabular-nums; }
+    .pay-total td { border-top: 1px solid #d8dee7; font-weight: 600; }
+    .pay-sub { margin: 14px 0 6px; font-size: 12.5px; font-weight: 600; color: #1d2733; }
+    .pay-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 14px; margin-bottom: 8px; }
+    .pay-form label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 600; color: #3a4553; }
+    .pay-wide { grid-column: 1 / -1; }
+    .pay-btn { display: inline-block; padding: 6px 16px; font-size: 12px; font-weight: 600; color: #1d2733; background: #fff; border: 1px solid #b8c1cd; border-radius: 3px; cursor: pointer; text-decoration: none; }
+    .pay-btn:hover { background: #eef1f5; }
+    .pay-btn:focus-visible { outline: 2px solid #1d2733; outline-offset: 2px; }
+    .pay-primary { color: #fff; background: #1f3a5f; border-color: #1f3a5f; }
+    .pay-primary:hover { background: #172c48; }
+    .pay-ok { margin-left: 10px; color: #1d6b2c; font-weight: 600; }
+    .pay-claimed { background: #e8f1fb; border: 1px solid #b9d3ee; padding: 8px 10px; border-radius: 3px; color: #1f3a5f; }
+    .pay-where { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+    .pay-where dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
+    .pay-where dt { color: #6b7686; }
+    .pay-where dd { margin: 0; }
+    .pay-qr { border: 1px solid #d8dee7; border-radius: 4px; object-fit: contain; background: #fff; }
+    code { font-size: 12px; background: #f4f6f9; padding: 1px 5px; border-radius: 3px; word-break: break-all; }
+</style>
+
+@code {
+    private static readonly CultureInfo Ci = new("en-IN");
+
+    private sealed class BillForm(ApiInvoice invoice)
+    {
+        public ApiInvoice Invoice { get; set; } = invoice;
+        public string Utr { get; set; } = invoice.ClaimUtr ?? "";
+        public DateTime PaidOn { get; set; } = (invoice.ClaimPaidOn ?? ApiBillingService.TodayIst()).ToDateTime(TimeOnly.MinValue);
+        public string Note { get; set; } = invoice.ClaimNote ?? "";
+        public string? Message { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private List<BillForm> _bills = [];
+    private PaymentDetails _details = new();
+    private int? _companyId;
+    private bool _loading = true;
+
+    private static string TodayText => ApiBillingService.TodayIst().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        _companyId = Tenant.CompanyId;
+        _details = await Billing.GetPaymentDetailsAsync();
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
+        var invoices = _companyId is { } id ? await Billing.UnpaidInvoicesAsync(id) : [];
+        _bills = invoices.Select(i => _bills.FirstOrDefault(b => b.Invoice.Id == i.Id) is { } keep
+            ? new BillForm(i) { Utr = keep.Utr, PaidOn = keep.PaidOn, Note = keep.Note, Message = keep.Message, Error = keep.Error }
+            : new BillForm(i)).ToList();
+    }
+
+    private async Task ClaimAsync(BillForm form)
+    {
+        form.Message = form.Error = null;
+        if (_companyId is not { } company)
+        {
+            return;
+        }
+
+        var result = await Billing.SubmitClaimAsync(
+            form.Invoice.Id, company, form.Utr, DateOnly.FromDateTime(form.PaidOn), form.Note,
+            Tenant.DisplayName ?? "A user of this company");
+        switch (result)
+        {
+            case ApiBillingService.ClaimResult.Recorded:
+                form.Message = "Thank you — we've recorded your payment details.";
+                break;
+            case ApiBillingService.ClaimResult.Invalid:
+                form.Error = "Enter the UTR / reference, and a paid-on date that is not in the future.";
+                break;
+            default:
+                form.Error = "This bill is no longer open — it may already be paid.";
+                break;
+        }
+
+        await LoadAsync();
+    }
+
+    private static string Money(decimal amount) => "₹" + amount.ToString("N2", Ci);
+}
