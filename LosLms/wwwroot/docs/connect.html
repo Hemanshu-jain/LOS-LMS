@@ -32,7 +32,7 @@
   <h2>What your customer sees</h2>
   <ol class="steps">
     <li>In your software they click <strong>Connect to LMS</strong>. A short code such as <code>WDJB-MJHT</code> appears and their browser opens LMS.</li>
-    <li>They sign in to LMS. Only the company <strong>owner or a manager</strong> can approve; staff are asked to get one.</li>
+    <li>They sign in to LMS. Only <strong>an Admin of the company</strong> can approve; other staff are asked to get one.</li>
     <li>They check that the code on the LMS page is the code on your screen, and see your software's name and what it will be allowed to do.</li>
     <li>They click <strong>Allow</strong>. Your screen says <em>Connected to LMS</em> within a few seconds.</li>
   </ol>
@@ -316,7 +316,7 @@ End Try</code></pre>
                 Await PostFormAsync("/oauth/revoke", New Dictionary(Of String, String) From {
                     {"token", saved.RefreshToken}, {"client_id", LmsClientId}})
             Catch
-                ' Offline: still disconnect here. The owner can also remove it in LMS under Connected apps.
+                ' Offline: still disconnect here. An Admin can also remove it in LMS under Connected apps.
             End Try
         End If
         SaveLmsTokens(Nothing)
@@ -327,7 +327,7 @@ End Try</code></pre>
         lblLmsStatus.Text = "Disconnected from LMS."
     End Sub</code></pre>
   <p>LMS always answers 200 here, even if the token was already gone. Loans already sent stay in LMS.</p>
-  <div class="note"><strong>One install = one company.</strong> Connect links the install to the company whose owner or manager clicked Allow. To switch company: Disconnect, then Connect while signed in to the other company.</div>
+  <div class="note"><strong>One install = one company.</strong> Connect links the install to the company whose Admin clicked Allow. To switch company: Disconnect, then Connect while signed in to the other company.</div>
 </section>
 
 <section>
@@ -366,10 +366,10 @@ curl https://los-lms.bhodhix.com/api/v1/loans/PV-000123 -H "Authorization: Beare
     <tr><td><code>invalid_client</code> when clicking Connect</td><td>The client ID in the module is wrong: still the placeholder, retyped with a typo, or not registered as a desktop app.</td><td>Copy and paste the ID again. Ask us if it still fails.</td></tr>
     <tr><td>The LMS page shows the code filled in but asks you to check it</td><td>On purpose: Allow only after checking it is the code on your screen right now.</td><td>Press Continue, check the code and the time it was requested, then Allow.</td></tr>
     <tr><td>LMS page: "That code is wrong or has expired"</td><td>A typo, or more than 15 minutes passed.</td><td>Click Connect again for a fresh code. After 5 wrong codes LMS pauses for 15 minutes.</td></tr>
-    <tr><td>LMS page: "Ask your company owner"</td><td>The person signed in is staff, not the owner or a manager.</td><td>Ask the owner or a manager to approve.</td></tr>
+    <tr><td>LMS page: "Ask your company Admin"</td><td>The person signed in is staff, not an Admin of the company.</td><td>Ask an Admin to approve.</td></tr>
     <tr><td><code>access_denied</code> while waiting</td><td>They clicked Deny.</td><td>Show "Not connected"; they can click Connect again.</td></tr>
     <tr><td><code>expired_token</code> while waiting</td><td>The 15 minutes ran out.</td><td>Click Connect again.</td></tr>
-    <tr><td>401 from <code>/api/v1/...</code></td><td>The access token expired, or the owner disconnected you in LMS.</td><td>Handled by the retry in step 5. If the refresh is refused, the user sees "click Connect to LMS".</td></tr>
+    <tr><td>401 from <code>/api/v1/...</code></td><td>The access token expired, or an Admin disconnected you in LMS.</td><td>Handled by the retry in step 5. If the refresh is refused, the user sees "click Connect to LMS".</td></tr>
     <tr><td>403 from <code>/api/v1/...</code></td><td>The connection was approved without the scope that call needs.</td><td>Ask them to Connect again and allow sending and reading.</td></tr>
     <tr><td>422 from <code>POST /api/v1/loans</code></td><td>Some loan details are wrong. The reply lists which loan and why. Nothing was saved.</td><td>See Errors in the <a href="/docs/#errors">API reference</a>.</td></tr>
   </table></div>
