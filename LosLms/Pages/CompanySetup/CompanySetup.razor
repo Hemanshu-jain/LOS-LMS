@@ -22,7 +22,7 @@
         <div class="setup-header">
             <div>
                 <span class="setup-eyebrow">Settings</span>
-                <h1 class="setup-title">@(_company?.Name ?? "Loading…")</h1>
+                <h1 class="setup-title">@(_company?.Name ?? (_loading ? "Loading…" : "Platform settings"))</h1>
             </div>
             <a class="setup-back" href="/applications">← Applications</a>
         </div>

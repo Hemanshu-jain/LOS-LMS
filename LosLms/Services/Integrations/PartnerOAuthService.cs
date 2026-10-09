@@ -504,6 +504,13 @@ public sealed class PartnerOAuthService(
     public async Task<int> PurgeAsync(DateTime now)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
+        return await PurgeAsync(db, now);
+    }
+
+    /// <summary>The delete itself, on a context the caller supplies. The hourly background job passes one that
+    /// needs no signed-in user: the tenant factory asks Blazor for the user and throws outside a component scope.</summary>
+    public static async Task<int> PurgeAsync(LosDbContext db, DateTime now)
+    {
         var cutoff = now - DeviceKeep;
         return await db.PartnerDeviceCodes.Where(d => d.ExpiresAt < cutoff).ExecuteDeleteAsync();
     }
