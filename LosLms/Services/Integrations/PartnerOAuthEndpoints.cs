@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using LosLms.Data;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 
 namespace LosLms.Services;
@@ -137,7 +139,9 @@ public sealed class PartnerOAuthPurgeService(IServiceScopeFactory scopes, ILogge
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
-                var purged = await scope.ServiceProvider.GetRequiredService<PartnerOAuthService>().PurgeAsync(DateTime.UtcNow);
+                await using var db = new LosDbContext(
+                    scope.ServiceProvider.GetRequiredService<DbContextOptions<LosDbContext>>(), TenantContext.ForSeeding());
+                var purged = await PartnerOAuthService.PurgeAsync(db, DateTime.UtcNow);
                 if (purged > 0)
                 {
                     log.LogInformation("Purged {Count} expired partner device codes", purged);
