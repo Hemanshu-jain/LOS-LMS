@@ -22,7 +22,7 @@
 
         @if (!_isAdmin)
         {
-            <p class="inline-error" role="alert">Only your company's Admin can connect apps. Ask an Admin to open this page.</p>
+            <p class="inline-error" role="alert">Ask your company Admin: only an Admin can connect apps.</p>
         }
         else if (_outcome is not null)
         {
@@ -45,7 +45,7 @@
                         <li>@Describe(scope)</li>
                     }
                 </ul>
-                <p class="auth-sub">Code <strong>@r.UserCode</strong>, requested @r.RequestedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt").
+                <p class="auth-sub">Code <strong>@r.UserCode</strong>, requested @r.RequestedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")@(r.RequesterIp is null ? "" : $" from {r.RequesterIp}").
                     Only continue if this is the code shown in @r.ClientName on your computer.</p>
 
                 <form method="post" @onsubmit="DecideAsync" @formname="decide">
@@ -86,9 +86,7 @@
 
     private string[] GuessKeys()
     {
-        var ip = Http!.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
-            ?? Http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return [$"user:{Http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value}", $"ip:{ip}"];
+        return [$"user:{Http!.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value}", $"ip:{ClientIp.Of(Http)}"];
     }
 
     private bool Paused()
@@ -142,7 +140,7 @@
                 _outcome = allow ? "Connected. You can go back to the app now." : "Declined. Nothing was connected.";
                 break;
             case DecideResult.NotAdmin:
-                _error = "Only your company's Admin can connect apps.";
+                _error = "Ask your company Admin: only an Admin can connect apps.";
                 break;
             default:
                 // Expired or already used; counted so this POST can't be a way round the wrong-code limit.

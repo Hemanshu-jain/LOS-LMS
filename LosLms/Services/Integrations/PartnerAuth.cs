@@ -33,6 +33,8 @@ public sealed class PartnerBearerHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, PartnerOAuthService oauth)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    private PartnerBlock? _blocked;
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header = Request.Headers.Authorization.ToString();
@@ -47,6 +49,12 @@ public sealed class PartnerBearerHandler(
             return AuthenticateResult.Fail("Invalid or expired token.");
         }
 
+        if (identity.Blocked is { } blocked)
+        {
+            _blocked = blocked;
+            return AuthenticateResult.Fail(blocked.Error);
+        }
+
         var claims = new List<Claim>
         {
             new(PartnerAuth.CompanyIdClaim, identity.CompanyId.ToString(), ClaimValueTypes.Integer32),
@@ -57,5 +65,18 @@ public sealed class PartnerBearerHandler(
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, PartnerAuth.Scheme));
         return AuthenticateResult.Success(new AuthenticationTicket(principal, PartnerAuth.Scheme));
+    }
+
+    // A valid token for a company that is switched off gets a clear 403; every other failure is the plain 401.
+    protected override async Task HandleChallengeAsync(AuthenticationProperties properties)
+    {
+        if (_blocked is not { } blocked)
+        {
+            await base.HandleChallengeAsync(properties);
+            return;
+        }
+
+        Response.StatusCode = StatusCodes.Status403Forbidden;
+        await Response.WriteAsJsonAsync(new { error = blocked.Error, message = blocked.Message, details = Array.Empty<object>() });
     }
 }

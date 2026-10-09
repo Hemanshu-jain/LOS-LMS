@@ -116,4 +116,8 @@ public class PartnerDeviceCode
     public DateTime CreatedAt { get; set; }
 
     public DateTime ExpiresAt { get; set; }
+
+    /// <summary>Address that asked for the code, shown on /link so an Admin can spot a code that isn't theirs.</summary>
+    [MaxLength(45)]
+    public string? RequesterIp { get; set; }
 }

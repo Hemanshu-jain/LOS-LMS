@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Hosting;
 
 namespace LosLms.Services;
@@ -33,21 +35,27 @@ public static class PartnerOAuthEndpoints
         }
 
         var form = await ReadFormAsync(context);
+        if (form is null)
+        {
+            await Json(context, StatusCodes.Status413PayloadTooLarge, new { error = "invalid_request", error_description = "Request body too large." });
+            return;
+        }
+
+        string? F(string name) => form.GetValueOrDefault(name);
         var oauth = context.RequestServices.GetRequiredService<PartnerOAuthService>();
         var now = DateTime.UtcNow;
         try
         {
             if (isDevice)
             {
-                var verificationUri = $"{context.Request.Scheme}://{context.Request.Host}/link";
-                await Json(context, 200, await oauth.StartDeviceAsync(form["client_id"], form["scope"], verificationUri, now));
+                await Json(context, 200, await oauth.StartDeviceAsync(F("client_id"), F("scope"), LinkUrl(context), now, ClientIp.Of(context)));
             }
             else if (isToken)
             {
                 await Json(context, 200, await oauth.TokenAsync(
-                    form["grant_type"], form["client_id"], form["device_code"], form["refresh_token"], now));
+                    F("grant_type"), F("client_id"), F("device_code"), F("refresh_token"), now));
             }
-            else if (await oauth.RevokeAsync(form["client_id"], form["token"], now))
+            else if (await oauth.RevokeAsync(F("client_id"), F("token"), now))
             {
                 await Json(context, 200, new { });
             }
@@ -62,23 +70,53 @@ public static class PartnerOAuthEndpoints
         }
     }
 
-    // Anything that isn't a small form-urlencoded body reads as empty, so the endpoint answers with its normal
-    // invalid_request / invalid_client rather than throwing.
-    private static async Task<IFormCollection> ReadFormAsync(HttpContext context)
+    // PublicBaseUrl wins when set, so a proxy or cloud host can't leak an internal address into verification_uri;
+    // otherwise the request's own scheme + host.
+    private static string LinkUrl(HttpContext context)
     {
-        if (context.Request.HasFormContentType && context.Request.ContentLength is null or <= 20_000)
+        var configured = context.RequestServices.GetService<IConfiguration>()?["PublicBaseUrl"]?.Trim().TrimEnd('/');
+        return $"{(string.IsNullOrEmpty(configured) ? $"{context.Request.Scheme}://{context.Request.Host}" : configured)}/link";
+    }
+
+    private const int MaxBodyBytes = 20_000;
+
+    // Reads at most MaxBodyBytes of an application/x-www-form-urlencoded body, whether or not the caller sent a
+    // Content-Length (a chunked request has none). null = too large. Anything that isn't such a body reads as
+    // empty, so the endpoint answers with its normal invalid_request / invalid_client rather than throwing.
+    private static async Task<Dictionary<string, string>?> ReadFormAsync(HttpContext context)
+    {
+        var form = new Dictionary<string, string>();
+        if (context.Request.ContentType?.StartsWith("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase) != true)
         {
-            try
-            {
-                return await context.Request.ReadFormAsync();
-            }
-            catch (Exception e) when (e is InvalidDataException or InvalidOperationException or IOException)
-            {
-                // fall through to the empty form
-            }
+            return form;
         }
 
-        return FormCollection.Empty;
+        var buffer = new byte[MaxBodyBytes + 1];
+        var read = 0;
+        try
+        {
+            int n;
+            while (read < buffer.Length && (n = await context.Request.Body.ReadAsync(buffer.AsMemory(read))) > 0)
+            {
+                read += n;
+            }
+        }
+        catch (IOException)
+        {
+            return form; // the caller hung up mid-body
+        }
+
+        if (read > MaxBodyBytes)
+        {
+            return null;
+        }
+
+        foreach (var (key, value) in QueryHelpers.ParseQuery(Encoding.UTF8.GetString(buffer, 0, read)))
+        {
+            form[key] = value.ToString();
+        }
+
+        return form;
     }
 
     private static Task Json(HttpContext context, int status, object body)

@@ -182,7 +182,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 // header cannot be spoofed by a remote user reaching the backend directly.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor;
+    // Proto only: X-Forwarded-For is deliberately NOT applied (with every proxy trusted it let any caller rewrite
+    // RemoteIpAddress); ClientIp.Of takes the tunnel's CF-Connecting-IP when the socket peer is loopback.
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
@@ -220,8 +222,7 @@ builder.Services.AddRateLimiter(options =>
         if (context.Request.Path.StartsWithSegments("/api/v1"))
         {
             return RateLimitPartition.GetFixedWindowLimiter(
-                "api:" + (context.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
-                    ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                "api:" + ClientIp.Of(context),
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
         }
 
@@ -236,9 +237,7 @@ builder.Services.AddRateLimiter(options =>
             return RateLimitPartition.GetNoLimiter("unlimited");
         }
 
-        var clientIp = context.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
-            ?? context.Connection.RemoteIpAddress?.ToString()
-            ?? "unknown";
+        var clientIp = ClientIp.Of(context);
         return RateLimitPartition.GetFixedWindowLimiter(isOAuth ? "oauth:" + clientIp : clientIp, _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = isOAuth ? 60 : 10,
