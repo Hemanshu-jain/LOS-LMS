@@ -63,6 +63,7 @@
             }
             else
             {
+                <p class="link-guide-title">I have a code</p>
                 <p class="auth-sub">Enter the code shown in the app you are connecting.</p>
                 <form method="post" @onsubmit="LookUpAsync" @formname="lookup">
                     <AntiforgeryToken />
@@ -73,6 +74,13 @@
                     </div>
                     <button type="submit" class="auth-submit">Continue</button>
                 </form>
+
+                <div class="link-guide">
+                    <p class="link-guide-title">Connecting your software?</p>
+                    <p class="auth-sub">Developers: the Connect guide shows how your software gets a code.</p>
+                    <a href="/docs/connect.html">Read the Connect guide</a>
+                    <a href="/docs/">API reference</a>
+                </div>
             }
         }
     </div>

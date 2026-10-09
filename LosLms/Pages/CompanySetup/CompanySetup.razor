@@ -37,6 +37,7 @@
                 No company is associated with your account, so there is nothing to configure.
                 A SuperAdmin belongs to no single company by design.
             </p>
+            <ToolsTab />
         }
         else
         {
@@ -326,6 +327,11 @@
             {
                 <UsersTab OnSaved="ShowToastAsync" />
             }
+
+            @if (_activeTab == ToolsTabName)
+            {
+                <ToolsTab />
+            }
         }
     </div>
 </div>
@@ -347,9 +353,10 @@
     private const string SchemeChargesTab = "Scheme Charges";
     private const string RcuVendorTab = "RCU Vendors";
     private const string UsersTab = "User Management";
+    private const string ToolsTabName = "Usage & Updates";
 
     private static readonly string[] Tabs =
-        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, RcuVendorTab, UsersTab };
+        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, RcuVendorTab, UsersTab, ToolsTabName };
 
     private string _activeTab = ProfileTab;
     private Company? _company;
