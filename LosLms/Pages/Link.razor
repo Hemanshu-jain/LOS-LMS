@@ -58,7 +58,7 @@
                     <AntiforgeryToken />
                     <input type="hidden" name="code" value="@(r?.UserCode ?? _decideCode)" />
                     <button type="submit" class="auth-submit" name="decision" value="allow">Allow</button>
-                    <button type="submit" class="auth-secondary" name="decision" value="deny">Deny</button>
+                    <button type="submit" class="auth-submit auth-submit-secondary" name="decision" value="deny">Deny</button>
                 </form>
             }
             else
