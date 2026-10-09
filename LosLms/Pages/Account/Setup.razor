@@ -5,6 +5,7 @@
 @using LosLms.Services
 @attribute [AllowAnonymous]
 @inject UserManager<ApplicationUser> UserManager
+@inject Microsoft.EntityFrameworkCore.IDbContextFactory<LosDbContext> DbFactory
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager Navigation
 @inject PasswordVault Vault
@@ -82,7 +83,7 @@
     protected override async Task OnInitializedAsync()
     {
         // Once an administrator exists this page is closed — sign in instead.
-        if (!await IdentitySeeder.NeedsFirstAdminAsync(UserManager))
+        if (!await IdentitySeeder.NeedsFirstAdminAsync(DbFactory))
         {
             Navigation.NavigateTo("/account/login", forceLoad: true);
         }

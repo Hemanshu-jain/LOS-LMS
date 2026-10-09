@@ -56,6 +56,21 @@ public static class IdentitySeeder
     }
 
     /// <summary>
+    /// Same answer as <see cref="NeedsFirstAdminAsync(UserManager{ApplicationUser})"/>, but on its OWN short-lived
+    /// context. The pages call this while rendering: the request-scoped <c>UserManager</c> wraps one shared
+    /// <c>LosDbContext</c>, and two operations on it at once throw "A second operation was started on this
+    /// context instance". A context of its own can never collide with whatever else Identity is doing.
+    /// </summary>
+    public static async Task<bool> NeedsFirstAdminAsync(IDbContextFactory<LosDbContext> dbFactory)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return !await (from ur in db.UserRoles
+                       join r in db.Roles on ur.RoleId equals r.Id
+                       where r.Name == TenantContext.AdminRole && ur.UserId != MasterAccount.Id
+                       select ur).AnyAsync();
+    }
+
+    /// <summary>
     /// Creates the client's first administrator from the first-run wizard. Refuses once one exists, so
     /// the anonymous setup page cannot be used to mint extra admins. The account owns the client's
     /// company and holds both Admin and SuperAdmin, so it has full control of this deployment.

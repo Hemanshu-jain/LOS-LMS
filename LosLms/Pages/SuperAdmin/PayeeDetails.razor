@@ -1,0 +1,115 @@
+@page "/system/payment-details"
+@using LosLms.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
+@inject ApiBillingService Billing
+
+<PageTitle>Payment details · LOS/LMS</PageTitle>
+
+@* Vendor-only. Where customers pay their API bill: shown on every company's payment page (the "Pay now" screen).
+   No QR library is installed, so the QR is an image you upload (a screenshot of your UPI QR). The UPI link on the
+   payment page is built from the UPI id, so a QR is a convenience, not a requirement. *@
+
+<div class="pd-page">
+    <div class="pd-card">
+        <span class="system-label">LOS/LMS · Billing</span>
+        <h1 class="pd-title">Payment details</h1>
+        <p class="pd-muted">Shown to customers when they pay their API bill. Set once; blank fields are simply not shown.</p>
+
+        @if (_details is null)
+        {
+            <p class="pd-muted">Loading…</p>
+        }
+        else
+        {
+            <div class="pd-grid">
+                <label>UPI ID<input class="field-input" @bind="_details.UpiId" maxlength="100" placeholder="name@bank" autocomplete="off" /></label>
+                <label>Payee name<input class="field-input" @bind="_details.PayeeName" maxlength="100" autocomplete="off" /></label>
+                <label>Bank name<input class="field-input" @bind="_details.BankName" maxlength="100" autocomplete="off" /></label>
+                <label>Account number<input class="field-input" @bind="_details.AccountNumber" maxlength="40" autocomplete="off" /></label>
+                <label>IFSC<input class="field-input" @bind="_details.Ifsc" maxlength="20" autocomplete="off" /></label>
+                <label>QR image (PNG, JPEG or WebP, up to 500 KB)
+                    <InputFile OnChange="OnQrChosen" accept="image/png,image/jpeg,image/webp" /></label>
+            </div>
+
+            @if (_pendingQr is not null)
+            {
+                <p class="pd-muted">New QR chosen: @_pendingName (@(_pendingQr.Length / 1024) KB) — saved with the button below.</p>
+            }
+            else if (_details.HasQr)
+            {
+                <p class="pd-muted">Current QR:</p>
+                <img class="pd-qr" src="/billing/qr?v=@_details.UpdatedAt.Ticks" alt="Current UPI QR code" width="140" height="140" />
+            }
+
+            <button type="button" class="pd-btn" @onclick="SaveAsync">Save</button>
+            @if (_message is not null) { <span class="pd-msg" role="status">@_message</span> }
+            @if (_error is not null) { <p class="inline-error" role="alert">@_error</p> }
+        }
+    </div>
+</div>
+
+<style>
+    .pd-page { min-height: 100vh; padding: 20px 24px 40px; background: #eef1f5; }
+    .pd-card { max-width: 900px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+    .pd-title { margin: 4px 0 4px; font-size: 17px; font-weight: 600; color: #1d2733; }
+    .pd-muted { color: #6b7686; font-size: 12.5px; margin: 6px 0; }
+    .pd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px 14px; margin: 12px 0; }
+    .pd-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 600; color: #3a4553; }
+    .pd-qr { border: 1px solid #d8dee7; border-radius: 4px; object-fit: contain; display: block; margin-bottom: 10px; }
+    .pd-btn { padding: 5px 14px; font-size: 12px; font-weight: 600; color: #fff; background: #1d2733; border: 0; border-radius: 3px; cursor: pointer; }
+    .pd-btn:hover { background: #0f161e; }
+    .pd-btn:focus-visible { outline: 2px solid #1d2733; outline-offset: 2px; }
+    .pd-msg { margin-left: 10px; font-size: 12.5px; color: #1d6b2c; }
+</style>
+
+@code {
+    private const long MaxQrBytes = 500 * 1024;
+
+    private LosLms.Models.PaymentDetails? _details;
+    private byte[]? _pendingQr;
+    private string? _pendingType;
+    private string? _pendingName;
+    private string? _message;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => _details = await Billing.GetPaymentDetailsAsync();
+
+    private async Task OnQrChosen(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        _pendingQr = null;
+        var file = e.File;
+        if (file.Size > MaxQrBytes)
+        {
+            _error = "That image is over 500 KB. Use a smaller screenshot.";
+            return;
+        }
+
+        using var buffer = new MemoryStream();
+        await file.OpenReadStream(MaxQrBytes).CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+
+        // The browser-declared type is forgeable; the bytes must really be the image they claim to be.
+        var type = FileSignature.Matches(".png", bytes) ? "image/png"
+            : FileSignature.Matches(".jpg", bytes) ? "image/jpeg"
+            : FileSignature.Matches(".webp", bytes) ? "image/webp" : null;
+        if (type is null)
+        {
+            _error = "That file is not a PNG, JPEG or WebP image.";
+            return;
+        }
+
+        (_pendingQr, _pendingType, _pendingName) = (bytes, type, file.Name);
+    }
+
+    private async Task SaveAsync()
+    {
+        _message = null;
+        await Billing.SavePaymentDetailsAsync(_details!, _pendingQr, _pendingType);
+        _pendingQr = null;
+        _details = await Billing.GetPaymentDetailsAsync();
+        _message = "Saved.";
+    }
+}

@@ -132,6 +132,166 @@ public sealed class ApiBillingTests : IDisposable
         Assert.Single(db.ApiInvoices.ToList());
     }
 
+    // ---- "I've paid" claims and the payment details ----
+
+    private async Task<ApiInvoice> OverdueInvoiceAsync(int company = Company)
+    {
+        await _svc.RecordAsync(company, DigioRates.IdOcr, true, nowUtc: Utc(2026, 8, 15));
+        return Assert.Single(await _svc.UnpaidInvoicesAsync(company, Utc(2026, 9, 20)));
+    }
+
+    [Fact]
+    public async Task Claim_IsRecordedWithWhoAndWhen_AndAResubmitReplacesIt()
+    {
+        var invoice = await OverdueInvoiceAsync();
+        Assert.Equal($"LMS-{Company}-202608", invoice.Reference);
+
+        var result = await _svc.SubmitClaimAsync(invoice.Id, Company, "  UTR123456789 ", new DateOnly(2026, 9, 19), " via UPI ", "Asha K.", Utc(2026, 9, 20));
+
+        Assert.Equal(ApiBillingService.ClaimResult.Recorded, result);
+        var saved = Assert.Single(await _svc.UnpaidInvoicesAsync(Company, Utc(2026, 9, 20)));
+        Assert.Equal(("UTR123456789", new DateOnly(2026, 9, 19), "via UPI", "Asha K.", Utc(2026, 9, 20)),
+            (saved.ClaimUtr, saved.ClaimPaidOn, saved.ClaimNote, saved.ClaimedBy, saved.ClaimedAt));
+        Assert.Null(saved.PaidAt); // a claim is not a payment
+
+        await _svc.SubmitClaimAsync(invoice.Id, Company, "UTR-FIXED", new DateOnly(2026, 9, 19), null, "Ravi P.", Utc(2026, 9, 21));
+        var again = Assert.Single(await _svc.UnpaidInvoicesAsync(Company, Utc(2026, 9, 21)));
+        Assert.Equal(("UTR-FIXED", null, "Ravi P."), (again.ClaimUtr, again.ClaimNote, again.ClaimedBy));
+    }
+
+    [Fact]
+    public async Task Claim_NeedsAUtr_AValidDate_AndAnOpenBill()
+    {
+        var invoice = await OverdueInvoiceAsync();
+        var today = new DateOnly(2026, 9, 20);
+
+        Assert.Equal(ApiBillingService.ClaimResult.Invalid, await _svc.SubmitClaimAsync(invoice.Id, Company, "  ", today, null, "A", Utc(2026, 9, 20)));
+        Assert.Equal(ApiBillingService.ClaimResult.Invalid, await _svc.SubmitClaimAsync(invoice.Id, Company, "UTR1", today.AddDays(2), null, "A", Utc(2026, 9, 20)));
+        Assert.Equal(ApiBillingService.ClaimResult.Invalid, await _svc.SubmitClaimAsync(invoice.Id, Company, new string('9', 61), today, null, "A", Utc(2026, 9, 20)));
+        Assert.Null(Assert.Single(await _svc.UnpaidInvoicesAsync(Company, Utc(2026, 9, 20))).ClaimUtr);
+
+        await _svc.MarkPaidAsync(invoice.Id, null, Utc(2026, 9, 20));
+        Assert.Equal(ApiBillingService.ClaimResult.AlreadyPaid, await _svc.SubmitClaimAsync(invoice.Id, Company, "UTR1", today, null, "A", Utc(2026, 9, 20)));
+    }
+
+    [Fact]
+    public async Task StillPausedAfterAClaim_UntilMarkPaid()
+    {
+        var invoice = await OverdueInvoiceAsync();
+        var now = Utc(2026, 9, 20);
+        var before = await _svc.CheckAccessAsync(Company, now);
+        Assert.False(before.Allowed);
+        Assert.Null(before.ClaimedAt);
+
+        await _svc.SubmitClaimAsync(invoice.Id, Company, "UTR1", new DateOnly(2026, 9, 20), null, "Asha K.", now);
+
+        var claimed = await _svc.CheckAccessAsync(Company, now.AddHours(1));
+        Assert.False(claimed.Allowed); // the claim does not unpause
+        Assert.Equal(now, claimed.ClaimedAt);
+
+        await _svc.MarkPaidAsync(invoice.Id, "confirmed", now.AddDays(1));
+        Assert.True((await _svc.CheckAccessAsync(Company, now.AddDays(1))).Allowed);
+    }
+
+    [Fact]
+    public async Task ClaimedAt_OnlyWhenEveryUnpaidBillHasAClaim()
+    {
+        await _svc.RecordAsync(Company, DigioRates.IdOcr, true, nowUtc: Utc(2026, 7, 15));
+        await _svc.RecordAsync(Company, DigioRates.IdOcr, true, nowUtc: Utc(2026, 8, 15));
+        var now = Utc(2026, 9, 20);
+        var bills = await _svc.UnpaidInvoicesAsync(Company, now);
+        Assert.Equal(2, bills.Count);
+
+        await _svc.SubmitClaimAsync(bills[0].Id, Company, "UTR-JUL", new DateOnly(2026, 9, 19), null, "A", now);
+        Assert.Null((await _svc.CheckAccessAsync(Company, now)).ClaimedAt);
+
+        await _svc.SubmitClaimAsync(bills[1].Id, Company, "UTR-AUG", new DateOnly(2026, 9, 19), null, "A", now.AddHours(2));
+        Assert.Equal(now.AddHours(2), (await _svc.CheckAccessAsync(Company, now)).ClaimedAt);
+    }
+
+    [Fact]
+    public async Task AnotherCompany_CannotClaimOrSeeTheBill()
+    {
+        var invoice = await OverdueInvoiceAsync();
+        await _svc.RecordAsync(OtherCompany, DigioRates.IdOcr, true, nowUtc: Utc(2026, 8, 15));
+        var now = Utc(2026, 9, 20);
+
+        // B tries to claim A's bill: not found, nothing written.
+        Assert.Equal(ApiBillingService.ClaimResult.NotFound,
+            await _svc.SubmitClaimAsync(invoice.Id, OtherCompany, "UTR-EVIL", new DateOnly(2026, 9, 19), null, "B user", now));
+        Assert.Null(Assert.Single(await _svc.UnpaidInvoicesAsync(Company, now)).ClaimUtr);
+
+        // B sees only its own bill, both through the service and through a company-scoped context.
+        var bills = await _svc.UnpaidInvoicesAsync(OtherCompany, now);
+        Assert.Equal(OtherCompany, Assert.Single(bills).CompanyId);
+        await _svc.SubmitClaimAsync(invoice.Id, Company, "UTR-A", new DateOnly(2026, 9, 19), null, "A user", now);
+        using var db = NewContext(CompanyUser(OtherCompany));
+        var visible = db.ApiInvoices.ToList();
+        Assert.Equal(OtherCompany, Assert.Single(visible).CompanyId);
+        Assert.Null(visible[0].ClaimUtr);
+    }
+
+    [Fact]
+    public async Task PaymentDetails_SaveKeepsTheQrUnlessANewOneIsGiven_AndBuildTheUpiLink()
+    {
+        Assert.False((await _svc.GetPaymentDetailsAsync()).HasAnything);
+
+        await _svc.SavePaymentDetailsAsync(
+            new PaymentDetails { UpiId = " acme@okbank ", PayeeName = "Acme Tech & Co", BankName = "HDFC", AccountNumber = "5020001", Ifsc = "hdfc0001234" },
+            [1, 2, 3], "image/png");
+        await _svc.SavePaymentDetailsAsync(new PaymentDetails { UpiId = "acme@okbank", PayeeName = "Acme Tech & Co", Ifsc = "hdfc0001234" }, null, null);
+
+        var saved = await _svc.GetPaymentDetailsAsync();
+        Assert.Equal(("acme@okbank", "HDFC0001234", true, null), (saved.UpiId, saved.Ifsc, saved.HasQr, saved.BankName)); // QR kept, bank cleared
+
+        var invoice = await OverdueInvoiceAsync();
+        Assert.Equal($"upi://pay?pa=acme%40okbank&pn=Acme%20Tech%20%26%20Co&am={invoice.Total.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)}&tn=LMS-{Company}-202608&cu=INR",
+            ApiBillingService.UpiLink(saved, invoice));
+        Assert.Null(ApiBillingService.UpiLink(new PaymentDetails(), invoice)); // no UPI id, no link
+    }
+
+    // ---- the vendor's all-companies view ----
+
+    private static ClaimsPrincipal SuperAdminWithHome(int companyId) => Principal(
+        new Claim(ClaimTypes.NameIdentifier, "vendor"),
+        new Claim(ClaimTypes.Role, TenantContext.SuperAdminRole),
+        new Claim(TenantContext.CompanyIdClaim, companyId.ToString())); // every real SuperAdmin account has a home company
+
+    private static TenantContext Tenant(ClaimsPrincipal user, ActingCompanyStore? acting = null)
+    {
+        var tenant = new TenantContext(new FakeAuthStateProvider(user), new HttpContextAccessor(), acting ?? new ActingCompanyStore());
+        tenant.EnsureLoadedAsync().GetAwaiter().GetResult();
+        return tenant;
+    }
+
+    [Fact]
+    public void ScopeCompanyId_IsEveryCompanyForANonActingSuperAdmin_EvenWithAHomeCompany()
+    {
+        var acting = new ActingCompanyStore();
+
+        Assert.Null(Tenant(SuperAdminWithHome(Company), acting).ScopeCompanyId); // the bug: this used to be the home company
+        acting.Set("vendor", OtherCompany);
+        Assert.Equal(OtherCompany, Tenant(SuperAdminWithHome(Company), acting).ScopeCompanyId);
+        Assert.Equal(OtherCompany, Tenant(CompanyUser(OtherCompany)).ScopeCompanyId); // a company Admin is always their own
+        Assert.Null(Tenant(SuperAdmin()).ScopeCompanyId); // no home company at all
+    }
+
+    [Fact]
+    public async Task NonActingSuperAdmin_ListsEveryCompanysBills_AndCanMarkOnePaid()
+    {
+        await OverdueInvoiceAsync(Company);
+        await OverdueInvoiceAsync(OtherCompany);
+        var now = Utc(2026, 9, 20);
+
+        var tenant = Tenant(SuperAdminWithHome(Company));
+        var bills = await _svc.InvoicesAsync(tenant.ScopeCompanyId); // what the page asks for
+
+        Assert.Equal([Company, OtherCompany], bills.Select(b => b.CompanyId).Order());
+        Assert.True(await _svc.MarkPaidAsync(bills.First(b => b.CompanyId == OtherCompany).Id, null, now));
+        Assert.True((await _svc.CheckAccessAsync(OtherCompany, now)).Allowed);
+        Assert.False((await _svc.CheckAccessAsync(Company, now)).Allowed);
+    }
+
     private static DateTime Utc(int y, int m, int d, int h = 12) => new(y, m, d, h, 0, 0, DateTimeKind.Utc);
 
     private LosDbContext NewContext(ClaimsPrincipal user)

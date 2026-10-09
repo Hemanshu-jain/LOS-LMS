@@ -88,5 +88,65 @@ public class ApiInvoice
 
     public decimal Total => Subtotal + Gst;
 
+    /// <summary>The payment reference the customer quotes (UPI remark / transfer narration).</summary>
+    public string Reference => $"LMS-{CompanyId}-{PeriodStart:yyyyMM}";
+
+    // The customer's "I've paid" claim. It changes nothing by itself: the company stays paused until the
+    // vendor confirms with Mark paid (PaidAt). A resubmit replaces the claim.
+    [MaxLength(60)]
+    public string? ClaimUtr { get; set; }
+
+    public DateOnly? ClaimPaidOn { get; set; }
+
+    [MaxLength(200)]
+    public string? ClaimNote { get; set; }
+
+    /// <summary>Display name of the user who submitted the claim.</summary>
+    [MaxLength(100)]
+    public string? ClaimedBy { get; set; }
+
+    public DateTime? ClaimedAt { get; set; }
+
     public Company? Company { get; set; }
+}
+
+/// <summary>
+/// Where customers pay the API bill: the vendor's UPI id, bank account and (uploaded) QR image. A single
+/// row (<see cref="SingletonId"/>), global — not per company — set by the SuperAdmin.
+/// </summary>
+public class PaymentDetails
+{
+    public const int SingletonId = 1;
+
+    [Key]
+    public int Id { get; set; } = SingletonId;
+
+    [MaxLength(100)]
+    public string? UpiId { get; set; }
+
+    [MaxLength(100)]
+    public string? PayeeName { get; set; }
+
+    [MaxLength(100)]
+    public string? BankName { get; set; }
+
+    [MaxLength(40)]
+    public string? AccountNumber { get; set; }
+
+    [MaxLength(20)]
+    public string? Ifsc { get; set; }
+
+    /// <summary>Uploaded QR image (PNG/JPEG/WebP, ≤ 500 KB) — no QR library is installed to draw one.</summary>
+    public byte[]? QrImage { get; set; }
+
+    [MaxLength(30)]
+    public string? QrContentType { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool HasQr => QrImage is { Length: > 0 };
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool HasAnything => UpiId is not null || BankName is not null || AccountNumber is not null || HasQr;
 }

@@ -72,6 +72,14 @@ public sealed class TenantContext
     public int? CompanyId { get; private set; }
 
     /// <summary>
+    /// The company a report/list should be limited to: null (= every company) for a SuperAdmin who is not acting
+    /// as one, otherwise <see cref="CompanyId"/>. Mirrors the DbContext's own rule (<c>IsSuperAdmin &amp;&amp; no acting
+    /// company</c>). Checking <c>CompanyId is null</c> instead was wrong: every SuperAdmin account has a home company,
+    /// so that test never fired and the vendor saw only their home company's rows.
+    /// </summary>
+    public int? ScopeCompanyId => IsSuperAdmin && ActingCompanyId is null ? null : CompanyId;
+
+    /// <summary>
     /// The company a SuperAdmin is currently acting as, or null. When set, the SuperAdmin is scoped to
     /// that one company exactly like a normal user; when null, the SuperAdmin sees every company.
     /// </summary>
