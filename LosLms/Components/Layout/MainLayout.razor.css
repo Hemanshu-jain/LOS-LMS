@@ -5,21 +5,20 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
-    height: 34px;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    min-height: 34px;
     padding: 0 16px;
     background: #1a1f29;
     color: #e8e9ec;
 }
 
-/* The tenant's company name, centred in the bar. Absolutely positioned so it sits dead-centre
-   regardless of how many nav links the left side has, and ignores pointer events so it never
-   intercepts a click meant for a link behind it. Truncates rather than pushing the layout around. */
+/* The tenant's company name, next to the brand. It used to be absolutely centred, which put it on top
+   of the nav links once an Admin/SuperAdmin has more than a few of them; in the flow it can't overlap,
+   and the bar wraps if everything still doesn't fit. Truncates rather than pushing the layout around. */
 .app-company {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    max-width: 38%;
+    margin-left: 18px;
+    max-width: 30%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
