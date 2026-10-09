@@ -613,6 +613,7 @@ app.Use(async (context, next) =>
         p.StartsWithSegments("/account", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/settings", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/company-setup", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/billing", StringComparison.OrdinalIgnoreCase) // a paused company must always reach the pay page
         || p.StartsWithSegments("/files", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/system", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase)

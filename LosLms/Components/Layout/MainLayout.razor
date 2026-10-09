@@ -12,7 +12,13 @@
 @* Subscription freeze. Once the licence has expired the whole app is paused — this replaces every
    screen with the renewal card. A SuperAdmin can paste a renewal key here; everyone else is told to
    contact their admin. The /account pages use a different layout, so signing in to renew still works. *@
-@if (License.IsFrozen)
+@if (_onAccountPage && (License.IsFrozen || _apiAccess is { Allowed: false }))
+{
+    @* Sign in / Sign out must still work while the app is frozen or paused: both cards link to /account/logout,
+       and with the card replacing the page the sign-out never ran. *@
+    @Body
+}
+else if (License.IsFrozen)
 {
     <div class="license-frozen">
         <div class="license-card">
@@ -186,6 +192,7 @@ else
     private bool _updateDismissed;
     private ApiAccess? _apiAccess;
     private bool _onPayPage;
+    private bool _onAccountPage;
 
     private string _licClient = string.Empty;
     private string _renewKey = string.Empty;
@@ -233,6 +240,7 @@ else
 
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
         _onPayPage = relative.StartsWith("billing/pay", StringComparison.OrdinalIgnoreCase);
+        _onAccountPage = relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase);
 
         // No forced password change exists any more: the admin sets every password (including their own)
         // and staff never change theirs, so there is nothing to redirect to here.
@@ -244,7 +252,8 @@ else
         var isSuperAdmin = user.IsInRole(TenantContext.SuperAdminRole);
         var setupExempt = relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase)
             || relative.StartsWith("settings", StringComparison.OrdinalIgnoreCase)
-            || relative.StartsWith("company-setup", StringComparison.OrdinalIgnoreCase);
+            || relative.StartsWith("company-setup", StringComparison.OrdinalIgnoreCase)
+            || _onPayPage;
 
         if (!isSuperAdmin
             && int.TryParse(user.FindFirst(TenantContext.CompanyIdClaim)?.Value, out var companyId))
