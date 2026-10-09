@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect to LMS &middot; guide for partner developers</title>
+<meta name="description" content="Add a Connect to LMS button to your Windows software. VB.NET, no libraries.">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="top"><div class="in">
+  <span class="eyebrow">LOS/LMS developer docs</span>
+  <h1>Connect to LMS</h1>
+</div></header>
+<nav class="tabs" aria-label="Documentation"><div class="in">
+  <a href="/docs/">API reference</a>
+  <a href="/docs/connect.html" aria-current="page">Connect guide</a>
+</div></nav>
+
+<main>
+<section>
+  <h2>Read this first: widen the APIKEY column</h2>
+  <div class="warn"><strong>Do this before anything else.</strong> The saved connection is about 600 to 900 characters long. If your <code>APIKEY</code> column is short, saving fails with <em>"String or binary data would be truncated ... column APIKEY"</em> and the customer sees "Connected" but is not. Run this once on the database:
+<pre><code>ALTER TABLE dbo.APIKEY ALTER COLUMN APIKEY NVARCHAR(MAX) NULL;</code></pre>
+  </div>
+  <p>Your customer clicks one button in your software, types a short code into LMS, and clicks Allow. From then on your software sends loans to LMS for that company on its own. Nobody copies or pastes an API key.</p>
+  <p>(For the curious: this is the standard OAuth 2.0 device authorization, RFC 8628. It is what smart TVs and the GitHub command line use. You do not need any library: the code below is complete.)</p>
+</section>
+
+<section>
+  <h2>What your customer sees</h2>
+  <ol class="steps">
+    <li>In your software they click <strong>Connect to LMS</strong>. A short code such as <code>WDJB-MJHT</code> appears and their browser opens LMS.</li>
+    <li>They sign in to LMS. Only <strong>an Admin of the company</strong> can approve; other staff are asked to get one.</li>
+    <li>They check that the code on the LMS page is the code on your screen, and see your software's name and what it will be allowed to do.</li>
+    <li>They click <strong>Allow</strong>. Your screen says <em>Connected to LMS</em> within a few seconds.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Words used here</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Word</th><th>What it means</th></tr>
+    <tr><td>Client ID</td><td>Your software's name tag at LMS. It is not a secret, so you can put it in your code. Desktop software gets no secret, because anything shipped inside an .exe can be read.</td></tr>
+    <tr><td>Device code</td><td>A long random value LMS gives your software when the customer clicks Connect. Your software keeps it and uses it to ask "have they approved yet?". Never show it.</td></tr>
+    <tr><td>User code</td><td>The short code your software shows on screen (<code>WDJB-MJHT</code>). The customer sees it in LMS too, so they can check it is the same.</td></tr>
+    <tr><td>Access token</td><td>A pass you send with every data call instead of an API key. It works for about 1 hour.</td></tr>
+    <tr><td>Refresh token</td><td>Gets a new access token when the old one runs out. Each refresh token works <strong>once</strong>, and you get a new one every time.</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>What you get from us</h2>
+  <ul>
+    <li>Your <strong>client ID</strong>. We register your software as a desktop app, so there is no secret. The code below shows <code>LC_PUT_YOUR_CLIENT_ID_HERE</code> as a placeholder: replace it with the real one.</li>
+    <li>The scopes to ask for: <code>loans:write loans:read</code>.</li>
+  </ul>
+  <div class="warn"><strong>Copy and paste the client ID, never retype it.</strong> The ID is one unbroken string. A single extra <code>_</code> or <code>-</code> gives <code>invalid_client</code>.</div>
+  <p>All addresses start with <code>https://los-lms.bhodhix.com</code>. In your <code>TableApiKey</code> table, add a row named <strong>LMS</strong> (once), with <code>ApiURL</code> = <code>https://los-lms.bhodhix.com/api/v1/loans</code>. The data calls are in the <a href="/docs/">API reference</a>.</p>
+</section>
+
+<section>
+  <h2>1. Add the module</h2>
+  <p>Add a new file <code>LmsConnect.vb</code> to the project and paste this in. Put your client ID on the <code>LmsClientId</code> line. It uses only things you already have: <code>HttpClient</code> and <code>System.Text.Json</code>.</p>
+  <pre><code>Imports System.Net
+Imports System.Net.Http
+Imports System.Security.Cryptography
+Imports System.Text
+Imports System.Text.Json
+Imports System.Threading
+
+' Connect to LMS: links this install to one finance company's LOS/LMS workspace.
+Public Module LmsConnect
+    Public Const LmsBase As String = "https://los-lms.bhodhix.com"
+    Public Const LmsClientId As String = "LC_PUT_YOUR_CLIENT_ID_HERE"
+    Private Const DeviceGrant As String = "urn:ietf:params:oauth:grant-type:device_code"
+
+    Private ReadOnly Http As New HttpClient() With {.Timeout = TimeSpan.FromSeconds(30)}
+    Private ReadOnly Json As New JsonSerializerOptions With {.PropertyNameCaseInsensitive = True}
+    Private ReadOnly RefreshLock As New SemaphoreSlim(1, 1)
+
+    ' What LMS answers when Connect is clicked.
+    Public Class DeviceStart
+        Public Property device_code As String
+        Public Property user_code As String
+        Public Property verification_uri As String
+        Public Property verification_uri_complete As String
+        Public Property expires_in As Integer
+        Public Property interval As Integer
+    End Class
+
+    ' What /oauth/token answers: tokens, or an error name.
+    Public Class TokenReply
+        Public Property access_token As String
+        Public Property refresh_token As String
+        Public Property expires_in As Integer
+        Public Property [error] As String
+        Public Property error_description As String
+    End Class
+
+    ' The customer has to click Connect to LMS again.
+    Public Class LmsNotConnectedException
+        Inherits Exception
+        Public Sub New()
+            MyBase.New("This software is not connected to LMS. Open API settings and click Connect to LMS.")
+        End Sub
+    End Class
+
+    Private Async Function PostFormAsync(path As String, fields As Dictionary(Of String, String),
+                                         Optional cancel As CancellationToken = Nothing) As Task(Of (Ok As Boolean, Status As HttpStatusCode, Reply As TokenReply, Raw As String))
+        Using form As New FormUrlEncodedContent(fields)
+            Using response = Await Http.PostAsync(LmsBase &amp; path, form, cancel)
+                Dim raw = Await response.Content.ReadAsStringAsync()
+                Dim reply As TokenReply = Nothing
+                Try
+                    reply = JsonSerializer.Deserialize(Of TokenReply)(raw, Json)
+                Catch
+                    reply = New TokenReply()
+                End Try
+                Return (response.IsSuccessStatusCode, response.StatusCode, reply, raw)
+            End Using
+        End Using
+    End Function
+
+    ' (steps 2 to 6 below add the rest of this module)
+End Module</code></pre>
+</section>
+
+<section>
+  <h2>2. Save the tokens in your TableApiKey row</h2>
+  <p>Keep the token values as a small piece of JSON in the <code>ApiKey</code> field of the <strong>LMS</strong> row, encrypted with Windows DPAPI (built into Windows; the text can only be read back by the same Windows user on the same PC). No new columns are needed, but the <code>APIKEY</code> column must be wide enough: see the box at the top of this page.</p>
+  <p>Add the NuGet package <code>System.Security.Cryptography.ProtectedData</code> to the project, then add this inside the module. Change only the line that saves the row (<code>TableApiKey.Update</code>) to the save you already use on <code>ApiKeySetting.vb</code>.</p>
+  <pre><code>    Public Class LmsTokens
+        Public Property AccessToken As String
+        Public Property RefreshToken As String
+        Public Property ExpiresUtc As DateTime
+    End Class
+
+    Private Const Encrypted As String = "dpapi:"
+
+    ' Nothing = not connected.
+    Public Function LoadLmsTokens() As LmsTokens
+        Dim row = TableApiKey.GetByName("LMS")
+        If row Is Nothing OrElse Not row.IsActive OrElse String.IsNullOrWhiteSpace(row.ApiKey) Then Return Nothing
+        If Not row.ApiKey.StartsWith(Encrypted) Then Return Nothing
+        Try
+            Dim clear = ProtectedData.Unprotect(Convert.FromBase64String(row.ApiKey.Substring(Encrypted.Length)), Nothing, DataProtectionScope.CurrentUser)
+            Return JsonSerializer.Deserialize(Of LmsTokens)(Encoding.UTF8.GetString(clear), Json)
+        Catch ex As CryptographicException
+            Return Nothing   ' saved by another Windows user or another PC: connect again here
+        End Try
+    End Function
+
+    ' Save new tokens (encrypted), or pass Nothing to mark this install as not connected.
+    Public Sub SaveLmsTokens(tokens As LmsTokens)
+        Dim row = TableApiKey.GetByName("LMS")
+        If tokens Is Nothing Then
+            row.ApiKey = ""
+        Else
+            Dim secret = ProtectedData.Protect(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(tokens)), Nothing, DataProtectionScope.CurrentUser)
+            row.ApiKey = Encrypted &amp; Convert.ToBase64String(secret)
+        End If
+        row.IsActive = tokens IsNot Nothing
+        TableApiKey.Update(row)   ' use the same save method you use on ApiKeySetting today
+    End Sub
+
+    Public ReadOnly Property IsLmsConnected As Boolean
+        Get
+            Return LoadLmsTokens() IsNot Nothing
+        End Get
+    End Property
+
+    Public Function ToTokens(reply As TokenReply) As LmsTokens
+        Return New LmsTokens With {
+            .AccessToken = reply.access_token,
+            .RefreshToken = reply.refresh_token,
+            .ExpiresUtc = DateTime.UtcNow.AddSeconds(reply.expires_in)
+        }
+    End Function</code></pre>
+</section>
+
+<section>
+  <h2>3. The "Connect to LMS" button</h2>
+  <p>First add these two functions to the module. The first asks LMS for a code. The second waits while the customer approves in the browser, asking LMS every few seconds (this repeated asking is called "polling").</p>
+  <pre><code>    ' Ask LMS for a code to show the customer.
+    Public Async Function StartConnectAsync() As Task(Of DeviceStart)
+        Using form As New FormUrlEncodedContent(New Dictionary(Of String, String) From {
+                {"client_id", LmsClientId}, {"scope", "loans:write loans:read"}})
+            Using response = Await Http.PostAsync(LmsBase &amp; "/oauth/device_authorization", form)
+                Dim raw = Await response.Content.ReadAsStringAsync()
+                If Not response.IsSuccessStatusCode Then Throw New Exception("LMS said: " &amp; raw)
+                Return JsonSerializer.Deserialize(Of DeviceStart)(raw, Json)
+            End Using
+        End Using
+    End Function
+
+    ' Wait until the customer clicks Allow or Deny. Returns the tokens, or Nothing if they
+    ' clicked Deny or the code ran out (15 minutes).
+    Public Async Function WaitForApprovalAsync(start As DeviceStart, cancel As CancellationToken) As Task(Of TokenReply)
+        Dim waitSeconds = Math.Max(start.interval, 5)
+        Dim giveUpAt = DateTime.UtcNow.AddSeconds(start.expires_in)
+        While DateTime.UtcNow &lt; giveUpAt
+            Await Task.Delay(waitSeconds * 1000, cancel)
+            Dim result = Await PostFormAsync("/oauth/token", New Dictionary(Of String, String) From {
+                {"grant_type", DeviceGrant}, {"device_code", start.device_code}, {"client_id", LmsClientId}}, cancel)
+            If result.Ok Then Return result.Reply
+            Select Case result.Reply?.error
+                Case "authorization_pending"
+                    ' Not yet: the customer is still signing in. Keep waiting.
+                Case "slow_down"
+                    waitSeconds += 5   ' LMS asks us to ask less often
+                Case Else
+                    Return Nothing     ' access_denied, expired_token, or anything else: stop
+            End Select
+        End While
+        Return Nothing
+    End Function</code></pre>
+  <p>Then, on <code>ApiKeySetting.vb</code>, add a button <code>btnConnectLms</code>, a large label <code>lblLmsCode</code> (about 28pt, monospace) and a label <code>lblLmsStatus</code>:</p>
+  <pre><code>    Private connectCancel As CancellationTokenSource
+
+    Private Async Sub btnConnectLms_Click(sender As Object, e As EventArgs) Handles btnConnectLms.Click
+        btnConnectLms.Enabled = False
+        connectCancel = New CancellationTokenSource()
+        Try
+            Dim start = Await LmsConnect.StartConnectAsync()
+            lblLmsCode.Text = start.user_code
+            lblLmsStatus.Text = "Your browser has opened LMS. Sign in, check this code matches, and click Allow."
+            ' The system browser, not WebView2: the customer's own browser keeps their LMS login.
+            Process.Start(New ProcessStartInfo(start.verification_uri_complete) With {.UseShellExecute = True})
+
+            Dim reply = Await LmsConnect.WaitForApprovalAsync(start, connectCancel.Token)
+            If reply Is Nothing Then
+                lblLmsStatus.Text = "Not connected (declined, or the code ran out). Click Connect to try again."
+            Else
+                LmsConnect.SaveLmsTokens(LmsConnect.ToTokens(reply))
+                lblLmsStatus.Text = "Connected to LMS."
+            End If
+        Catch ex As OperationCanceledException
+            lblLmsStatus.Text = "Cancelled."
+        Catch ex As Exception
+            lblLmsStatus.Text = "Could not connect: " &amp; ex.Message
+        Finally
+            lblLmsCode.Text = ""
+            btnConnectLms.Enabled = True
+        End Try
+    End Sub
+
+    ' If the screen closes while waiting, stop asking LMS.
+    Private Sub ApiKeySetting_FormClosing(sender As Object, e As FormClosingEventArgs) Handles MyBase.FormClosing
+        connectCancel?.Cancel()
+    End Sub</code></pre>
+</section>
+
+<section>
+  <h2>4. GetLmsTokenAsync: always a working access token</h2>
+  <p>Your data functions call this instead of reading <code>ApiClass.ApiKey</code>. It returns the saved access token while it is fresh, and gets a new one when it is about to run out. If LMS says the connection is gone, it marks the install "not connected" and throws <code>LmsNotConnectedException</code>, so you can tell the user to click Connect again.</p>
+  <pre><code>    ' A working access token for LMS. forceRefresh:=True after a 401 reply.
+    Public Async Function GetLmsTokenAsync(Optional forceRefresh As Boolean = False) As Task(Of String)
+        ' One refresh at a time: a refresh token works only once.
+        Await RefreshLock.WaitAsync()
+        Try
+            Dim saved = LoadLmsTokens()
+            If saved Is Nothing Then Throw New LmsNotConnectedException()
+            If Not forceRefresh AndAlso DateTime.UtcNow &lt; saved.ExpiresUtc.AddMinutes(-1) Then Return saved.AccessToken
+
+            Dim result = Await PostFormAsync("/oauth/token", New Dictionary(Of String, String) From {
+                {"grant_type", "refresh_token"}, {"refresh_token", saved.RefreshToken}, {"client_id", LmsClientId}})
+            If result.Ok Then
+                Dim fresh = ToTokens(result.Reply)
+                SaveLmsTokens(fresh)   ' save the NEW refresh token every time
+                Return fresh.AccessToken
+            End If
+            If result.Status = HttpStatusCode.BadRequest OrElse result.Status = HttpStatusCode.Unauthorized Then
+                SaveLmsTokens(Nothing)  ' disconnected in LMS, or the refresh token was refused
+                Throw New LmsNotConnectedException()
+            End If
+            Throw New Exception("LMS is not reachable right now. Try again in a minute.")   ' keep the tokens
+        Finally
+            RefreshLock.Release()
+        End Try
+    End Function</code></pre>
+</section>
+
+<section>
+  <h2>5. Change your data functions</h2>
+  <p>Wherever a function sends a request to LMS, it sets the <code>Authorization</code> header from the API key. Change only that value. The address, the body and how you read the reply stay as the <a href="/docs/">API reference</a> describes:</p>
+  <pre><code>- request.Headers.Authorization = New AuthenticationHeaderValue("Bearer", ApiClass.ApiKey)
++ request.Headers.Authorization = New AuthenticationHeaderValue("Bearer", Await GetLmsTokenAsync())</code></pre>
+  <p>(If you set it on <code>client.DefaultRequestHeaders.Authorization</code> instead, change it there in the same way.)</p>
+  <p>So that a connection cut in LMS is noticed straight away, retry once on a 401 with a forced refresh:</p>
+  <pre><code>Dim response = Await client.SendAsync(request)
+If response.StatusCode = HttpStatusCode.Unauthorized Then
+    ' Expired early or cut in LMS: refresh once and try again.
+    Using retry = New HttpRequestMessage(request.Method, request.RequestUri)
+        retry.Content = request.Content   ' the same body (rebuild it if you already read it)
+        retry.Headers.Authorization = New AuthenticationHeaderValue("Bearer", Await GetLmsTokenAsync(forceRefresh:=True))
+        response = Await client.SendAsync(retry)
+    End Using
+End If</code></pre>
+  <p>Wrap the call where your screens use these functions:</p>
+  <pre><code>Try
+    Await UpsertLoansAsync(loans)
+Catch ex As LmsConnect.LmsNotConnectedException
+    MessageBox.Show(ex.Message, "LMS")   ' "...click Connect to LMS"
+End Try</code></pre>
+</section>
+
+<section>
+  <h2>6. The "Disconnect" button</h2>
+  <pre><code>    ' In the module: tell LMS, then forget the tokens on this PC.
+    Public Async Function DisconnectLmsAsync() As Task
+        Dim saved = LoadLmsTokens()
+        If saved IsNot Nothing Then
+            Try
+                Await PostFormAsync("/oauth/revoke", New Dictionary(Of String, String) From {
+                    {"token", saved.RefreshToken}, {"client_id", LmsClientId}})
+            Catch
+                ' Offline: still disconnect here. An Admin can also remove it in LMS under Connected apps.
+            End Try
+        End If
+        SaveLmsTokens(Nothing)
+    End Function</code></pre>
+  <pre><code>    ' On ApiKeySetting.vb
+    Private Async Sub btnDisconnectLms_Click(sender As Object, e As EventArgs) Handles btnDisconnectLms.Click
+        Await LmsConnect.DisconnectLmsAsync()
+        lblLmsStatus.Text = "Disconnected from LMS."
+    End Sub</code></pre>
+  <p>LMS always answers 200 here, even if the token was already gone. Loans already sent stay in LMS.</p>
+  <div class="note"><strong>One install = one company.</strong> Connect links the install to the company whose Admin clicked Allow. To switch company: Disconnect, then Connect while signed in to the other company.</div>
+</section>
+
+<section>
+  <h2>The HTTP calls (no VB)</h2>
+  <p>For checking with a tool like Postman or curl. The three <code>/oauth</code> calls are form posts (<code>Content-Type: application/x-www-form-urlencoded</code>), <strong>not</strong> JSON.</p>
+  <pre><code>curl -X POST https://los-lms.bhodhix.com/oauth/device_authorization \
+  -d client_id=LC_PUT_YOUR_CLIENT_ID_HERE -d "scope=loans:write loans:read"
+
+{ "device_code": "...", "user_code": "WDJB-MJHT",
+  "verification_uri": "https://los-lms.bhodhix.com/link",
+  "verification_uri_complete": "https://los-lms.bhodhix.com/link?code=WDJB-MJHT",
+  "expires_in": 900, "interval": 5 }</code></pre>
+  <pre><code># while waiting (every "interval" seconds)
+curl -X POST https://los-lms.bhodhix.com/oauth/token \
+  -d grant_type=urn:ietf:params:oauth:grant-type:device_code \
+  -d device_code=... -d client_id=LC_PUT_YOUR_CLIENT_ID_HERE
+#   400 {"error":"authorization_pending"}   -&gt; wait and ask again
+#   400 {"error":"slow_down"}               -&gt; add 5 seconds to your wait
+#   400 {"error":"access_denied"} / {"error":"expired_token"} -&gt; stop
+#   200 {"access_token":"...","token_type":"Bearer","expires_in":3599,"refresh_token":"...","scope":"loans:write loans:read"}
+
+# refresh (save the NEW refresh token)
+curl -X POST https://los-lms.bhodhix.com/oauth/token \
+  -d grant_type=refresh_token -d refresh_token=... -d client_id=LC_PUT_YOUR_CLIENT_ID_HERE</code></pre>
+  <pre><code>curl -X POST https://los-lms.bhodhix.com/oauth/revoke -d token=... -d client_id=LC_PUT_YOUR_CLIENT_ID_HERE
+
+# then call the data API with the access token
+curl https://los-lms.bhodhix.com/api/v1/loans/PV-000123 -H "Authorization: Bearer ..."</code></pre>
+</section>
+
+<section>
+  <h2>When things go wrong</h2>
+  <div class="tablewrap"><table>
+    <tr><th>You see</th><th>What it means</th><th>What to do</th></tr>
+    <tr><td>"String or binary data would be truncated ... column APIKEY" when saving</td><td>The <code>APIKEY</code> column is too short for the encrypted tokens (about 600 to 900 characters).</td><td>Run <code>ALTER TABLE dbo.APIKEY ALTER COLUMN APIKEY NVARCHAR(MAX) NULL;</code> once, then click Connect again.</td></tr>
+    <tr><td><code>invalid_client</code> when clicking Connect</td><td>The client ID in the module is wrong: still the placeholder, retyped with a typo, or not registered as a desktop app.</td><td>Copy and paste the ID again. Ask us if it still fails.</td></tr>
+    <tr><td>The LMS page shows the code filled in but asks you to check it</td><td>On purpose: Allow only after checking it is the code on your screen right now.</td><td>Press Continue, check the code and the time it was requested, then Allow.</td></tr>
+    <tr><td>LMS page: "That code is wrong or has expired"</td><td>A typo, or more than 15 minutes passed.</td><td>Click Connect again for a fresh code. After 5 wrong codes LMS pauses for 15 minutes.</td></tr>
+    <tr><td>LMS page: "Ask your company Admin"</td><td>The person signed in is staff, not an Admin of the company.</td><td>Ask an Admin to approve.</td></tr>
+    <tr><td><code>access_denied</code> while waiting</td><td>They clicked Deny.</td><td>Show "Not connected"; they can click Connect again.</td></tr>
+    <tr><td><code>expired_token</code> while waiting</td><td>The 15 minutes ran out.</td><td>Click Connect again.</td></tr>
+    <tr><td>401 from <code>/api/v1/...</code></td><td>The access token expired, or an Admin disconnected you in LMS.</td><td>Handled by the retry in step 5. If the refresh is refused, the user sees "click Connect to LMS".</td></tr>
+    <tr><td>403 from <code>/api/v1/...</code></td><td>The connection was approved without the scope that call needs.</td><td>Ask them to Connect again and allow sending and reading.</td></tr>
+    <tr><td>422 from <code>POST /api/v1/loans</code></td><td>Some loan details are wrong. The reply lists which loan and why. Nothing was saved.</td><td>See Errors in the <a href="/docs/#errors">API reference</a>.</td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Test before going live</h2>
+  <ul>
+    <li>Use your <strong>own</strong> company's LMS login. Click Connect, sign in with it in the browser, check the code matches, and click Allow. Your screen should say Connected within a few seconds.</li>
+    <li>Push one test loan, then check it with the Check call. It appears in your company in LMS.</li>
+    <li>Set <code>ExpiresUtc</code> in the saved JSON to a time in the past, then push again. It should refresh silently and work.</li>
+    <li>In LMS, open Connected apps and click Disconnect. Your next call should show "click Connect to LMS".</li>
+    <li>Click Connect, then Deny in the browser. Your screen should show "Not connected".</li>
+    <li>Click your Disconnect button. Connected apps in LMS no longer lists your software.</li>
+  </ul>
+  <p>Questions? Contact the LMS team. We are happy to look at your test calls with you.</p>
+</section>
+</main>
+<footer><div class="in">LOS/LMS partner API &middot; <a href="/docs/">API reference</a></div></footer>
+</body>
+</html>

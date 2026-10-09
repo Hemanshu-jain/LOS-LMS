@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LOS/LMS Partner API reference</title>
+<meta name="description" content="Push loan accounts into LOS/LMS and read back disbursals. REST + JSON, OAuth bearer tokens.">
+<link rel="icon" href="/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<header class="top"><div class="in">
+  <span class="eyebrow">LOS/LMS developer docs</span>
+  <h1>Partner API reference</h1>
+</div></header>
+<nav class="tabs" aria-label="Documentation"><div class="in">
+  <a href="/docs/" aria-current="page">API reference</a>
+  <a href="/docs/connect.html">Connect guide</a>
+</div></nav>
+
+<main>
+<section>
+  <h2>Overview</h2>
+  <p>Your software pushes its loan accounts into a finance company's LOS/LMS, checks or removes them, and reads back the loans that company has disbursed in LMS. Everything is JSON over HTTPS. The company is always the one that approved your Connect request, so you never send a company id.</p>
+  <ul class="toc">
+    <li><a href="#auth">Authentication</a></li>
+    <li><a href="#format">Base URL &amp; format</a></li>
+    <li><a href="#upsert">Push loans</a></li>
+    <li><a href="#get">Check a loan</a></li>
+    <li><a href="#list">List loans</a></li>
+    <li><a href="#delete">Delete a loan</a></li>
+    <li><a href="#disbursals">Disbursals</a></li>
+    <li><a href="#fields">Fields</a></li>
+    <li><a href="#statuses">Statuses</a></li>
+    <li><a href="#errors">Errors</a></li>
+    <li><a href="#limits">Limits &amp; billing</a></li>
+  </ul>
+</section>
+
+<section id="auth">
+  <h2>Authentication</h2>
+  <p>Every call carries an access token in the <code>Authorization</code> header. You get the token by following the <a href="/docs/connect.html">Connect guide</a>: the customer clicks Connect in your software and approves a short code in LMS. There are no API keys to copy and paste.</p>
+<pre><code>Authorization: Bearer &lt;access_token&gt;</code></pre>
+  <div class="tablewrap"><table>
+    <tr><th>Scope</th><th>Allows</th></tr>
+    <tr><td><code>loans:write</code></td><td>Push loans, delete loans.</td></tr>
+    <tr><td><code>loans:read</code></td><td>Check a loan, list loans, read disbursals.</td></tr>
+  </table></div>
+  <p>Ask for <code>loans:write loans:read</code> when you connect. A token is valid for about an hour; use the refresh token to get a new one. A call without the right scope is answered <code>403</code>; a missing or expired token is answered <code>401</code>.</p>
+</section>
+
+<section id="format">
+  <h2>Base URL &amp; format</h2>
+<pre><code>https://los-lms.bhodhix.com/api/v1</code></pre>
+  <ul>
+    <li>Requests with a body use <code>Content-Type: application/json</code>. Replies are JSON.</li>
+    <li>Field names are camelCase.</li>
+    <li>Dates are text in <code>yyyy-MM-dd</code> form, for example <code>2026-09-30</code>.</li>
+    <li>Money is a plain number in rupees with up to two decimals, for example <code>250000.00</code>. No currency symbol, no commas.</li>
+    <li>Account numbers are compared without regard to leading or trailing spaces.</li>
+  </ul>
+</section>
+
+<section id="upsert">
+  <h2>Push loans (create or update)</h2>
+  <div class="endpoint"><span class="verb">POST</span><span class="path">/api/v1/loans</span><span class="scope">scope: loans:write</span></div>
+  <p>Sends a batch of loan accounts. Each loan is matched by <code>accountNumber</code> inside the connected company: new ones are created, changed ones are updated, identical ones are reported <code>unchanged</code>. Sending the same data again is safe. If any loan in the batch is invalid, <strong>nothing</strong> is saved and the reply lists every bad loan (422).</p>
+  <h3>Request fields</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Field</th><th>Type</th><th>Required</th></tr>
+    <tr><td><code>loans</code></td><td>array of loan, 1 to 500 items</td><td>yes</td></tr>
+  </table></div>
+  <p>Each loan has the fields listed under <a href="#fields">Fields</a>.</p>
+  <h3>Example request</h3>
+<pre><code>curl -X POST https://los-lms.bhodhix.com/api/v1/loans \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "loans": [
+      {
+        "accountNumber": "PV-000123",
+        "customerName": "Asha Patil",
+        "pan": "ABCDE1234F",
+        "mobile": "9876543210",
+        "product": "Two wheeler loan",
+        "sanctionedAmount": 85000,
+        "outstandingAmount": 61250.50,
+        "status": "Live",
+        "disbursedOn": "2025-11-03",
+        "branch": "Pune"
+      }
+    ]
+  }'</code></pre>
+  <h3>Example reply (200)</h3>
+<pre><code>{
+  "created": 1,
+  "updated": 0,
+  "unchanged": 0,
+  "results": [
+    { "row": 1, "accountNumber": "PV-000123", "result": "created", "id": 4172 }
+  ]
+}</code></pre>
+  <p><code>row</code> is the position of the loan in your <code>loans</code> array, starting at 1. <code>result</code> is <code>created</code>, <code>updated</code> or <code>unchanged</code>.</p>
+  <h3>Example reply (422)</h3>
+<pre><code>{
+  "error": "validation_failed",
+  "message": "2 loan(s) are invalid. Nothing was saved.",
+  "details": [
+    { "row": 2, "field": "customerName", "reason": "is required" },
+    { "row": 2, "field": "pan", "reason": "must look like ABCDE1234F" },
+    { "row": 3, "field": "accountNumber", "reason": "appears twice in this request" }
+  ]
+}</code></pre>
+  <p><strong>Possible errors:</strong> 400, 401, 403, 413, 422 (<code>validation_failed</code>, <code>batch_too_large</code>), 429. See <a href="#errors">Errors</a>.</p>
+</section>
+
+<section id="get">
+  <h2>Check one loan</h2>
+  <div class="endpoint"><span class="verb get">GET</span><span class="path">/api/v1/loans/{accountNumber}</span><span class="scope">scope: loans:read</span></div>
+  <p>Tells you whether LMS holds this account, and its status.</p>
+<pre><code>curl https://los-lms.bhodhix.com/api/v1/loans/PV-000123 \
+  -H "Authorization: Bearer $TOKEN"</code></pre>
+<pre><code>{
+  "exists": true,
+  "loan": {
+    "id": 4172,
+    "accountNumber": "PV-000123",
+    "customerName": "Asha Patil",
+    "pan": "ABCDE1234F",
+    "mobile": "9876543210",
+    "product": "Two wheeler loan",
+    "sanctionedAmount": 85000.00,
+    "outstandingAmount": 61250.50,
+    "status": "Live",
+    "disbursedOn": "2025-11-03",
+    "branch": "Pune"
+  }
+}</code></pre>
+  <p>An account LMS does not hold is answered <code>404</code> with <code>"error": "not_found"</code>. That is the normal "no" answer, not a fault. An account number may contain <code>/</code>; URL-encode the other special characters.</p>
+</section>
+
+<section id="list">
+  <h2>List loans</h2>
+  <div class="endpoint"><span class="verb get">GET</span><span class="path">/api/v1/loans?page=1&amp;pageSize=50</span><span class="scope">scope: loans:read</span></div>
+  <div class="tablewrap"><table>
+    <tr><th>Query</th><th>Meaning</th></tr>
+    <tr><td><code>page</code></td><td>Page number, from 1. Default 1.</td></tr>
+    <tr><td><code>pageSize</code></td><td>Items per page. Default 50, maximum 200.</td></tr>
+  </table></div>
+<pre><code>{
+  "page": 1,
+  "pageSize": 50,
+  "total": 132,
+  "items": [ { "id": 4172, "accountNumber": "PV-000123", "customerName": "Asha Patil", "status": "Live", "...": "same fields as above" } ]
+}</code></pre>
+  <p>Items are ordered by <code>id</code>, oldest first. An empty page returns an empty <code>items</code> array.</p>
+</section>
+
+<section id="delete">
+  <h2>Delete a loan</h2>
+  <div class="endpoint"><span class="verb delete">DELETE</span><span class="path">/api/v1/loans/{accountNumber}</span><span class="scope">scope: loans:write</span></div>
+<pre><code>curl -X DELETE https://los-lms.bhodhix.com/api/v1/loans/PV-000123 \
+  -H "Authorization: Bearer $TOKEN"</code></pre>
+<pre><code>{ "deleted": true, "id": 4172, "accountNumber": "PV-000123" }</code></pre>
+  <p>Unknown account: <code>404 not_found</code>. Sending the loan again later creates it again as new.</p>
+</section>
+
+<section id="disbursals">
+  <h2>Disbursals</h2>
+  <div class="endpoint"><span class="verb get">GET</span><span class="path">/api/v1/disbursals?since=2026-09-01&amp;page=1</span><span class="scope">scope: loans:read</span></div>
+  <p>The loans this company has disbursed in LMS, so your software can open the account. Only applications whose funds were released are listed.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Query</th><th>Meaning</th></tr>
+    <tr><td><code>since</code></td><td>Only loans disbursed on or after this date (<code>yyyy-MM-dd</code>). Leave out for all.</td></tr>
+    <tr><td><code>page</code>, <code>pageSize</code></td><td>As in List loans.</td></tr>
+  </table></div>
+<pre><code>curl "https://los-lms.bhodhix.com/api/v1/disbursals?since=2026-09-01" \
+  -H "Authorization: Bearer $TOKEN"</code></pre>
+<pre><code>{
+  "page": 1,
+  "pageSize": 50,
+  "total": 1,
+  "items": [
+    {
+      "applicationId": "LN-2026-004912",
+      "customerName": "Hemant Bhalerao",
+      "loanAmount": 250000.00,
+      "roi": 13.50,
+      "tenure": 36,
+      "disbursalDate": "2026-09-20",
+      "firstEmiDate": "2026-10-22",
+      "emiDayOfMonth": 12
+    }
+  ]
+}</code></pre>
+  <p>Items are ordered by <code>disbursalDate</code>, then <code>applicationId</code>. To stay in step, remember the latest <code>disbursalDate</code> you have processed and send it as <code>since</code> next time; a loan can appear again on that day, so match on <code>applicationId</code>. <code>roi</code> is the yearly rate in percent, <code>tenure</code> is in months. <code>firstEmiDate</code> and <code>emiDayOfMonth</code> are <code>null</code> when not set.</p>
+</section>
+
+<section id="fields">
+  <h2>Fields</h2>
+  <h3>Loan (push and reply)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr>
+    <tr><td><code>accountNumber</code></td><td>text, 60 max</td><td>yes</td><td>Your own loan account number. The key: the same number means the same loan. Must be unique within one request.</td></tr>
+    <tr><td><code>customerName</code></td><td>text, 200 max</td><td>yes</td><td>Borrower's name.</td></tr>
+    <tr><td><code>pan</code></td><td>text</td><td>no</td><td>PAN, like <code>ABCDE1234F</code>. Lower case is accepted and stored in capitals.</td></tr>
+    <tr><td><code>mobile</code></td><td>text</td><td>no</td><td>6 to 14 digits, optional leading <code>+</code>.</td></tr>
+    <tr><td><code>product</code></td><td>text, 120 max</td><td>no</td><td>Loan product name.</td></tr>
+    <tr><td><code>sanctionedAmount</code></td><td>number, 0 or more</td><td>no</td><td>Amount sanctioned, in rupees.</td></tr>
+    <tr><td><code>outstandingAmount</code></td><td>number, 0 or more</td><td>no</td><td>Principal still to be repaid, in rupees.</td></tr>
+    <tr><td><code>status</code></td><td>text, 40 max</td><td>no</td><td>Your own status word. See <a href="#statuses">Statuses</a>.</td></tr>
+    <tr><td><code>disbursedOn</code></td><td>date</td><td>no</td><td>Day the loan was disbursed, <code>yyyy-MM-dd</code>.</td></tr>
+    <tr><td><code>branch</code></td><td>text, 100 max</td><td>no</td><td>Branch name.</td></tr>
+  </table></div>
+  <p>A field you leave out, or send as empty text or <code>null</code>, is stored as empty. Every push replaces the whole loan: send all the fields every time, not only the ones that changed.</p>
+  <p><code>id</code> in replies is LMS's own number for the row. You can store it, but <code>accountNumber</code> is the key you use in calls.</p>
+</section>
+
+<section id="statuses">
+  <h2>Statuses</h2>
+  <p>The loan <code>status</code> is your word, not ours: LMS stores and shows it as you send it (for example <code>Live</code>, <code>Closed</code>, <code>NPA</code>). It does not change how the call behaves, and no other value is rejected. Disbursals are different: only loans that LMS has actually disbursed are listed, and there is no status filter.</p>
+</section>
+
+<section id="errors">
+  <h2>Errors</h2>
+  <p>Every error has the same JSON shape. <code>details</code> is always present and is empty unless the error has per-item detail (422).</p>
+<pre><code>{
+  "error": "validation_failed",
+  "message": "Plain-language explanation.",
+  "details": [ { "row": 2, "field": "pan", "reason": "must look like ABCDE1234F" } ]
+}</code></pre>
+  <div class="tablewrap"><table>
+    <tr><th>Status</th><th><code>error</code></th><th>Meaning</th><th>What to do</th></tr>
+    <tr><td>400</td><td><code>bad_request</code></td><td>The body is not valid JSON, or a field has the wrong type (for example text where a number belongs).</td><td>Fix the request. Nothing was saved.</td></tr>
+    <tr><td>401</td><td><code>unauthorized</code></td><td>No token, an expired token, or a connection that was cut in LMS.</td><td>Refresh the token and retry once. If that is refused, ask the user to Connect again.</td></tr>
+    <tr><td>403</td><td><code>insufficient_scope</code></td><td>The connection was approved without the scope this call needs.</td><td>Ask the user to Connect again and allow both scopes.</td></tr>
+    <tr><td>404</td><td><code>not_found</code></td><td>No loan with that account number in this company.</td><td>Treat as "not in LMS".</td></tr>
+    <tr><td>405</td><td><code>method_not_allowed</code></td><td>Wrong HTTP method for that address.</td><td>Check the method.</td></tr>
+    <tr><td>413</td><td><code>too_large</code></td><td>The request body is over 2 MB.</td><td>Send fewer loans per call.</td></tr>
+    <tr><td>422</td><td><code>validation_failed</code></td><td>One or more loans (or a query value) are invalid. <code>details</code> lists each <code>row</code>, <code>field</code> and <code>reason</code>.</td><td>Fix those loans and send the whole batch again. Nothing was saved.</td></tr>
+    <tr><td>422</td><td><code>batch_too_large</code></td><td>More than 500 loans in one call.</td><td>Split into batches of 500 or fewer.</td></tr>
+    <tr><td>429</td><td><code>rate_limited</code></td><td>Too many requests from one address.</td><td>Wait a minute, then retry.</td></tr>
+    <tr><td>5xx</td><td><code>error</code></td><td>LMS had a problem or is temporarily down.</td><td>Keep your data, retry in a few minutes. Pushing again is safe.</td></tr>
+  </table></div>
+</section>
+
+<section id="limits">
+  <h2>Limits &amp; billing</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Limit</th><th>Value</th></tr>
+    <tr><td>Loans per push</td><td>500</td></tr>
+    <tr><td>Request body</td><td>2 MB</td></tr>
+    <tr><td>Page size</td><td>200 (default 50)</td></tr>
+    <tr><td>Request rate</td><td>120 requests per minute from one address</td></tr>
+    <tr><td>Access token life</td><td>About 1 hour</td></tr>
+  </table></div>
+  <p><strong>Idempotency:</strong> pushing a loan again with identical data changes nothing and is reported <code>unchanged</code>. It is safe to resend a whole book after a timeout or a crash, and to send the full list every day.</p>
+  <p><strong>Billing:</strong> these loan endpoints are not metered per call. Per-use charges for LMS's own verification services (identity, bank checks, e-sign) are billed to the finance company and are not part of this API.</p>
+  <p><strong>Audit:</strong> every change you make is logged by LMS together with your software's name, as shown on the Allow screen.</p>
+</section>
+</main>
+<footer><div class="in">LOS/LMS partner API &middot; <a href="/docs/connect.html">Connect guide</a></div></footer>
+</body>
+</html>
