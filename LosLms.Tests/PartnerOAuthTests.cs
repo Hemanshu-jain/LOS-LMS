@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using Xunit.Abstractions;
@@ -507,6 +508,22 @@ public sealed class PartnerOAuthTests : IDisposable
         var json = await Post(services, "/oauth/token", $"{{\"client_id\":\"{_clientId}\"}}", "application/json");
         Assert.Equal(400, json.Status);
         Assert.Equal(404, (await Post(services, "/oauth/nope", "")).Status);
+    }
+
+    [Theory]
+    [InlineData("https://los-lms.bhodhix.com", "https://los-lms.bhodhix.com/link")]
+    [InlineData("https://los-lms.bhodhix.com/", "https://los-lms.bhodhix.com/link")] // trailing slash tolerated
+    [InlineData("", "https://lms.test/link")]                                         // unset: the request's own scheme + host
+    public async Task VerificationUri_UsesPublicBaseUrlWhenSet(string configured, string expected)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["PublicBaseUrl"] = configured }).Build();
+        var services = new ServiceCollection().AddSingleton(_svc).AddSingleton<IConfiguration>(config).BuildServiceProvider();
+
+        var start = await Post(services, "/oauth/device_authorization", $"client_id={_clientId}");
+
+        Assert.Equal(expected, start.Json.GetProperty("verification_uri").GetString());
+        Assert.StartsWith(expected + "?code=", start.Json.GetProperty("verification_uri_complete").GetString());
     }
 
     private async Task<(int Status, string Body, JsonElement Json, string? CacheControl)> Post(

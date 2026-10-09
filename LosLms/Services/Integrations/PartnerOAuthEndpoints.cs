@@ -39,8 +39,7 @@ public static class PartnerOAuthEndpoints
         {
             if (isDevice)
             {
-                var verificationUri = $"{context.Request.Scheme}://{context.Request.Host}/link";
-                await Json(context, 200, await oauth.StartDeviceAsync(form["client_id"], form["scope"], verificationUri, now));
+                await Json(context, 200, await oauth.StartDeviceAsync(form["client_id"], form["scope"], LinkUrl(context), now));
             }
             else if (isToken)
             {
@@ -60,6 +59,14 @@ public static class PartnerOAuthEndpoints
         {
             await Json(context, e.Status, new { error = e.Name, error_description = e.Message });
         }
+    }
+
+    // PublicBaseUrl wins when set, so a proxy or cloud host can't leak an internal address into verification_uri;
+    // otherwise the request's own scheme + host.
+    private static string LinkUrl(HttpContext context)
+    {
+        var configured = context.RequestServices.GetService<IConfiguration>()?["PublicBaseUrl"]?.Trim().TrimEnd('/');
+        return $"{(string.IsNullOrEmpty(configured) ? $"{context.Request.Scheme}://{context.Request.Host}" : configured)}/link";
     }
 
     // Anything that isn't a small form-urlencoded body reads as empty, so the endpoint answers with its normal
