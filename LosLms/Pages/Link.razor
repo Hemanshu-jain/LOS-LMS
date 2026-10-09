@@ -1,0 +1,175 @@
+@page "/link"
+@using LosLms.Services
+@inject PartnerOAuthService OAuth
+@inject PartnerGuessLimiter Limiter
+
+<PageTitle>Connect an app · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+@* Where a company Admin approves partner software ("Connect to LOS-LMS"). Statically rendered (see
+   App.razor), so Continue / Allow / Deny are real form POSTs with the antiforgery token that
+   <AntiforgeryToken /> emits and UseAntiforgery checks — NOT Blazor circuit events. The ?code= in the
+   link only pre-fills the box: nothing is looked up, let alone approved, until the Admin presses Continue
+   and then Allow. Wrong codes are counted per person and per address (5 in 15 minutes). *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Connect an app</h1>
+        </div>
+
+        @if (!_isAdmin)
+        {
+            <p class="inline-error" role="alert">Ask your company Admin: only an Admin can connect apps.</p>
+        }
+        else if (_outcome is not null)
+        {
+            <p class="auth-sub" role="status">@_outcome</p>
+            <a class="auth-secondary" href="/applications">← Back to applications</a>
+        }
+        else
+        {
+            @if (_error is not null)
+            {
+                <p class="inline-error" role="alert">@_error</p>
+            }
+
+            @if (_request is not null || _decideCode is not null)
+            {
+                @* The 'decide' form must exist in the render that handles its own POST (Blazor dispatches a named
+                   form against that render), and _request is gone by then, so the posted code keeps it alive. *@
+                var r = _request;
+                @if (r is not null)
+                {
+                <p class="auth-sub"><strong>@r.ClientName</strong> wants to connect to your company and:</p>
+                <ul>
+                    @foreach (var scope in r.Scopes)
+                    {
+                        <li>@Describe(scope)</li>
+                    }
+                </ul>
+                <p class="auth-sub">Code <strong>@r.UserCode</strong>, requested @r.RequestedAt.ToLocalTime().ToString("d MMM yyyy, h:mm tt")@(r.RequesterIp is null ? "" : $" from {r.RequesterIp}").
+                    Only continue if this is the code shown in @r.ClientName on your computer.</p>
+                }
+
+                <form method="post" @onsubmit="DecideAsync" @formname="decide">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="code" value="@(r?.UserCode ?? _decideCode)" />
+                    <button type="submit" class="auth-submit" name="decision" value="allow">Allow</button>
+                    <button type="submit" class="auth-submit auth-submit-secondary" name="decision" value="deny">Deny</button>
+                </form>
+            }
+            else
+            {
+                <p class="auth-sub">Enter the code shown in the app you are connecting.</p>
+                <form method="post" @onsubmit="LookUpAsync" @formname="lookup">
+                    <AntiforgeryToken />
+                    <div class="auth-field">
+                        <label class="auth-label" for="link-code">Code</label>
+                        <input id="link-code" class="field-input" name="code" value="@Code" autocomplete="off"
+                               autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" maxlength="12" />
+                    </div>
+                    <button type="submit" class="auth-submit">Continue</button>
+                </form>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext? Http { get; set; }
+
+    [SupplyParameterFromQuery(Name = "code")] private string? Code { get; set; }
+
+    private DeviceRequest? _request;
+    private string? _decideCode;
+    private string? _error;
+    private string? _outcome;
+    private bool _isAdmin;
+
+    protected override void OnInitialized()
+    {
+        _isAdmin = Http?.User.IsInRole(TenantContext.AdminRole) == true;
+
+        // A POST carrying a decision: remember the code so the decide form is rendered for the handler (see above).
+        if (Http is { Request: { Method: "POST" } req } && req.HasFormContentType && req.Form.ContainsKey("decision"))
+        {
+            _decideCode = req.Form["code"].ToString();
+        }
+    }
+
+    private string[] GuessKeys()
+    {
+        return [$"user:{Http!.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value}", $"ip:{ClientIp.Of(Http)}"];
+    }
+
+    private bool Paused()
+    {
+        if (!Limiter.Blocked(GuessKeys(), DateTime.UtcNow))
+        {
+            return false;
+        }
+
+        _error = "Too many wrong codes. Wait 15 minutes, then try again.";
+        return true;
+    }
+
+    private string WrongCode(string what)
+    {
+        Limiter.Miss(GuessKeys(), DateTime.UtcNow);
+        var left = Limiter.Left(GuessKeys(), DateTime.UtcNow);
+        return left == 0
+            ? "Too many wrong codes. Wait 15 minutes, then try again."
+            : $"{what} Check the code in the other app ({left} {(left == 1 ? "try" : "tries")} left).";
+    }
+
+    private async Task LookUpAsync()
+    {
+        if (!_isAdmin || Http is null || Paused())
+        {
+            return;
+        }
+
+        Code = Http.Request.Form["code"].ToString();
+        _request = await OAuth.FindDeviceAsync(Code, DateTime.UtcNow);
+        if (_request is null)
+        {
+            _error = WrongCode("That code is wrong or has expired.");
+        }
+    }
+
+    private async Task DecideAsync()
+    {
+        _decideCode = null; // handled: the next render shows the outcome (or the code box again on an error)
+        if (!_isAdmin || Http is null || Paused())
+        {
+            return;
+        }
+
+        var code = Http.Request.Form["code"].ToString();
+        var allow = Http.Request.Form["decision"] == "allow";
+        var userId = Http.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+        switch (await OAuth.DecideAsync(code, allow, userId, DateTime.UtcNow))
+        {
+            case DecideResult.Done:
+                _outcome = allow ? "Connected. You can go back to the app now." : "Declined. Nothing was connected.";
+                break;
+            case DecideResult.NotAdmin:
+                _error = "Ask your company Admin: only an Admin can connect apps.";
+                break;
+            default:
+                // Expired or already used; counted so this POST can't be a way round the wrong-code limit.
+                _error = WrongCode("That code has expired or was already used.");
+                break;
+        }
+    }
+
+    private static string Describe(string scope) => scope switch
+    {
+        PartnerOAuthService.ScopeWrite => "Create and update loan applications for your company.",
+        PartnerOAuthService.ScopeRead => "Read your company's loan applications and their status.",
+        _ => scope,
+    };
+}

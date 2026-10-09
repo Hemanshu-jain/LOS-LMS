@@ -78,16 +78,22 @@ public class Disbursement
 
     // ---- E-agreement, welcome letter, welcome SMS ----
     //
-    // The two documents are generated for real. Dispatch to an e-sign provider and an SMS gateway are
-    // honest stubs — the status columns only ever leave their default until a real provider is wired,
-    // and specifically are never set to 'Signed'/'Sent' by anything in this build.
+    // The two documents are generated for real. E-sign goes to Digio once the company's Digio keys are
+    // set; the SMS gateway is still an honest stub.
 
     [MaxLength(400)]
     public string? AgreementFilePath { get; set; }
 
-    /// <summary>NotSent / Sent / Signed. Only ever 'NotSent' in this build — no e-sign provider.</summary>
+    /// <summary>
+    /// NotSent / Sent / Signed / Failed / Rejected. 'Sent' only after Digio accepts the document; the rest
+    /// ONLY from Digio's verified webhook (<see cref="Services.DigioClient.ApplyWebhookAsync"/>).
+    /// </summary>
     [MaxLength(20)]
     public string AgreementEsignStatus { get; set; } = "NotSent";
+
+    /// <summary>Digio's document id for the agreement sent for e-Sign; the webhook finds the file by it.</summary>
+    [MaxLength(80)]
+    public string? EsignDocumentId { get; set; }
 
     [MaxLength(400)]
     public string? WelcomeLetterFilePath { get; set; }

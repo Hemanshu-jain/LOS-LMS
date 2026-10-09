@@ -116,6 +116,7 @@
     /// </remarks>
     private IComponentRenderMode? RenderModeForRequest =>
         HttpContext?.Request.Path.StartsWithSegments("/account") == true
+        || HttpContext?.Request.Path.StartsWithSegments("/link") == true
         || HttpContext?.Request.Path.StartsWithSegments("/Error") == true
             ? null
             : InteractiveServer;

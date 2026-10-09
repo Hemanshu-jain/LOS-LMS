@@ -1,0 +1,111 @@
+@page "/admin/connected-apps"
+@using LosLms.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = TenantContext.AdminRoles)]
+@inject PartnerOAuthService OAuth
+@inject TenantContext Tenant
+
+<PageTitle>Connected apps · LOS/LMS</PageTitle>
+
+@* Partner software this company has allowed to reach its data (approved at /link). Disconnect revokes the
+   connection and every token behind it at once. Admin only; a SuperAdmin sees the company they are acting as. *@
+
+<div class="ca-page">
+    <div class="ca-card">
+        <span class="system-label">LOS/LMS · Integrations</span>
+        <h1 class="ca-title">Connected apps</h1>
+
+        @if (_loading)
+        {
+            <p class="ca-muted">Loading…</p>
+        }
+        else if (_companyId is null)
+        {
+            <p class="ca-muted">Open a company first to see its connected apps.</p>
+        }
+        else
+        {
+            <p class="ca-muted">To connect an app, start “Connect to LOS-LMS” in that app and enter the code it shows at
+                <a href="/link">/link</a>.</p>
+
+            @if (_message is not null) { <p class="ca-msg" role="status">@_message</p> }
+
+            @if (_apps.Count == 0)
+            {
+                <p class="ca-muted">No apps are connected.</p>
+            }
+            else
+            {
+                <table class="ca-table">
+                    <thead><tr><th>App</th><th>Approved by</th><th>Connected</th><th>Last used</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var a in _apps)
+                    {
+                        <tr>
+                            <td>@a.AppName</td>
+                            <td>@a.ApprovedBy</td>
+                            <td>@a.ConnectedAt.ToLocalTime().ToString("d MMM yyyy")</td>
+                            <td>@(a.LastUsedAt is { } used ? used.ToLocalTime().ToString("d MMM yyyy, h:mm tt") : "Never")</td>
+                            <td>
+                                @if (_confirmId == a.Id)
+                                {
+                                    <span>Cut off @a.AppName?</span>
+                                    <button type="button" class="ca-btn ca-danger" @onclick="() => DisconnectAsync(a)">Yes, disconnect</button>
+                                    <button type="button" class="ca-btn" @onclick="() => _confirmId = null">Cancel</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="ca-btn" @onclick="() => _confirmId = a.Id">Disconnect</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .ca-page { min-height: 100vh; padding: 20px 24px 40px; background: #eef1f5; }
+    .ca-card { max-width: 900px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+    .ca-title { margin: 4px 0 4px; font-size: 17px; font-weight: 600; color: #1d2733; }
+    .ca-muted { color: #6b7686; font-size: 12.5px; margin: 6px 0; }
+    .ca-msg { color: #1d6b2c; font-size: 12.5px; }
+    .ca-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+    .ca-table th, .ca-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e4e8ee; }
+    .ca-btn { padding: 4px 12px; font-size: 12px; font-weight: 600; color: #1d2733; background: #fff; border: 1px solid #b8c1cd; border-radius: 3px; cursor: pointer; }
+    .ca-btn:hover { background: #eef1f5; }
+    .ca-btn:focus-visible { outline: 2px solid #1d2733; outline-offset: 2px; }
+    .ca-danger { color: #fff; background: #a32020; border-color: #a32020; }
+    .ca-danger:hover { background: #7f1818; }
+</style>
+
+@code {
+    private IReadOnlyList<ConnectedApp> _apps = [];
+    private int? _companyId;
+    private string? _confirmId;
+    private string? _message;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        _companyId = Tenant.CompanyId;
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync() =>
+        _apps = _companyId is { } id ? await OAuth.ListConnectionsAsync(id) : [];
+
+    private async Task DisconnectAsync(ConnectedApp app)
+    {
+        _confirmId = null;
+        _message = _companyId is { } id && await OAuth.DisconnectAsync(app.Id, id, DateTime.UtcNow)
+            ? $"{app.AppName} is disconnected. Its access was cut immediately."
+            : "That app was already disconnected.";
+        await LoadAsync();
+    }
+}

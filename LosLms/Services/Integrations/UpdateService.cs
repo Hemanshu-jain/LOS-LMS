@@ -27,7 +27,7 @@ public sealed record UpdateCheckResult(
 /// <summary>
 /// Checks for and downloads updates from a public GitHub repository's Releases. Applying an update is
 /// deliberately NOT here — a running Windows exe cannot overwrite itself, so the actual swap is done by
-/// the separate watchdog process, which this only signals (see <see cref="WriteApplySignal"/>).
+/// the separate launcher process (LOS-LMS.exe), which this only signals (see <see cref="WriteApplySignal"/>).
 /// </summary>
 /// <remarks>
 /// Owner/repo come from configuration (<c>Updates:GitHubOwner</c> / <c>Updates:GitHubRepo</c>), never
@@ -38,6 +38,8 @@ public static class UpdateService
 {
     /// <summary>Well-known signal file the watchdog polls for. Its contents are the staged zip's path.</summary>
     public const string ApplySignalFileName = "apply.signal";
+
+    private static readonly SemaphoreSlim DownloadLock = new(1, 1);
 
     public static async Task<UpdateCheckResult> CheckAsync(
         HttpClient http, string? owner, string? repo, string currentVersion, CancellationToken ct = default)
@@ -115,37 +117,58 @@ public static class UpdateService
 
     /// <summary>
     /// Streams the release asset zip into the staging folder, then verifies it was signed by the vendor.
-    /// Returns the saved file path on success; throws (and deletes the staged zip) if the signature is
+    /// Returns the saved file path on success; throws (and deletes the partial download) if the signature is
     /// missing or does not match, so an unverified update is never handed on to be applied.
     /// </summary>
     public static async Task<string> DownloadAsync(
         HttpClient http, string assetUrl, string assetName, string stagingFolder, CancellationToken ct = default)
     {
-        Directory.CreateDirectory(stagingFolder);
-        var destination = Path.Combine(stagingFolder, assetName);
-
-        using (var response = await http.GetAsync(assetUrl, HttpCompletionOption.ResponseHeadersRead, ct))
+        // One download at a time: the auto-apply poll and the Updates-page button share the same staging
+        // file, and two writers on it is what produced "file in use".
+        await DownloadLock.WaitAsync(ct);
+        try
         {
-            response.EnsureSuccessStatusCode();
-            await using var source = await response.Content.ReadAsStreamAsync(ct);
-            await using var file = File.Create(destination);
-            await source.CopyToAsync(file, ct);
-        }
+            Directory.CreateDirectory(stagingFolder);
+            var destination = Path.Combine(stagingFolder, assetName);
+            var partial = destination + ".part";
+            TryDelete(partial); // a leftover from a crashed earlier run
 
-        // The detached signature is published as "<asset>.sig" alongside the zip on the same release.
-        // Refuse to keep anything we cannot prove came from the vendor: a tampered download, or a zip
-        // swapped onto the public release by someone with write access, fails here — before the caller
-        // can ever signal the watchdog to apply it.
-        var signature = await TryDownloadBytesAsync(http, assetUrl + ".sig", ct);
-        if (signature is null || !UpdateSigning.VerifyFile(destination, signature))
+            try
+            {
+                using (var response = await http.GetAsync(assetUrl, HttpCompletionOption.ResponseHeadersRead, ct))
+                {
+                    response.EnsureSuccessStatusCode();
+                    await using var source = await response.Content.ReadAsStreamAsync(ct);
+                    await using var file = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None);
+                    await source.CopyToAsync(file, ct);
+                }
+
+                // The detached signature is published as "<asset>.sig" alongside the zip on the same release.
+                // Refuse to keep anything we cannot prove came from the vendor: a tampered download, or a zip
+                // swapped onto the public release by someone with write access, fails here — before the caller
+                // can ever signal the watchdog to apply it.
+                var signature = await TryDownloadBytesAsync(http, assetUrl + ".sig", ct);
+                if (signature is null || !UpdateSigning.VerifyFile(partial, signature))
+                {
+                    throw new InvalidOperationException(
+                        "Update signature check failed — this download was not signed by the vendor or was altered "
+                        + "after signing. The update was NOT applied.");
+                }
+
+                // Only a verified file ever takes the real name.
+                File.Move(partial, destination, overwrite: true);
+                return destination;
+            }
+            catch
+            {
+                TryDelete(partial);
+                throw;
+            }
+        }
+        finally
         {
-            TryDelete(destination);
-            throw new InvalidOperationException(
-                "Update signature check failed — this download was not signed by the vendor or was altered "
-                + "after signing. The update was NOT applied.");
+            DownloadLock.Release();
         }
-
-        return destination;
     }
 
     private static async Task<byte[]?> TryDownloadBytesAsync(HttpClient http, string url, CancellationToken ct)

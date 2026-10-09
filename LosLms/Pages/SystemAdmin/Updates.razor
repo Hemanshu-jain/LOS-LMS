@@ -13,8 +13,8 @@
 
 @* Server-lifecycle management, SuperAdmin only — not a per-company Admin concern. Checks a public
    GitHub repo's latest Release, downloads the matching build zip, and (only on an explicit second
-   confirmation) signals the watchdog to swap it in. The app never overwrites its own running binaries;
-   the watchdog does that, and rolls back if anything fails. *@
+   confirmation) signals the launcher to swap it in. The app never overwrites its own running binaries;
+   the launcher does that, and rolls back if anything fails. *@
 
 <PageTitle>System · LOS/LMS</PageTitle>
 
@@ -91,7 +91,7 @@
                         <div class="sys-confirm" role="alertdialog" aria-label="Confirm update">
                             <p>
                                 This stops the server, swaps in <strong>@_result.LatestTag</strong>, and restarts.
-                                Branch staff are briefly disconnected. If the swap fails, the watchdog restores the
+                                Branch staff are briefly disconnected. If the swap fails, the launcher restores the
                                 current version automatically.
                             </p>
                             <div class="sys-confirm-actions">
@@ -372,12 +372,12 @@
             await UpdateService.WriteApplySignal(StagingFolder, _downloadedZip);
             _confirmApply = false;
             _message =
-                "Signalled the watchdog. It will stop the server, apply the update, and restart it shortly — "
+                "Signalled the launcher. It will stop the server, apply the update, and restart it shortly — "
                 + "reconnect in a minute. If the update can't be applied, the current version is kept running.";
         }
         catch (Exception ex)
         {
-            _message = $"Couldn't signal the watchdog — {ex.Message}. Is the server running under LosLms.Watchdog.exe?";
+            _message = $"Couldn't signal the launcher — {ex.Message}. Is the server running under LOS-LMS.exe?";
         }
         finally
         {

@@ -115,6 +115,20 @@ builder.Services.AddScoped<SignatureDetectionService>();
 // seeder. Scoped, because it creates the admin through the scoped UserManager.
 builder.Services.AddScoped<CompanyProvisioningService>();
 
+// Provider (Digio) API metering + postpaid monthly billing: usage log, rate card, invoices and the
+// pause-after-grace gate. Nothing calls a provider yet; the service is ready for when keys arrive.
+builder.Services.Configure<ApiBillingOptions>(builder.Configuration.GetSection(ApiBillingOptions.Section));
+builder.Services.AddScoped<ApiBillingService>();
+builder.Services.AddScoped<DigioClient>();
+
+// "Connect to LOS-LMS": OAuth device-flow server for partner desktop software (Paavan), the PartnerBearer
+// scheme + loans:read / loans:write policies the partner data API uses, the /link wrong-code limiter and
+// the expired-code purge.
+builder.Services.AddScoped<PartnerOAuthService>();
+builder.Services.AddSingleton<PartnerGuessLimiter>();
+builder.Services.AddHostedService<PartnerOAuthPurgeService>();
+builder.Services.AddPartnerAuth();
+
 // Identity's UserStore and RoleStore resolve LosDbContext directly rather than through the factory,
 // so hand them one built the same way.
 builder.Services.AddScoped(sp =>
@@ -168,7 +182,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 // header cannot be spoofed by a remote user reaching the backend directly.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedFor;
+    // Proto only: X-Forwarded-For is deliberately NOT applied (with every proxy trusted it let any caller rewrite
+    // RemoteIpAddress); ClientIp.Of takes the tunnel's CF-Connecting-IP when the socket peer is loopback.
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 });
@@ -202,20 +218,29 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
+        // Partner data API: generous (a daily sync of a whole book is a few hundred rows per call) but bounded.
+        if (context.Request.Path.StartsWithSegments("/api/v1"))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                "api:" + ClientIp.Of(context),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+        }
+
+        // Partner software polling /oauth/* is limited per IP too, at a higher ceiling than sign-in:
+        // a device poll every 5 s is 12 a minute.
+        var isOAuth = context.Request.Path.StartsWithSegments(PartnerOAuthEndpoints.PathPrefix, StringComparison.OrdinalIgnoreCase);
         var isSensitivePost = HttpMethods.IsPost(context.Request.Method)
             && (context.Request.Path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase)
                 || context.Request.Path.StartsWithSegments("/account/register", StringComparison.OrdinalIgnoreCase));
-        if (!isSensitivePost)
+        if (!isSensitivePost && !isOAuth)
         {
             return RateLimitPartition.GetNoLimiter("unlimited");
         }
 
-        var clientIp = context.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
-            ?? context.Connection.RemoteIpAddress?.ToString()
-            ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+        var clientIp = ClientIp.Of(context);
+        return RateLimitPartition.GetFixedWindowLimiter(isOAuth ? "oauth:" + clientIp : clientIp, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 10,
+            PermitLimit = isOAuth ? 60 : 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         });
@@ -343,6 +368,22 @@ var csp =
     "connect-src 'self'; " +
     "form-action 'self'";
 
+// Anonymous liveness/version probe for release checks and the launcher's post-update verification.
+// Branched off BEFORE auth, the maintenance gate and the company-setup redirect so it always answers;
+// returns only status + version, never data.
+var runningVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown";
+app.MapWhen(
+    c => c.Request.Path == "/health",
+    b => b.Run(c => c.Response.WriteAsJsonAsync(new { status = "ok", version = runningVersion })));
+
+// Partner data API: every error, including the empty-bodied 401/403/429 the platform would send, comes
+// back as {error, message, details[]}. Wraps the rest of the pipeline for /api/v1 only.
+app.UseWhen(c => c.Request.Path.StartsWithSegments("/api/v1"), b =>
+{
+    var maintenanceState = app.Services.GetRequiredService<MaintenanceState>();
+    b.UseJsonErrors().UseMaintenanceWriteBlock(() => maintenanceState.IsOn);
+});
+
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
@@ -356,8 +397,74 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.UseDefaultFiles(); // /docs/ -> /docs/index.html
 app.UseStaticFiles();
 app.UseRateLimiter();
+
+// "Connect to LOS-LMS" token endpoints (/oauth/*): server-to-server from partner software, so a terminal
+// branch before auth, maintenance, the company-setup redirect and antiforgery. Rate-limited above.
+app.UsePartnerOAuth();
+
+// Digio webhooks: POST /webhooks/digio/{companyId}. Server-to-server, so no user, no antiforgery — it is
+// handled here, before auth/maintenance/antiforgery, and short-circuits. Trust comes from the HMAC
+// (X-Digio-Checksum, per-company secret) — not Digio's IPs, which the Cloudflare tunnel hides. Always
+// answers fast: Digio wants 200 within 10 s and retries otherwise.
+app.Use(async (context, next) =>
+{
+    if (!HttpMethods.IsPost(context.Request.Method)
+        || !context.Request.Path.StartsWithSegments("/webhooks/digio", out var rest))
+    {
+        await next();
+        return;
+    }
+
+    // Always write a body: an empty 4xx gets re-executed by the status-code pages as a POST to the error
+    // route, which Blazor's antiforgery then turns into a misleading 400 (same as /api/party-media).
+    Task Respond(int status, string text)
+    {
+        context.Response.StatusCode = status;
+        return context.Response.WriteAsync(text);
+    }
+
+    if (!int.TryParse(rest.Value?.Trim('/'), out var companyId)
+        || context.Request.ContentLength is > 1_000_000)
+    {
+        await Respond(StatusCodes.Status400BadRequest, "bad request");
+        return;
+    }
+
+    using var reader = new StreamReader(context.Request.Body);
+    var body = await reader.ReadToEndAsync();
+
+    var digio = context.RequestServices.GetRequiredService<DigioClient>();
+    var secret = digio.Credentials(companyId)?.WebhookSecret;
+    if (string.IsNullOrEmpty(secret)
+        || !DigioClient.ChecksumMatches(secret, body, context.Request.Headers["X-Digio-Checksum"]))
+    {
+        await Respond(StatusCodes.Status401Unauthorized, "invalid checksum");
+        return;
+    }
+
+    try
+    {
+        var factory = context.RequestServices.GetRequiredService<IDbContextFactory<LosDbContext>>();
+        await using var db = await factory.CreateDbContextAsync();
+        if (await DigioClient.ApplyWebhookAsync(db, companyId, body))
+        {
+            // The e-Sign credit is consumed on signing, so that is when it is metered.
+            await context.RequestServices.GetRequiredService<ApiBillingService>()
+                .RecordAsync(companyId, DigioRates.ESignAadhaar, success: true);
+        }
+    }
+    catch (System.Text.Json.JsonException)
+    {
+        await Respond(StatusCodes.Status400BadRequest, "bad json");
+        return;
+    }
+
+    await Respond(StatusCodes.Status200OK, "ok");
+});
+
 app.UseAuthentication();
 
 // Maintenance gate. When maintenance mode is on, everyone except a signed-in SuperAdmin gets the branded
@@ -391,6 +498,7 @@ static bool IsMaintenanceExempt(HttpContext context)
         || path.StartsWithSegments("/_framework")    // Blazor runtime
         || path.StartsWithSegments("/_blazor")       // SignalR circuit
         || path.StartsWithSegments("/_content")      // component library assets
+        || path.StartsWithSegments("/api/v1")        // partner API keeps answering (JSON) during maintenance
         || path.StartsWithSegments("/Error");        // never mask a real error with the maintenance page
 }
 
@@ -510,6 +618,7 @@ app.Use(async (context, next) =>
         || p.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/_framework", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/_content", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/api/v1", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/Error", StringComparison.OrdinalIgnoreCase);
 
     var user = context.User;
@@ -579,6 +688,8 @@ static string ContentTypeFor(string extension) => extension.ToLowerInvariant() s
     ".mp4" => "video/mp4",
     _ => "application/octet-stream",
 };
+
+app.MapPartnerLoanApi();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

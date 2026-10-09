@@ -10,6 +10,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject DigioClient Digio
 
 <PageTitle>Post Sanction · @ApplicationId</PageTitle>
 
@@ -1050,30 +1051,63 @@ else
     }
 
     /// <summary>
-    /// Dispatches the generated agreement for e-signature (stubbed). No provider is configured, so the
-    /// status stays NotSent. Never sets 'Signed' — only a real provider's verified webhook may.
+    /// Sends the generated agreement to Digio for Aadhaar e-Sign. On acceptance the status becomes 'Sent';
+    /// never 'Signed' — only Digio's verified webhook may set that.
     /// </summary>
     private async Task SendForEsignAsync()
     {
         _esignNotice = null;
 
-        if (string.IsNullOrWhiteSpace(_disbursement.AgreementFilePath))
+        if (_application is null || string.IsNullOrWhiteSpace(_disbursement.AgreementFilePath))
         {
             _esignNotice = "Generate the agreement first.";
             return;
         }
 
-        var result = await EsignService.DispatchAsync(_disbursement.AgreementFilePath);
-        if (!result.IsConfigured)
+        if (_disbursement.AgreementEsignStatus is "Sent" or "Signed")
         {
-            _esignNotice = EsignService.Unavailable;
+            _esignNotice = $"Already {_disbursement.AgreementEsignStatus.ToLowerInvariant()} — not sent again.";
             return;
         }
 
-        // Dispatched, not signed. 'Signed' is set only by a verified provider webhook, which does not
-        // exist in this build.
-        _disbursement.AgreementEsignStatus = "Sent";
-        await SaveDisbursementAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var applicant = await db.Parties.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant");
+        var signer = !string.IsNullOrWhiteSpace(applicant?.Mobile) ? applicant.Mobile : applicant?.Email;
+        if (string.IsNullOrWhiteSpace(signer))
+        {
+            _esignNotice = "Add the applicant's mobile or email on Customer Details first — the signing link goes there.";
+            return;
+        }
+
+        var fullPath = Path.Combine(HostEnvironment.ContentRootPath, _disbursement.AgreementFilePath);
+        if (!File.Exists(fullPath))
+        {
+            _esignNotice = "The agreement file is missing — generate it again.";
+            return;
+        }
+
+        var result = await EsignService.DispatchAsync(
+            Digio, _application.CompanyId, ApplicationId, fullPath, signer, applicant!.FullName);
+
+        if (result.Status != DigioStatus.Ok || result.Str("id") is not { } documentId)
+        {
+            _esignNotice = result.Status switch
+            {
+                DigioStatus.NotConfigured => EsignService.Unavailable,
+                _ => result.Error ?? "Digio did not accept the document.",
+            };
+            return;
+        }
+
+        // Make sure the row exists with the current fields, then record the dispatch itself.
+        await PersistAsync(db);
+        await db.SaveChangesAsync();
+        var row = await db.Disbursements.FirstAsync(d => d.ApplicationId == ApplicationId);
+        row.AgreementEsignStatus = _disbursement.AgreementEsignStatus = "Sent";
+        row.EsignDocumentId = _disbursement.EsignDocumentId = documentId;
+        await db.SaveChangesAsync();
+        _esignNotice = $"Sent to the applicant ({signer}) for Aadhaar e-Sign.";
     }
 
     /// <summary>Writes generated PDF bytes to the guarded uploads folder, same shape as an upload.</summary>
@@ -1313,7 +1347,8 @@ else
         disbursement.WelcomeSmsStatus = _disbursement.WelcomeSmsStatus;
         disbursement.WelcomeSmsSentAt = _disbursement.WelcomeSmsSentAt;
         disbursement.AgreementFilePath = _disbursement.AgreementFilePath;
-        disbursement.AgreementEsignStatus = _disbursement.AgreementEsignStatus;
+        // AgreementEsignStatus is deliberately NOT copied: the Digio webhook sets it server-side, and this
+        // (auto)save from a stale page would otherwise overwrite 'Signed'. SendForEsignAsync writes it.
 
         var enach = await db.EnachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
         if (enach is null)

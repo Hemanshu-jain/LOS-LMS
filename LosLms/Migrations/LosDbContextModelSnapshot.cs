@@ -84,6 +84,344 @@ namespace LosLms.Migrations
                     b.ToTable("AdminRequest", (string)null);
                 });
 
+            modelBuilder.Entity("LosLms.Models.ApiInvoice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("GeneratedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("Gst")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PaymentNote")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateOnly>("PeriodStart")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("Subtotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "PeriodStart")
+                        .IsUnique();
+
+                    b.ToTable("ApiInvoice", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.ApiRate", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string>("Product")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<decimal>("UnitRate")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("ApiRate", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Code = "ESIGN_AADHAAR",
+                            IsActive = true,
+                            Name = "Aadhaar e-Sign (per credit)",
+                            Product = "DigiSign",
+                            UnitRate = 10.60m
+                        },
+                        new
+                        {
+                            Code = "KYC_DIGILOCKER",
+                            IsActive = true,
+                            Name = "DigiLocker document fetch",
+                            Product = "DigiKYC",
+                            UnitRate = 2.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_AADHAAR_XML",
+                            IsActive = true,
+                            Name = "Aadhaar Offline XML KYC",
+                            Product = "DigiKYC",
+                            UnitRate = 2.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_AADHAAR_MASK",
+                            IsActive = true,
+                            Name = "Aadhaar masking",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_UPI_VPA",
+                            IsActive = true,
+                            Name = "UPI VPA verification",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_ID_OCR",
+                            IsActive = true,
+                            Name = "ID card OCR (Aadhaar/PAN/Voter/Passport/RC)",
+                            Product = "DigiKYC",
+                            UnitRate = 2.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_ID_VERIFY",
+                            IsActive = true,
+                            Name = "ID verification (PAN, Voter ID…)",
+                            Product = "DigiKYC",
+                            UnitRate = 1.50m
+                        },
+                        new
+                        {
+                            Code = "KYC_SELFIE",
+                            IsActive = true,
+                            Name = "Selfie with liveness + geotag",
+                            Product = "DigiKYC",
+                            UnitRate = 2.50m
+                        },
+                        new
+                        {
+                            Code = "KYC_FACE_MATCH",
+                            IsActive = true,
+                            Name = "Face match",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_FUZZY_MATCH",
+                            IsActive = true,
+                            Name = "Name/address fuzzy match",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_BUSINESS",
+                            IsActive = true,
+                            Name = "Business KYC (GST, PAN, DIN, CIN…)",
+                            Product = "DigiKYC",
+                            UnitRate = 3.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_UAN",
+                            IsActive = true,
+                            Name = "UAN verification",
+                            Product = "DigiKYC",
+                            UnitRate = 15.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_VIDEO_1WAY",
+                            IsActive = true,
+                            Name = "1-way Video KYC",
+                            Product = "DigiKYC",
+                            UnitRate = 6.00m
+                        },
+                        new
+                        {
+                            Code = "KYC_GEOLOCATION",
+                            IsActive = true,
+                            Name = "Geolocation add-on",
+                            Product = "DigiKYC",
+                            UnitRate = 0.50m
+                        },
+                        new
+                        {
+                            Code = "KRA_CHECK",
+                            IsActive = true,
+                            Name = "KRA check",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KRA_FETCH",
+                            IsActive = true,
+                            Name = "KRA detail fetch",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KRA_DOWNLOAD",
+                            IsActive = true,
+                            Name = "KRA document download",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KRA_SUBMIT",
+                            IsActive = true,
+                            Name = "KRA submission",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "KRA_MODIFY",
+                            IsActive = true,
+                            Name = "KRA modify",
+                            Product = "DigiKYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
+                            Code = "BANK_PENNY_CHEQUE",
+                            IsActive = true,
+                            Name = "Cheque + penny drop",
+                            Product = "Bank verification",
+                            UnitRate = 3.50m
+                        },
+                        new
+                        {
+                            Code = "BANK_PENNY_DROP",
+                            IsActive = true,
+                            Name = "Penny drop (independent)",
+                            Product = "Bank verification",
+                            UnitRate = 2.50m
+                        },
+                        new
+                        {
+                            Code = "BANK_PENNY_REVERSE",
+                            IsActive = true,
+                            Name = "Reverse penny drop",
+                            Product = "Bank verification",
+                            UnitRate = 2.00m
+                        },
+                        new
+                        {
+                            Code = "BANK_PENNYLESS",
+                            IsActive = true,
+                            Name = "Pennyless check",
+                            Product = "Bank verification",
+                            UnitRate = 2.00m
+                        },
+                        new
+                        {
+                            Code = "BANK_STMT_ANALYZER",
+                            IsActive = true,
+                            Name = "Bank statement analyzer (per statement)",
+                            Product = "Bank verification",
+                            UnitRate = 13.00m
+                        },
+                        new
+                        {
+                            Code = "MANDATE_API",
+                            IsActive = true,
+                            Name = "e-Mandate (netbanking/debit card/Aadhaar)",
+                            Product = "DigiCollect",
+                            UnitRate = 4.50m
+                        },
+                        new
+                        {
+                            Code = "MANDATE_PHYSICAL",
+                            IsActive = true,
+                            Name = "Physical / scan NACH mandate",
+                            Product = "DigiCollect",
+                            UnitRate = 5.00m
+                        },
+                        new
+                        {
+                            Code = "MANDATE_ESIGN",
+                            IsActive = true,
+                            Name = "eSign eNACH mandate",
+                            Product = "DigiCollect",
+                            UnitRate = 12.00m
+                        },
+                        new
+                        {
+                            Code = "MANDATE_DEBIT",
+                            IsActive = true,
+                            Name = "ACH debit presentation",
+                            Product = "DigiCollect",
+                            UnitRate = 2.00m
+                        });
+                });
+
+            modelBuilder.Entity("LosLms.Models.ApiUsageLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("ApiCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("ApplicationId")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsSuccess")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("ProviderRef")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<decimal>("UnitRate")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "CreatedAt");
+
+                    b.ToTable("ApiUsageLog", (string)null);
+                });
+
             modelBuilder.Entity("LosLms.Models.Application", b =>
                 {
                     b.Property<string>("Id")
@@ -1069,6 +1407,10 @@ namespace LosLms.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("EsignDocumentId")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
                     b.Property<DateOnly?>("FirstEmiDate")
                         .HasColumnType("date");
 
@@ -1618,6 +1960,192 @@ namespace LosLms.Migrations
                     b.HasIndex("ApplicationId");
 
                     b.ToTable("Partners");
+                });
+
+            modelBuilder.Entity("LosLms.Models.PartnerClient", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<DateTime?>("DisabledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PartnerClient", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.PartnerConnection", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("ApprovedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("CompanyId", "RevokedAt");
+
+                    b.ToTable("PartnerConnection", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.PartnerDeviceCode", b =>
+                {
+                    b.Property<string>("DeviceHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("LastPolledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("PollInterval")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequesterIp")
+                        .HasMaxLength(45)
+                        .HasColumnType("varchar(45)");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("UserCodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.HasKey("DeviceHash");
+
+                    b.HasIndex("ClientId");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserCodeHash")
+                        .IsUnique();
+
+                    b.ToTable("PartnerDeviceCode", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.PartnerToken", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("AccessExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("AccessHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("RefreshExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("RefreshHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccessHash")
+                        .IsUnique();
+
+                    b.HasIndex("ConnectionId");
+
+                    b.HasIndex("RefreshHash")
+                        .IsUnique();
+
+                    b.ToTable("PartnerToken", (string)null);
                 });
 
             modelBuilder.Entity("LosLms.Models.Party", b =>
@@ -2737,6 +3265,28 @@ namespace LosLms.Migrations
                     b.Navigation("ReviewedBy");
                 });
 
+            modelBuilder.Entity("LosLms.Models.ApiInvoice", b =>
+                {
+                    b.HasOne("LosLms.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("LosLms.Models.ApiUsageLog", b =>
+                {
+                    b.HasOne("LosLms.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
             modelBuilder.Entity("LosLms.Models.Application", b =>
                 {
                     b.HasOne("LosLms.Models.ApplicationUser", "AssignedOfficerNavigation")
@@ -2997,6 +3547,39 @@ namespace LosLms.Migrations
                         .IsRequired();
 
                     b.Navigation("Application");
+                });
+
+            modelBuilder.Entity("LosLms.Models.PartnerConnection", b =>
+                {
+                    b.HasOne("LosLms.Models.PartnerClient", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LosLms.Models.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("LosLms.Models.PartnerDeviceCode", b =>
+                {
+                    b.HasOne("LosLms.Models.PartnerClient", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("LosLms.Models.PartnerToken", b =>
+                {
+                    b.HasOne("LosLms.Models.PartnerConnection", null)
+                        .WithMany()
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("LosLms.Models.Party", b =>

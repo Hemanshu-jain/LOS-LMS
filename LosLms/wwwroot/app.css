@@ -302,6 +302,17 @@ input[type=password]::-ms-clear { display: none; }
     outline-offset: 2px;
 }
 
+/* Quieter sibling of .auth-submit (e.g. Deny next to Allow). */
+.auth-submit-secondary {
+    margin-top: 8px;
+    background: #fff;
+    color: #1f3a5f;
+}
+
+.auth-submit-secondary:hover {
+    background: #eef1f5;
+}
+
 .auth-secondary {
     display: block;
     margin-top: 12px;
