@@ -1,0 +1,21 @@
+@using LosLms.Components.Shared
+
+@* Links, not copies: each page keeps its own URL (bookmarks, the pause screen's links) and its own role
+   check. They used to be top-nav items; they live here so the bar stays short. *@
+<Panel Title="Usage, apps and updates">
+    <p class="setup-note">Billing, connected software and server updates. Each opens its own page.</p>
+    <ul class="tool-links">
+        <li>
+            <a href="/admin/api-usage">API Usage</a>
+            <span>Monthly usage of verification services, invoices and payment status.</span>
+        </li>
+        <li>
+            <a href="/admin/connected-apps">Connected apps</a>
+            <span>Software linked to your company, such as Paavan. See who approved it and disconnect it.</span>
+        </li>
+        <li>
+            <a href="/system/updates">System updates</a>
+            <span>Check for a new version and install it.</span>
+        </li>
+    </ul>
+</Panel>
