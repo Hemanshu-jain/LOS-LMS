@@ -250,6 +250,48 @@ public sealed class ApiBillingTests : IDisposable
         Assert.Null(ApiBillingService.UpiLink(new PaymentDetails(), invoice)); // no UPI id, no link
     }
 
+    // ---- the vendor's all-companies view ----
+
+    private static ClaimsPrincipal SuperAdminWithHome(int companyId) => Principal(
+        new Claim(ClaimTypes.NameIdentifier, "vendor"),
+        new Claim(ClaimTypes.Role, TenantContext.SuperAdminRole),
+        new Claim(TenantContext.CompanyIdClaim, companyId.ToString())); // every real SuperAdmin account has a home company
+
+    private static TenantContext Tenant(ClaimsPrincipal user, ActingCompanyStore? acting = null)
+    {
+        var tenant = new TenantContext(new FakeAuthStateProvider(user), new HttpContextAccessor(), acting ?? new ActingCompanyStore());
+        tenant.EnsureLoadedAsync().GetAwaiter().GetResult();
+        return tenant;
+    }
+
+    [Fact]
+    public void ScopeCompanyId_IsEveryCompanyForANonActingSuperAdmin_EvenWithAHomeCompany()
+    {
+        var acting = new ActingCompanyStore();
+
+        Assert.Null(Tenant(SuperAdminWithHome(Company), acting).ScopeCompanyId); // the bug: this used to be the home company
+        acting.Set("vendor", OtherCompany);
+        Assert.Equal(OtherCompany, Tenant(SuperAdminWithHome(Company), acting).ScopeCompanyId);
+        Assert.Equal(OtherCompany, Tenant(CompanyUser(OtherCompany)).ScopeCompanyId); // a company Admin is always their own
+        Assert.Null(Tenant(SuperAdmin()).ScopeCompanyId); // no home company at all
+    }
+
+    [Fact]
+    public async Task NonActingSuperAdmin_ListsEveryCompanysBills_AndCanMarkOnePaid()
+    {
+        await OverdueInvoiceAsync(Company);
+        await OverdueInvoiceAsync(OtherCompany);
+        var now = Utc(2026, 9, 20);
+
+        var tenant = Tenant(SuperAdminWithHome(Company));
+        var bills = await _svc.InvoicesAsync(tenant.ScopeCompanyId); // what the page asks for
+
+        Assert.Equal([Company, OtherCompany], bills.Select(b => b.CompanyId).Order());
+        Assert.True(await _svc.MarkPaidAsync(bills.First(b => b.CompanyId == OtherCompany).Id, null, now));
+        Assert.True((await _svc.CheckAccessAsync(OtherCompany, now)).Allowed);
+        Assert.False((await _svc.CheckAccessAsync(Company, now)).Allowed);
+    }
+
     private static DateTime Utc(int y, int m, int d, int h = 12) => new(y, m, d, h, 0, 0, DateTimeKind.Utc);
 
     private LosDbContext NewContext(ClaimsPrincipal user)
