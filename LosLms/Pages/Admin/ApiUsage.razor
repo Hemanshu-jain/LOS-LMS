@@ -213,8 +213,8 @@
         _loading = true;
 
         // A SuperAdmin not acting as a company sees all of them; everyone else is one company.
-        _allCompanies = Tenant.IsSuperAdmin && Tenant.CompanyId is null;
-        int? scope = _allCompanies ? null : Tenant.CompanyId;
+        int? scope = Tenant.ScopeCompanyId;
+        _allCompanies = Tenant.IsSuperAdmin && scope is null;
 
         _lines = (await Billing.UsageForMonthAsync(scope, _month)).ToList();
         await Billing.EnsureInvoicesAsync(scope);
