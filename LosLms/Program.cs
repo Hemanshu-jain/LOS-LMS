@@ -208,6 +208,15 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
+        // Partner data API: generous (a daily sync of a whole book is a few hundred rows per call) but bounded.
+        if (context.Request.Path.StartsWithSegments("/api/v1"))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                "api:" + (context.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
+                    ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 });
+        }
+
         var isSensitivePost = HttpMethods.IsPost(context.Request.Method)
             && (context.Request.Path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase)
                 || context.Request.Path.StartsWithSegments("/account/register", StringComparison.OrdinalIgnoreCase));
@@ -357,6 +366,10 @@ app.MapWhen(
     c => c.Request.Path == "/health",
     b => b.Run(c => c.Response.WriteAsJsonAsync(new { status = "ok", version = runningVersion })));
 
+// Partner data API: every error, including the empty-bodied 401/403/429 the platform would send, comes
+// back as {error, message, details[]}. Wraps the rest of the pipeline for /api/v1 only.
+app.UseWhen(c => c.Request.Path.StartsWithSegments("/api/v1"), b => b.UseJsonErrors());
+
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
@@ -370,6 +383,7 @@ app.Use(async (context, next) =>
     await next();
 });
 
+app.UseDefaultFiles(); // /docs/ -> /docs/index.html
 app.UseStaticFiles();
 app.UseRateLimiter();
 
@@ -466,6 +480,7 @@ static bool IsMaintenanceExempt(HttpContext context)
         || path.StartsWithSegments("/_framework")    // Blazor runtime
         || path.StartsWithSegments("/_blazor")       // SignalR circuit
         || path.StartsWithSegments("/_content")      // component library assets
+        || path.StartsWithSegments("/api/v1")        // partner API keeps answering (JSON) during maintenance
         || path.StartsWithSegments("/Error");        // never mask a real error with the maintenance page
 }
 
@@ -585,6 +600,7 @@ app.Use(async (context, next) =>
         || p.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/_framework", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/_content", StringComparison.OrdinalIgnoreCase)
+        || p.StartsWithSegments("/api/v1", StringComparison.OrdinalIgnoreCase)
         || p.StartsWithSegments("/Error", StringComparison.OrdinalIgnoreCase);
 
     var user = context.User;
@@ -654,6 +670,8 @@ static string ContentTypeFor(string extension) => extension.ToLowerInvariant() s
     ".mp4" => "video/mp4",
     _ => "application/octet-stream",
 };
+
+app.MapPartnerLoanApi();
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
