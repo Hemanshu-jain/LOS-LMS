@@ -23,6 +23,10 @@ public static class PartnerLoanApi
     public const string ReadPolicy = "loans:read";
     public const string WritePolicy = "loans:write";
     public const int MaxBatch = 500;
+
+    /// <summary>The database column is decimal(18,2); anything larger would be a 500 at save time.</summary>
+    public const decimal MaxAmount = 9_999_999_999_999_999.99m;
+    private const string AmountReason = "must be between 0 and 9999999999999999.99";
     public const int DefaultPageSize = 50;
     public const int MaxPageSize = 200;
 
@@ -61,6 +65,27 @@ public static class PartnerLoanApi
                 _ => ("error", "The request failed."),
             };
             await r.WriteAsJsonAsync(new { error, message, details = Array.Empty<object>() });
+        });
+
+    /// <summary>While maintenance is on, partner WRITES are refused with a JSON 503 (reads stay open). The
+    /// HTML maintenance page is for browsers; this is what a sync client can act on.</summary>
+    public static IApplicationBuilder UseMaintenanceWriteBlock(this IApplicationBuilder app, Func<bool> isOn) =>
+        app.Use(async (context, next) =>
+        {
+            if (!isOn() || HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
+            {
+                await next();
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            context.Response.Headers["Retry-After"] = "120";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "maintenance",
+                message = "LOS/LMS is briefly down for maintenance. Nothing was saved. Retry in a few minutes.",
+                details = Array.Empty<object>(),
+            });
         });
 
     public static IEndpointRouteBuilder MapPartnerLoanApi(this IEndpointRouteBuilder routes)
@@ -187,8 +212,8 @@ public static class PartnerLoanApi
             if (product?.Length > 120) Bad("product", "must be 120 characters or fewer");
             if (status?.Length > 40) Bad("status", "must be 40 characters or fewer");
             if (branch?.Length > 100) Bad("branch", "must be 100 characters or fewer");
-            if (l.SanctionedAmount < 0) Bad("sanctionedAmount", "cannot be negative");
-            if (l.OutstandingAmount < 0) Bad("outstandingAmount", "cannot be negative");
+            if (l.SanctionedAmount is < 0 or > MaxAmount) Bad("sanctionedAmount", AmountReason);
+            if (l.OutstandingAmount is < 0 or > MaxAmount) Bad("outstandingAmount", AmountReason);
 
             if (Clean(l.DisbursedOn) is { } d)
             {
@@ -200,12 +225,15 @@ public static class PartnerLoanApi
 
             if (errors.All(e => e.Row != n))
             {
-                rows.Add(new Row(account!, name!, pan, mobile, product, l.SanctionedAmount, l.OutstandingAmount, status, disbursed, branch));
+                rows.Add(new Row(account!, name!, pan, mobile, product, Round(l.SanctionedAmount), Round(l.OutstandingAmount), status, disbursed, branch));
             }
         }
 
         return (rows, errors);
     }
+
+    // The column keeps 2 decimals; rounding here keeps a resend of the same figure "unchanged".
+    private static decimal? Round(decimal? v) => v is { } x ? Math.Round(x, 2, MidpointRounding.AwayFromZero) : null;
 
     private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 

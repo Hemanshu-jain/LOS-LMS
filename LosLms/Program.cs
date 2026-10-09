@@ -379,7 +379,11 @@ app.MapWhen(
 
 // Partner data API: every error, including the empty-bodied 401/403/429 the platform would send, comes
 // back as {error, message, details[]}. Wraps the rest of the pipeline for /api/v1 only.
-app.UseWhen(c => c.Request.Path.StartsWithSegments("/api/v1"), b => b.UseJsonErrors());
+app.UseWhen(c => c.Request.Path.StartsWithSegments("/api/v1"), b =>
+{
+    var maintenanceState = app.Services.GetRequiredService<MaintenanceState>();
+    b.UseJsonErrors().UseMaintenanceWriteBlock(() => maintenanceState.IsOn);
+});
 
 app.Use(async (context, next) =>
 {

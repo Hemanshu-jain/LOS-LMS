@@ -36,6 +36,7 @@ public sealed class PartnerLoanApiTests : IAsyncLifetime
     private DbContextOptions<LosDbContext> _options = null!;
     private WebApplication _app = null!;
     private HttpClient _http = null!;
+    private volatile bool _maintenance;
 
     public async Task InitializeAsync()
     {
@@ -64,6 +65,7 @@ public sealed class PartnerLoanApiTests : IAsyncLifetime
 
         _app = builder.Build();
         _app.UseJsonErrors();
+        _app.UseMaintenanceWriteBlock(() => _maintenance);
         _app.UseAuthentication();
         _app.UseAuthorization();
         _app.MapPartnerLoanApi();
@@ -213,6 +215,47 @@ public sealed class PartnerLoanApiTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.UnprocessableEntity, (await Get(A, "/api/v1/disbursals?since=yesterday")).StatusCode);
     }
 
+    [Fact]
+    public async Task Maintenance_RefusesWritesWith503Json_ButReadsKeepWorking()
+    {
+        await Post(A, new[] { Loan("M-1", "Maint") });
+        _maintenance = true;
+
+        var post = await Post(A, new[] { Loan("M-2", "Blocked") });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, post.StatusCode);
+        Assert.True(post.Headers.TryGetValues("Retry-After", out var retry) && retry.Any());
+        var body = await Body(post);
+        Assert.Equal("maintenance", body.GetProperty("error").GetString());
+        Assert.Equal(0, body.GetProperty("details").GetArrayLength());
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await Delete(A, "M-1")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Get(A, "/api/v1/loans/M-1")).StatusCode);   // reads stay open
+        Assert.Equal(HttpStatusCode.NotFound, (await Get(A, "/api/v1/loans/M-2")).StatusCode); // nothing saved
+
+        _maintenance = false;
+        Assert.Equal(HttpStatusCode.OK, (await Post(A, new[] { Loan("M-2", "Now fine") })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Amounts_OutsideTheColumnRange_Are422RowErrors_AndHalfPaiseRoundsStably()
+    {
+        var bad = await Post(A, new object[]
+        {
+            new { accountNumber = "B-1", customerName = "Huge", sanctionedAmount = 10_000_000_000_000_000m },
+            new { accountNumber = "B-2", customerName = "Neg", outstandingAmount = -0.01m },
+        });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, bad.StatusCode);
+        var details = (await Body(bad)).GetProperty("details").EnumerateArray()
+            .Select(d => (d.GetProperty("row").GetInt32(), d.GetProperty("field").GetString())).ToList();
+        Assert.Contains((1, "sanctionedAmount"), details);
+        Assert.Contains((2, "outstandingAmount"), details);
+
+        var edge = new object[] { new { accountNumber = "B-3", customerName = "Edge", sanctionedAmount = PartnerLoanApi.MaxAmount, outstandingAmount = 1.005m } };
+        Assert.Equal(1, Count(await Body(await Post(A, edge)), "created"));
+        Assert.Equal(1, Count(await Body(await Post(A, edge)), "unchanged")); // 1.005 is stored as 1.01 and resending is a no-op
+    }
+
+    // ---- helpers ----
     // ---- helpers ----------------------------------------------------------------------------------
 
     private static object Loan(string account, string name, decimal outstanding = 100m) => new
