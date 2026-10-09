@@ -20,7 +20,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <!-- SQLite in-memory: a real relational provider so navigation-based query filters translate the
          same way they do against MySQL, without needing a MySQL server in CI. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.29" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.19" />
   </ItemGroup>
 
   <ItemGroup>
