@@ -130,6 +130,14 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<ApiInvoice> ApiInvoices => Set<ApiInvoice>();
 
+    public DbSet<PartnerClient> PartnerClients => Set<PartnerClient>();
+
+    public DbSet<PartnerConnection> PartnerConnections => Set<PartnerConnection>();
+
+    public DbSet<PartnerToken> PartnerTokens => Set<PartnerToken>();
+
+    public DbSet<PartnerDeviceCode> PartnerDeviceCodes => Set<PartnerDeviceCode>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -930,6 +938,34 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany()
                 .HasForeignKey(i => i.CompanyId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Partner OAuth ("Connect to LOS-LMS"). Deliberately NO tenant query filter: the token endpoints
+        // run with no signed-in user, so PartnerOAuthService scopes every query by company itself.
+        modelBuilder.Entity<PartnerClient>().ToTable("PartnerClient");
+
+        modelBuilder.Entity<PartnerConnection>(entity =>
+        {
+            entity.ToTable("PartnerConnection");
+            entity.HasIndex(c => new { c.CompanyId, c.RevokedAt });
+            entity.HasOne<PartnerClient>().WithMany().HasForeignKey(c => c.ClientId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Company>().WithMany().HasForeignKey(c => c.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PartnerToken>(entity =>
+        {
+            entity.ToTable("PartnerToken");
+            entity.HasIndex(t => t.AccessHash).IsUnique();
+            entity.HasIndex(t => t.RefreshHash).IsUnique();
+            entity.HasOne<PartnerConnection>().WithMany().HasForeignKey(t => t.ConnectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PartnerDeviceCode>(entity =>
+        {
+            entity.ToTable("PartnerDeviceCode");
+            entity.HasIndex(d => d.UserCodeHash).IsUnique();
+            entity.HasIndex(d => d.ExpiresAt);
+            entity.HasOne<PartnerClient>().WithMany().HasForeignKey(d => d.ClientId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ApplicationUser>(entity =>

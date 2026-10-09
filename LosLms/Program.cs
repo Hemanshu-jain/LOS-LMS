@@ -121,6 +121,14 @@ builder.Services.Configure<ApiBillingOptions>(builder.Configuration.GetSection(A
 builder.Services.AddScoped<ApiBillingService>();
 builder.Services.AddScoped<DigioClient>();
 
+// "Connect to LOS-LMS": OAuth device-flow server for partner desktop software (Paavan), the PartnerBearer
+// scheme + loans:read / loans:write policies the partner data API uses, the /link wrong-code limiter and
+// the expired-code purge.
+builder.Services.AddScoped<PartnerOAuthService>();
+builder.Services.AddSingleton<PartnerGuessLimiter>();
+builder.Services.AddHostedService<PartnerOAuthPurgeService>();
+builder.Services.AddPartnerAuth();
+
 // Identity's UserStore and RoleStore resolve LosDbContext directly rather than through the factory,
 // so hand them one built the same way.
 builder.Services.AddScoped(sp =>
@@ -208,10 +216,13 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
     {
+        // Partner software polling /oauth/* is limited per IP too, at a higher ceiling than sign-in:
+        // a device poll every 5 s is 12 a minute.
+        var isOAuth = context.Request.Path.StartsWithSegments(PartnerOAuthEndpoints.PathPrefix, StringComparison.OrdinalIgnoreCase);
         var isSensitivePost = HttpMethods.IsPost(context.Request.Method)
             && (context.Request.Path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase)
                 || context.Request.Path.StartsWithSegments("/account/register", StringComparison.OrdinalIgnoreCase));
-        if (!isSensitivePost)
+        if (!isSensitivePost && !isOAuth)
         {
             return RateLimitPartition.GetNoLimiter("unlimited");
         }
@@ -219,9 +230,9 @@ builder.Services.AddRateLimiter(options =>
         var clientIp = context.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
             ?? context.Connection.RemoteIpAddress?.ToString()
             ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(clientIp, _ => new FixedWindowRateLimiterOptions
+        return RateLimitPartition.GetFixedWindowLimiter(isOAuth ? "oauth:" + clientIp : clientIp, _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 10,
+            PermitLimit = isOAuth ? 60 : 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         });
@@ -372,6 +383,10 @@ app.Use(async (context, next) =>
 
 app.UseStaticFiles();
 app.UseRateLimiter();
+
+// "Connect to LOS-LMS" token endpoints (/oauth/*): server-to-server from partner software, so a terminal
+// branch before auth, maintenance, the company-setup redirect and antiforgery. Rate-limited above.
+app.UsePartnerOAuth();
 
 // Digio webhooks: POST /webhooks/digio/{companyId}. Server-to-server, so no user, no antiforgery — it is
 // handled here, before auth/maintenance/antiforgery, and short-circuits. Trust comes from the HMAC

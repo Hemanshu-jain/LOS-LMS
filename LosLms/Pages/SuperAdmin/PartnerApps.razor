@@ -1,0 +1,125 @@
+@page "/system/partner-apps"
+@using LosLms.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
+@inject PartnerOAuthService OAuth
+@inject TenantContext Tenant
+
+<PageTitle>Partner apps · LOS/LMS</PageTitle>
+
+@* Vendor-only. Registers partner DESKTOP apps for "Connect to LOS-LMS" (public clients: no secret, nothing
+   to keep safe, the client id is copy-pasted into the partner's code). The name is what every Admin sees on
+   the Allow screen and there is no rename button, so spell it as the partner wants it. Disabling an app
+   also cuts every company's connection to it, hence the confirm step. *@
+
+<div class="pa-page">
+    <div class="pa-card">
+        <span class="system-label">LOS/LMS · Integrations</span>
+        <h1 class="pa-title">Partner apps</h1>
+        <p class="pa-muted">Scopes granted to every app: loans:write, loans:read (the app asks for the ones it needs).</p>
+
+        <div class="pa-add">
+            <input class="field-input" @bind="_name" placeholder="App name, e.g. Paavan Software" maxlength="120" aria-label="App name" />
+            <button type="button" class="pa-btn pa-primary" @onclick="RegisterAsync">Register desktop app</button>
+        </div>
+        @if (_message is not null) { <p class="pa-msg" role="status">@_message</p> }
+        @if (_error is not null) { <p class="inline-error" role="alert">@_error</p> }
+
+        @if (_apps is null)
+        {
+            <p class="pa-muted">Loading…</p>
+        }
+        else if (_apps.Count == 0)
+        {
+            <p class="pa-muted">No partner apps registered yet.</p>
+        }
+        else
+        {
+            <table class="pa-table">
+                <thead><tr><th>App</th><th>Client ID</th><th>Connections</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var a in _apps)
+                {
+                    <tr>
+                        <td>@a.Name</td>
+                        <td><code>@a.Id</code></td>
+                        <td>@a.Connections</td>
+                        <td>@(a.DisabledAt is null ? "Active" : "Disabled")</td>
+                        <td>
+                            @if (a.DisabledAt is null)
+                            {
+                                @if (_confirmId == a.Id)
+                                {
+                                    <span>Disable @a.Name and cut @a.Connections connection(s)?</span>
+                                    <button type="button" class="pa-btn pa-danger" @onclick="() => DisableAsync(a)">Yes, disable</button>
+                                    <button type="button" class="pa-btn" @onclick="() => _confirmId = null">Cancel</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="pa-btn" @onclick="() => _confirmId = a.Id">Disable</button>
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<style>
+    .pa-page { min-height: 100vh; padding: 20px 24px 40px; background: #eef1f5; }
+    .pa-card { max-width: 900px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+    .pa-title { margin: 4px 0 4px; font-size: 17px; font-weight: 600; color: #1d2733; }
+    .pa-muted { color: #6b7686; font-size: 12.5px; margin: 6px 0; }
+    .pa-msg { color: #1d6b2c; font-size: 12.5px; }
+    .pa-add { display: flex; gap: 8px; margin: 12px 0 6px; }
+    .pa-add .field-input { flex: 1; }
+    .pa-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 12px; }
+    .pa-table th, .pa-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #e4e8ee; }
+    .pa-btn { padding: 4px 12px; font-size: 12px; font-weight: 600; color: #1d2733; background: #fff; border: 1px solid #b8c1cd; border-radius: 3px; cursor: pointer; }
+    .pa-btn:hover { background: #eef1f5; }
+    .pa-btn:focus-visible { outline: 2px solid #1d2733; outline-offset: 2px; }
+    .pa-primary { color: #fff; background: #1d2733; border-color: #1d2733; }
+    .pa-primary:hover { background: #0f161e; }
+    .pa-danger { color: #fff; background: #a32020; border-color: #a32020; }
+    .pa-danger:hover { background: #7f1818; }
+    code { font-size: 12px; background: #f4f6f9; padding: 1px 5px; border-radius: 3px; word-break: break-all; }
+</style>
+
+@code {
+    private IReadOnlyList<PartnerAppRow>? _apps;
+    private string _name = "";
+    private string? _confirmId;
+    private string? _message;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => _apps = await OAuth.ListClientsAsync();
+
+    private async Task RegisterAsync()
+    {
+        _message = _error = null;
+        await Tenant.EnsureLoadedAsync();
+        try
+        {
+            var id = await OAuth.CreateClientAsync(_name, Tenant.UserId ?? "", DateTime.UtcNow);
+            _message = $"Registered. Client ID: {id}";
+            _name = "";
+        }
+        catch (ArgumentException e)
+        {
+            _error = e.Message;
+        }
+
+        _apps = await OAuth.ListClientsAsync();
+    }
+
+    private async Task DisableAsync(PartnerAppRow app)
+    {
+        _confirmId = null;
+        await OAuth.DisableClientAsync(app.Id, DateTime.UtcNow);
+        _message = $"{app.Name} is disabled and its connections are cut.";
+        _apps = await OAuth.ListClientsAsync();
+    }
+}

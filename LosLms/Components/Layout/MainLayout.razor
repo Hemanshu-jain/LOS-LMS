@@ -82,6 +82,7 @@ else
                 <Authorized>
                     <a class="app-nav-link" href="/admin/inbox">Admin Inbox</a>
                     <a class="app-nav-link" href="/admin/api-usage">API Usage</a>
+                    <a class="app-nav-link" href="/admin/connected-apps">Connected apps</a>
                     <a class="app-nav-link" href="/settings">Settings</a>
                 </Authorized>
             </AuthorizeView>
@@ -98,6 +99,7 @@ else
             <AuthorizeView Roles="@TenantContext.SuperAdminRole" Context="sa">
                 <Authorized>
                     <a class="app-nav-link" href="/system/digio">Digio keys</a>
+                    <a class="app-nav-link" href="/system/partner-apps">Partner apps</a>
                     <a class="app-nav-link" href="/companies">Switch company</a>
                 </Authorized>
             </AuthorizeView>
