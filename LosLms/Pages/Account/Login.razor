@@ -5,6 +5,7 @@
 @attribute [AllowAnonymous]
 @inject SignInManager<ApplicationUser> SignInManager
 @inject UserManager<ApplicationUser> UserManager
+@inject Microsoft.EntityFrameworkCore.IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject LosLms.Services.TurnstileVerifier Turnstile
 @inject IHttpContextAccessor HttpContextAccessor
@@ -121,7 +122,7 @@
     {
         // On a brand-new system (no admin yet) point the operator at the create-account wizard. The
         // form stays usable so the vendor master account can still sign in.
-        _needsSetup = await IdentitySeeder.NeedsFirstAdminAsync(UserManager);
+        _needsSetup = await IdentitySeeder.NeedsFirstAdminAsync(DbFactory);
     }
 
     private async Task SignInAsync()
