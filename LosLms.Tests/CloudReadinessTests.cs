@@ -139,6 +139,29 @@ public sealed class CloudReadinessTests : IDisposable
     }
 
     [Fact]
+    public void CaPem_PastedWithoutItsBeginEndLines_IsWrappedIntoACertificateBlock()
+    {
+        using var key = RSA.Create(2048);
+        var request = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=test-ca", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        var full = cert.ExportCertificatePem();
+        var body = string.Concat(full.Split('\n').Where(l => !l.StartsWith("-----") && l.Trim().Length > 0)).Trim();
+
+        // Bare body, with stray spaces and a line break in the middle like a pasted env value can have.
+        var normalized = CloudConfig.NormalizePem("  " + body[..100] + " \n " + body[100..] + "  ");
+
+        Assert.StartsWith("-----BEGIN CERTIFICATE-----\n", normalized);
+        Assert.EndsWith("\n-----END CERTIFICATE-----\n", normalized);
+        var lines = normalized.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(1).SkipLast(1).ToList();
+        Assert.All(lines.SkipLast(1), l => Assert.Equal(64, l.Length));
+        Assert.InRange(lines[^1].Length, 1, 64);
+        Assert.Equal(body, string.Concat(lines));
+        Assert.Equal(cert.Thumbprint, System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(normalized).Thumbprint);
+
+        Assert.Equal(full, CloudConfig.NormalizePem(full)); // a proper PEM is left alone
+    }
+
+    [Fact]
     public void Proxy_LimitTurnsOnForwardedFor_OtherwiseSchemeOnly()
     {
         var tunnel = new ForwardedHeadersOptions();
