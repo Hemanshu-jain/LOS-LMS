@@ -1,0 +1,20 @@
+@page "/account/check-email"
+@attribute [AllowAnonymous]
+
+<PageTitle>Check your email · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Check your email</h1>
+            <p class="auth-sub">We've sent a confirmation link to the email address you gave. Open it to confirm your
+                address, then sign in. It can take a minute or two to arrive; look in spam if you don't see it.</p>
+        </div>
+
+        <a class="auth-submit" href="/account/login">Go to sign in</a>
+        <a class="auth-secondary" href="/account/resend-confirmation">Didn't get it? Send the link again</a>
+    </div>
+</div>

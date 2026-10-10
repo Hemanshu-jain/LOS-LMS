@@ -57,7 +57,10 @@ public sealed class CompanyProvisioningService(
     PasswordVault vault,
     ILogger<CompanyProvisioningService> logger)
 {
-    public async Task<CompanyProvisioningResult> ProvisionCompanyAsync(CompanyProfile profile, AdminAccount admin)
+    /// <param name="requireEmailConfirmation">Public self-sign-up passes true: the owner can't sign in until they confirm the
+    /// emailed link. The demo seeder and other trusted callers leave it false (confirmed from the start).</param>
+    public async Task<CompanyProvisioningResult> ProvisionCompanyAsync(
+        CompanyProfile profile, AdminAccount admin, bool requireEmailConfirmation = false)
     {
         var email = admin.Email.Trim();
 
@@ -103,7 +106,7 @@ public sealed class CompanyProvisioningService(
             Id = Guid.NewGuid().ToString("N"),
             UserName = email,
             Email = email,
-            EmailConfirmed = true,
+            EmailConfirmed = !requireEmailConfirmation,
             DisplayName = admin.DisplayName.Trim(),
             CompanyId = companyId,
             IsActive = true,

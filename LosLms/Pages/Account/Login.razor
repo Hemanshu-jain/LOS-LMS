@@ -11,6 +11,7 @@
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.Extensions.Options.IOptions<LosLms.Services.WebOptions> WebOptions
 @inject LosLms.Services.ActingCompanyStore ActingStore
+@inject LosLms.Services.IEmailSender Mail
 
 <PageTitle>Sign in · LOS/LMS</PageTitle>
 
@@ -46,9 +47,24 @@
         <EditForm Model="Input" method="post" OnValidSubmit="SignInAsync" FormName="login">
             <DataAnnotationsValidator />
 
+            @if (Notice == "confirmed")
+            {
+                <p class="auth-notice" role="status">Your email address is confirmed. Sign in to continue.</p>
+            }
+            else if (Notice == "reset")
+            {
+                <p class="auth-notice" role="status">Your password was changed. Sign in with the new one.</p>
+            }
+
             @if (_error is not null)
             {
                 <p class="inline-error" role="alert">@_error</p>
+            }
+
+            @if (_needsConfirm)
+            {
+                <p class="inline-error" role="alert">Please confirm your email address first: we sent you a link when you created the
+                    account. <a href="/account/resend-confirmation">Resend the link</a></p>
             }
 
             <div class="auth-field">
@@ -86,11 +102,18 @@
         @* Native disclosure — no JS, which matters on this statically rendered page. There is no
            self-service reset by design: no email or SMS provider exists in this build, and for internal
            staff software an admin-driven reset is the correct control anyway. *@
-        <details class="auth-forgot">
-            <summary>Forgot your password?</summary>
-            <p>Contact your company Admin to reset your password. They can issue you a new temporary
-               password from Company Setup → User Management.</p>
-        </details>
+        @if (Mail.IsConfigured)
+        {
+            <a class="auth-secondary" href="/account/forgot-password">Forgot your password?</a>
+        }
+        else
+        {
+            <details class="auth-forgot">
+                <summary>Forgot your password?</summary>
+                <p>Contact your company Admin to reset your password. They can issue you a new temporary
+                   password from Company Setup → User Management.</p>
+            </details>
+        }
     </div>
 </div>
 
@@ -108,6 +131,10 @@
     [SupplyParameterFromForm] private LoginInput Input { get; set; } = new();
 
     [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "notice")] private string? Notice { get; set; }
+
+    private bool _needsConfirm;
 
     private string? _error;
     private bool _needsSetup;
@@ -141,6 +168,17 @@
                 _error = "Bot verification failed. Please complete the challenge and try again.";
                 return;
             }
+        }
+
+        // A new self-sign-up owner must confirm their email first. Only someone who also knows the password is told so (a
+        // wrong password gets the same generic failure as ever, so this can't be used to probe which addresses exist).
+        // Existing users were all marked confirmed by a migration; the vendor master account is always exempt.
+        if (await UserManager.FindByEmailAsync(Input.Email) is { } pending
+            && LosLms.Services.AccountEmailService.RequiresConfirmation(pending)
+            && await UserManager.CheckPasswordAsync(pending, Input.Password))
+        {
+            _needsConfirm = true;
+            return;
         }
 
         var result = await SignInManager.PasswordSignInAsync(

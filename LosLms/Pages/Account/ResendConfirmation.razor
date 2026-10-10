@@ -1,0 +1,62 @@
+@page "/account/resend-confirmation"
+@using System.ComponentModel.DataAnnotations
+@using LosLms.Services
+@attribute [AllowAnonymous]
+@inject AccountEmailService AccountEmail
+@inject IConfiguration Config
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>Resend confirmation · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+@* Always answers the same way, whether or not the address belongs to an account that still needs confirming (no account
+   enumeration). A real POST with antiforgery, like every /account page; the per-IP limiter and a per-address hourly cap
+   keep it from being used to flood an inbox. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Resend the confirmation link</h1>
+        </div>
+
+        @if (_sent)
+        {
+            <p class="auth-notice" role="status">If that address belongs to an account that still needs confirming, we've sent a new link.</p>
+            <a class="auth-secondary" href="/account/login">Back to sign in</a>
+        }
+        else
+        {
+            <EditForm Model="Input" method="post" OnValidSubmit="SendAsync" FormName="resend-confirmation">
+                <DataAnnotationsValidator />
+                <div class="auth-field">
+                    <label class="auth-label" for="rc-email">Your email</label>
+                    <InputText id="rc-email" type="email" class="field-input" @bind-Value="Input.Email" autocomplete="username" />
+                    <ValidationMessage For="() => Input.Email" class="auth-validation" />
+                </div>
+                <button type="submit" class="auth-submit">Send the link</button>
+            </EditForm>
+            <a class="auth-secondary" href="/account/login">Back to sign in</a>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromForm] private EmailInput Input { get; set; } = new();
+
+    private bool _sent;
+
+    private async Task SendAsync()
+    {
+        await AccountEmail.ResendConfirmationAsync(Input.Email, AccountLinks.BaseUrl(Config, HttpContextAccessor.HttpContext?.Request));
+        _sent = true;
+    }
+
+    private sealed class EmailInput
+    {
+        [Required(ErrorMessage = "Enter your email address.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string Email { get; set; } = string.Empty;
+    }
+}
