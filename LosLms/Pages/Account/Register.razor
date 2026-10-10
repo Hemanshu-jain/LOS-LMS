@@ -7,6 +7,10 @@
 @attribute [AllowAnonymous]
 @inject SignInManager<ApplicationUser> SignInManager
 @inject CompanyProvisioningService Provisioning
+@inject AccountEmailService AccountEmail
+@inject IEmailSender Mail
+@inject IConfiguration Config
+@inject IHttpContextAccessor HttpContextAccessor
 @inject IOptions<WebOptions> WebOptions
 @inject NavigationManager Navigation
 
@@ -24,8 +28,9 @@
         <div class="auth-head">
             <span class="auth-system">LOS/LMS</span>
             <h1 class="auth-title">Create your company</h1>
-            <p class="auth-sub">Set up a new company and its administrator. You'll be signed in and taken
-                to finish setup.</p>
+            <p class="auth-sub">Set up a new company and its administrator. @(Mail.IsConfigured
+                    ? "We'll email you a link to confirm your address, then you can sign in."
+                    : "You'll be signed in and taken to finish setup.")</p>
         </div>
 
         <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="register">
@@ -133,13 +138,24 @@
     {
         _errors.Clear();
 
+        // With a working mail setup the owner must confirm their address first. Without one (a desktop install, a
+        // cloud host whose SMTP isn't set up yet) nobody could ever confirm, so they are confirmed from the start.
+        var verify = Mail.IsConfigured;
         var result = await Provisioning.ProvisionCompanyAsync(
             new CompanyProfile(Input.CompanyName, Input.CompanyEmail, Input.CompanyPhone, Input.CompanyAddress),
-            new AdminAccount(Input.DisplayName, Input.Email, Input.Password));
+            new AdminAccount(Input.DisplayName, Input.Email, Input.Password),
+            requireEmailConfirmation: verify);
 
         if (!result.Succeeded || result.User is null)
         {
             _errors.AddRange(result.Errors);
+            return;
+        }
+
+        if (verify)
+        {
+            await AccountEmail.SendConfirmationAsync(result.User, AccountLinks.BaseUrl(Config, HttpContextAccessor.HttpContext?.Request));
+            Navigation.NavigateTo("/account/check-email", forceLoad: true);
             return;
         }
 

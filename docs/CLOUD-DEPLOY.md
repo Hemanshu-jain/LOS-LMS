@@ -36,6 +36,12 @@ the vault and the Data Protection keys; a private Storage bucket for files.
 | `Gemini__ApiKey` | optional | Signature detection |
 | `Seed__DemoTenantEmail`, `Seed__DemoTenantPassword` | optional | Override the demo login in `appsettings.Web.json` |
 | `Maintenance__Enabled` | optional | Start in maintenance mode |
+| `Smtp__Host` | for email | SMTP relay host. On Render ports 25/465/587 are blocked: use Brevo's relay `smtp-relay.brevo.com` on port 2525 (STARTTLS) |
+| `Smtp__Port` | for email | `2525` on Render (default 587) |
+| `Smtp__User`, `Smtp__Password` | for email | The Brevo SMTP login and its SMTP key |
+| `Smtp__From`, `Smtp__FromName` | for email | Sender address (`no-reply@bhodhix.com`) and display name (default `LOS/LMS`) |
+| `Smtp__EnableSsl` | no | Leave unset (STARTTLS on). `false` only for a local mail catcher in development |
+| `PublicBaseUrl` | recommended | `https://los-lms.bhodhix.com`: the address emailed links point to (confirmation, password reset) and the device-link page |
 
 Values are trimmed, so a stray newline pasted into the Render form is harmless.
 
@@ -55,6 +61,12 @@ Values are trimmed, so a stray newline pasted into the Render form is harmless.
      It re-encrypts each entry under `Vault__Key`, prints how many it imported, and exits. Entries the old key cannot
      open are skipped; running it again imports nothing twice.
 4. Sign-ins from before the move stop working once (new Data Protection keys); users sign in again.
+
+## Email (sign-up confirmation, forgot password)
+
+With `Smtp__Host` and `Smtp__From` set, a new self-sign-up owner must click an emailed link before they can sign in, and the
+sign-in page offers "Forgot your password?". Without them nothing is sent: emails are only written to the log, and public
+sign-up skips confirmation so nobody gets locked out. Existing users are all marked confirmed by a migration.
 
 ## Not in the cloud build
 

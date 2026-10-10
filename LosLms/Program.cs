@@ -151,6 +151,12 @@ builder.Services.AddScoped<DigioClient>();
 // scheme + loans:read / loans:write policies the partner data API uses, the /link wrong-code limiter and
 // the expired-code purge.
 builder.Services.AddScoped<PartnerOAuthService>();
+
+// Email (Brevo SMTP relay on Render): confirmation of new sign-ups and forgotten-password links. With no Smtp__* settings the
+// emails are logged instead of sent, and public sign-up skips confirmation.
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddSingleton<SendThrottle>();
+builder.Services.AddScoped<AccountEmailService>();
 builder.Services.AddSingleton<PartnerGuessLimiter>();
 builder.Services.AddHostedService<PartnerOAuthPurgeService>();
 builder.Services.AddPartnerAuth();
@@ -258,7 +264,9 @@ builder.Services.AddRateLimiter(options =>
         var isOAuth = context.Request.Path.StartsWithSegments(PartnerOAuthEndpoints.PathPrefix, StringComparison.OrdinalIgnoreCase);
         var isSensitivePost = HttpMethods.IsPost(context.Request.Method)
             && (context.Request.Path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase)
-                || context.Request.Path.StartsWithSegments("/account/register", StringComparison.OrdinalIgnoreCase));
+                || context.Request.Path.StartsWithSegments("/account/register", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/account/forgot-password", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/account/resend-confirmation", StringComparison.OrdinalIgnoreCase));
         if (!isSensitivePost && !isOAuth)
         {
             return RateLimitPartition.GetNoLimiter("unlimited");
@@ -275,6 +283,12 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+// A cloud host without mail settings silently has no email verification and no password reset: say so loudly at startup.
+if (app.Configuration.IsCloud() && !app.Services.GetRequiredService<IEmailSender>().IsConfigured)
+{
+    app.Logger.LogWarning("Email verification and password reset are OFF: Smtp__* is not set (needs at least Smtp__Host and Smtp__From).");
+}
 
 // Startup database step: bring the schema up to date, then seed. Wrapped so a database that is
 // unreachable logs a clear diagnostic and lets the app start anyway — pages then fail honestly

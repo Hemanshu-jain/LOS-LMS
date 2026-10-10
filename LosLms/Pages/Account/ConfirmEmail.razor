@@ -1,0 +1,40 @@
+@page "/account/confirm-email"
+@using LosLms.Services
+@attribute [AllowAnonymous]
+@inject AccountEmailService AccountEmail
+@inject NavigationManager Navigation
+
+<PageTitle>Confirm email · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+@* Where the emailed link lands. A genuine link confirms the address and goes to sign-in with a success note; a tampered,
+   foreign or stale one gets a plain message and a way to ask for a fresh link. Confirming twice is harmless, so a mail
+   scanner that opens the link first doesn't spoil it. *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Confirm your email</h1>
+            <p class="auth-sub">This link is invalid or has expired.</p>
+        </div>
+
+        <a class="auth-submit" href="/account/resend-confirmation">Send me a new link</a>
+        <a class="auth-secondary" href="/account/login">Back to sign in</a>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "userId")] private string? UserId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "code")] private string? Code { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await AccountEmail.ConfirmEmailAsync(UserId, Code))
+        {
+            Navigation.NavigateTo("/account/login?notice=confirmed", forceLoad: true);
+        }
+    }
+}

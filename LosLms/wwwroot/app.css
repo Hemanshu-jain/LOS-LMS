@@ -1149,3 +1149,13 @@ a.auth-submit {
 .link-guide-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #1a1f29; }
 .link-guide a { color: #1f3a5f; font-size: 12px; }
 .link-guide a + a { margin-left: 14px; }
+
+/* A neutral confirmation line on the auth pages (e.g. "Your email address is confirmed"). */
+.auth-notice {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    background: #e8f1fb;
+    border: 1px solid #b9d3ee;
+    font-size: 12px;
+    color: #1f3a5f;
+}
