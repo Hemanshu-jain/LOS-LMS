@@ -56,7 +56,14 @@ jobs:
           printf '%s\n' "$LMS_DB_CA_CERT" > "$RUNNER_TEMP/backup/ca.pem"
           printf '%s' "$LMS_BACKUP_PASSPHRASE" > "$RUNNER_TEMP/backup/passphrase"
           # curl reads its headers from a file so the service key never appears on a command line.
-          printf 'Authorization: Bearer %s\napikey: %s\n' "$SUPABASE_SERVICE_KEY" "$SUPABASE_SERVICE_KEY" > "$RUNNER_TEMP/backup/headers"
+          # New-style keys (sb_secret_...) are not JWTs and go ONLY in `apikey`; Supabase rejects them as a Bearer token.
+          # Legacy service_role keys are JWTs (eyJ...) and also need the Authorization header.
+          {
+            printf 'apikey: %s\n' "$SUPABASE_SERVICE_KEY"
+            case "$SUPABASE_SERVICE_KEY" in
+              eyJ*.*.*) printf 'Authorization: Bearer %s\n' "$SUPABASE_SERVICE_KEY" ;;
+            esac
+          } > "$RUNNER_TEMP/backup/headers"
           {
             echo "STORAGE=$base/storage/v1"
             echo "WORK=$RUNNER_TEMP/backup"

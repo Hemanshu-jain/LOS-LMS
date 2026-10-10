@@ -60,7 +60,9 @@ if (-not $url) { $url = Read-Host 'Supabase project URL' }
 $key = $env:SUPABASE_SERVICE_KEY
 if (-not $key) { $key = Read-Plain (Read-Host 'Supabase service key' -AsSecureString) }
 $base = $url.TrimEnd('/') + '/storage/v1'
-$headers = @{ Authorization = "Bearer $key"; apikey = $key }
+# New-style keys (sb_secret_...) are not JWTs: apikey only. Legacy service_role keys are JWTs (eyJ...) and also need Bearer.
+$headers = @{ apikey = $key }
+if ($key -match '^eyJ[^.]+\.[^.]+\.') { $headers.Authorization = "Bearer $key" }
 
 $listing = Invoke-RestMethod -Method Post -Uri "$base/object/list/$bucket" -Headers $headers -ContentType 'application/json' `
     -Body (@{ prefix = ''; limit = 1000; sortBy = @{ column = 'name'; order = 'desc' } } | ConvertTo-Json -Depth 4)
