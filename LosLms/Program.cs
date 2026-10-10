@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.RateLimiting;
@@ -43,7 +44,7 @@ builder.Services.AddHttpClient();
 // ConnectionStrings__LosDb environment variable (developers can set ConnectionStrings:LosDb in
 // user-secrets/appsettings instead). Only the server machine ever touches the database; other
 // machines reach it through the app, never the database port.
-var connectionString = builder.Configuration.GetConnectionString("LosDb");
+var connectionString = CloudConfig.ConnectionString(builder.Configuration);
 
 // A factory, not AddDbContext. In Blazor Server a scoped DbContext lives for the whole SignalR
 // circuit and is shared by every component on it, so two overlapping renders hit the same context
@@ -74,7 +75,32 @@ builder.Services.AddSingleton<AdminRequestNotifier>();
 // One shared update-check result for the whole server, kept current by a background poller so the
 // SuperAdmin sees a "new version available" banner without opening the System Updates page.
 builder.Services.AddSingleton<UpdateNotificationService>();
-builder.Services.AddHostedService<UpdateCheckBackgroundService>();
+// Not on a cloud host: there is no launcher to apply an update, so the container is redeployed instead.
+if (!builder.Configuration.IsCloud())
+{
+    builder.Services.AddHostedService<UpdateCheckBackgroundService>();
+}
+
+// Uploaded and generated files: a private Supabase Storage bucket when Storage__Url is set (the cloud host's
+// disk is wiped on every restart), otherwise the App_Data folder as before.
+builder.Services.AddSingleton<IFileStore>(sp =>
+{
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    return cfg.Trimmed("Storage:Url") is { } url
+        ? new SupabaseFileStore(
+            new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }),
+            url,
+            cfg.Trimmed("Storage:ServiceKey") ?? throw new InvalidOperationException("Storage__ServiceKey is not set."),
+            cfg.Trimmed("Storage:Bucket") ?? throw new InvalidOperationException("Storage__Bucket is not set."))
+        : new DiskFileStore(sp.GetRequiredService<IWebHostEnvironment>().ContentRootPath);
+});
+
+// On a cloud host the Data Protection keys (cookie/antiforgery encryption) live in the database; the container's
+// own disk is wiped on restart, which would otherwise sign every user out each time.
+if (builder.Configuration.IsCloud())
+{
+    builder.Services.AddDataProtection().PersistKeysToDbContext<LosDbContext>().SetApplicationName("LosLms");
+}
 
 // Subscription licensing: verifies the baked/renewed license, warns near expiry, and freezes the app
 // once expired (see MainLayout + the /account/renew page).
@@ -182,11 +208,12 @@ builder.Services.ConfigureApplicationCookie(options =>
 // header cannot be spoofed by a remote user reaching the backend directly.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    // Proto only: X-Forwarded-For is deliberately NOT applied (with every proxy trusted it let any caller rewrite
-    // RemoteIpAddress); ClientIp.Of takes the tunnel's CF-Connecting-IP when the socket peer is loopback.
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
+    // Tunnel setup (no Proxy__ForwardLimit): Proto only. X-Forwarded-For is deliberately NOT applied (with every
+    // proxy trusted it let any caller rewrite RemoteIpAddress); ClientIp.Of takes the tunnel's CF-Connecting-IP
+    // when the socket peer is loopback. Behind Render's proxy (Proxy__ForwardLimit=1) the one entry that proxy
+    // appended IS applied, so RemoteIpAddress, and so ClientIp.Of, is the real client.
+    CloudConfig.ConfigureProxy(
+        options, int.TryParse(builder.Configuration.Trimmed("Proxy:ForwardLimit"), out var hops) && hops > 0 ? hops : null);
 });
 
 builder.Services.AddAuthorization(options =>
@@ -270,12 +297,21 @@ try
     // Roles and the two bootstrap accounts (one Admin, one SuperAdmin) with their temporary passwords.
     await IdentitySeeder.SeedAsync(app.Services, app.Logger);
 
+    // One-time move of a desktop install's file vault into the database: dotnet LosLms.dll --import-vault <folder>
+    // (the folder holds vault.key and credential-vault.dat). Prints the count and exits without serving.
+    if (Array.IndexOf(args, "--import-vault") is >= 0 and var importAt && importAt + 1 < args.Length)
+    {
+        var imported = app.Services.GetRequiredService<PasswordVault>().ImportLegacyFiles(args[importAt + 1]);
+        app.Logger.LogInformation("Imported {Count} credential vault entries.", imported);
+        return;
+    }
+
     // Demo data — fifteen worked-through applications and a vehicle-cap catalog — for development only.
     // OFF by default so the shipped build is a blank slate with no seeded places, customers or figures.
     // Turn it on in development with `dotnet run --Seed:DemoApplications=true` (or user-secrets/env).
     if (app.Configuration.GetValue("Seed:DemoApplications", false))
     {
-        await DemoSeedData.SeedAsync(app.Services, app.Logger, app.Environment.ContentRootPath);
+        await DemoSeedData.SeedAsync(app.Services, app.Logger);
     }
 
     // A throwaway second company, only for proving tenant isolation. Never on by default.
@@ -372,9 +408,31 @@ var csp =
 // Branched off BEFORE auth, the maintenance gate and the company-setup redirect so it always answers;
 // returns only status + version, never data.
 var runningVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "unknown";
+var runningCommit = (app.Configuration.Trimmed("Hosting:Commit") ?? app.Configuration.Trimmed("RENDER_GIT_COMMIT")) is { } sha
+    ? sha[..Math.Min(sha.Length, 12)]
+    : "unknown";
 app.MapWhen(
     c => c.Request.Path == "/health",
-    b => b.Run(c => c.Response.WriteAsJsonAsync(new { status = "ok", version = runningVersion })));
+    b => b.Run(async c =>
+    {
+        // A real round trip to the database (SELECT 1), so the host's health check fails over a dead database
+        // and not just a live process. Bounded, so a hung connection answers 503 instead of hanging the probe.
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await using var db = new LosDbContext(
+                c.RequestServices.GetRequiredService<DbContextOptions<LosDbContext>>(), TenantContext.ForSeeding());
+            await db.Database.ExecuteSqlRawAsync("SELECT 1", timeout.Token);
+        }
+        catch (Exception)
+        {
+            c.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await c.Response.WriteAsJsonAsync(new { status = "db_down" });
+            return;
+        }
+
+        await c.Response.WriteAsJsonAsync(new { status = "ok", version = runningVersion, commit = runningCommit });
+    }));
 
 // Partner data API: every error, including the empty-bodied 401/403/429 the platform would send, comes
 // back as {error, message, details[]}. Wraps the rest of the pipeline for /api/v1 only.
@@ -593,11 +651,8 @@ app.Use(async (context, next) =>
         return;
     }
 
-    var environment = context.RequestServices.GetRequiredService<IWebHostEnvironment>();
-    var folder = Path.Combine(environment.ContentRootPath, "App_Data", "uploads", applicationId, partyType);
-    Directory.CreateDirectory(folder);
     var name = $"{kind}-{Guid.NewGuid():N}{extension}";
-    await File.WriteAllBytesAsync(Path.Combine(folder, name), bytes);
+    await context.RequestServices.GetRequiredService<IFileStore>().SaveUploadAsync(applicationId, partyType, name, bytes);
 
     await context.Response.WriteAsJsonAsync(new { name });
 });
@@ -651,7 +706,7 @@ app.MapGet("/files/{applicationId}/{folder}/{name}", async (
     string applicationId,
     string folder,
     string name,
-    IWebHostEnvironment environment,
+    IFileStore files,
     IDbContextFactory<LosDbContext> dbFactory) =>
 {
     // Requiring a signed-in user is not enough on its own. Without this check a user at company A
@@ -665,16 +720,18 @@ app.MapGet("/files/{applicationId}/{folder}/{name}", async (
         return Results.NotFound();
     }
 
-    var root = Path.GetFullPath(Path.Combine(environment.ContentRootPath, "App_Data", "uploads"));
-    var candidate = Path.GetFullPath(Path.Combine(root, applicationId, folder, name));
+    // FileKey rejects "..", empty and rooted segments, so a traversal attempt can't leave uploads/.
+    Stream? stream;
+    try
+    {
+        stream = await files.OpenReadAsync($"App_Data/uploads/{applicationId}/{folder}/{name}");
+    }
+    catch (ArgumentException)
+    {
+        return Results.NotFound();
+    }
 
-    // Compare the CANONICAL path, not the raw string: GetFullPath has already collapsed any ".."
-    // so a traversal attempt lands outside the root and fails this check.
-    var isInsideRoot = candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
-
-    return isInsideRoot && File.Exists(candidate)
-        ? Results.File(candidate, ContentTypeFor(Path.GetExtension(candidate)))
-        : Results.NotFound();
+    return stream is null ? Results.NotFound() : Results.Stream(stream, ContentTypeFor(Path.GetExtension(name)));
 }).RequireAuthorization();
 
 // Served without a download filename so PDFs render inline in an iframe; the UI's Download link

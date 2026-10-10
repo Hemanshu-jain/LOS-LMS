@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.29">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -47,6 +48,9 @@
       <_Parameter1>License</_Parameter1>
       <_Parameter2>$(License)</_Parameter2>
     </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LosLms.Tests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LosLms.Licensing\LosLms.Licensing.csproj" />

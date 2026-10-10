@@ -58,6 +58,8 @@ public sealed class CompanyProvisioningTests : IDisposable
             .AddEntityFrameworkStores<LosDbContext>();
 
         services.AddSingleton<IWebHostEnvironment>(new FakeEnvironment(_vaultDir));
+        services.AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         services.AddSingleton<PasswordVault>();
         services.AddScoped<CompanyProvisioningService>();
 

@@ -10,6 +10,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject LosLms.Services.IFileStore Files
 
 <PageTitle>Reports (RCU) · @ApplicationId</PageTitle>
 
@@ -713,14 +714,10 @@ else
         }
 
         // Outside wwwroot, like every other upload in this project; served by the /files endpoint.
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, "rcu");
-        Directory.CreateDirectory(folder);
-
         var fileName = $"rcu-report-{Guid.NewGuid():N}.pdf";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, "rcu", fileName, bytes);
 
-        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "rcu", fileName);
+        var relativePath = savedPath;
 
         await using var db = await DbFactory.CreateDbContextAsync();
 

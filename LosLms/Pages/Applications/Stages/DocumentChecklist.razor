@@ -10,6 +10,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject LosLms.Services.IFileStore Files
 @inject IJSRuntime JS
 @inject SignatureDetectionService SignatureDetection
 
@@ -517,8 +518,8 @@ else
             return;
         }
 
-        var fullPath = Path.Combine(HostEnvironment.ContentRootPath, relativePath);
-        if (!File.Exists(fullPath))
+        var bytes = await Files.ReadAllBytesAsync(relativePath);
+        if (bytes is null)
         {
             _signatureNotes[doc.Id] = "File not found on the server.";
             return;
@@ -527,8 +528,7 @@ else
         _signatureNotes[doc.Id] = "Checking…";
         await InvokeAsync(StateHasChanged);
 
-        var bytes = await File.ReadAllBytesAsync(fullPath);
-        var result = await SignatureDetection.DetectAsync(bytes, MimeFor(Path.GetExtension(fullPath)));
+        var result = await SignatureDetection.DetectAsync(bytes, MimeFor(Path.GetExtension(relativePath)));
 
         _signatureNotes[doc.Id] = result.Message ?? result.Status.ToString();
         if (result.Status == SignatureStatus.Signed)
@@ -801,14 +801,10 @@ else
 
         // Outside wwwroot: these are KYC and financial documents. Served back only through the
         // /files endpoint. The client filename is never used in the path.
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, partyType);
-        Directory.CreateDirectory(folder);
-
         var fileName = $"{documentType.ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, partyType, fileName, bytes);
 
-        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, partyType, fileName);
+        var relativePath = savedPath;
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
