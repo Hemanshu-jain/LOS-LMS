@@ -1,0 +1,138 @@
+name: Nightly DB backup
+
+# Dumps the production MySQL (Aiven, TLS) -> gzip -> GPG (AES256, passphrase) -> private Supabase Storage bucket
+# "db-backups", then prunes anything older than 30 days. This repo is PUBLIC, so every value comes from a secret,
+# is passed through the environment (never on a command line), and nothing here prints it. See docs/BACKUP-RESTORE.md.
+#
+# Secrets (names only): LMS_DB_HOST, LMS_DB_PORT, LMS_DB_USER, LMS_DB_PASSWORD, LMS_DB_NAME, LMS_DB_CA_CERT,
+# LMS_BACKUP_PASSPHRASE, SUPABASE_URL, SUPABASE_SERVICE_KEY.
+
+on:
+  schedule:
+    - cron: "30 21 * * *" # 21:30 UTC = 03:00 IST
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LMS_DB_HOST: ${{ secrets.LMS_DB_HOST }}
+      LMS_DB_PORT: ${{ secrets.LMS_DB_PORT }}
+      LMS_DB_USER: ${{ secrets.LMS_DB_USER }}
+      LMS_DB_PASSWORD: ${{ secrets.LMS_DB_PASSWORD }}
+      LMS_DB_NAME: ${{ secrets.LMS_DB_NAME }}
+      LMS_DB_CA_CERT: ${{ secrets.LMS_DB_CA_CERT }}
+      LMS_BACKUP_PASSPHRASE: ${{ secrets.LMS_BACKUP_PASSPHRASE }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      BUCKET: db-backups
+      RETAIN_DAYS: "30"
+      KEEP_NEWEST: "7" # never prune below this many backups, whatever their age
+    steps:
+      - name: Prepare (mask derived values, check secrets exist)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Secrets are masked by GitHub already; mask what we derive from them as well. Never echo any of it.
+          for v in LMS_DB_HOST LMS_DB_PORT LMS_DB_USER LMS_DB_NAME LMS_DB_CA_CERT LMS_BACKUP_PASSPHRASE SUPABASE_URL SUPABASE_SERVICE_KEY LMS_DB_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret $v is not set"; exit 1; fi
+          done
+          base="${SUPABASE_URL%/}"
+          echo "::add-mask::$base"
+          echo "::add-mask::$base/storage/v1"
+          echo "::add-mask::$LMS_DB_HOST"
+          echo "::add-mask::$LMS_DB_USER"
+          echo "::add-mask::$LMS_DB_NAME"
+          # Files live in a private temp dir, readable only by this user, removed at the end.
+          umask 077
+          mkdir -p "$RUNNER_TEMP/backup"
+          printf '%s\n' "$LMS_DB_CA_CERT" > "$RUNNER_TEMP/backup/ca.pem"
+          printf '%s' "$LMS_BACKUP_PASSPHRASE" > "$RUNNER_TEMP/backup/passphrase"
+          # curl reads its headers from a file so the service key never appears on a command line.
+          printf 'Authorization: Bearer %s\napikey: %s\n' "$SUPABASE_SERVICE_KEY" "$SUPABASE_SERVICE_KEY" > "$RUNNER_TEMP/backup/headers"
+          {
+            echo "STORAGE=$base/storage/v1"
+            echo "WORK=$RUNNER_TEMP/backup"
+            echo "FILE=los_lms-$(date -u +%Y%m%dT%H%M%SZ).sql.gz.gpg"
+          } >> "$GITHUB_ENV"
+
+      - name: Dump, compress, verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          command -v mysqldump >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends mysql-client; }
+          # Password via the environment (not the command line); TLS is mandatory and the server cert must chain to our CA.
+          MYSQL_PWD="$LMS_DB_PASSWORD" mysqldump \
+            --host="$LMS_DB_HOST" --port="$LMS_DB_PORT" --user="$LMS_DB_USER" \
+            --ssl-mode=VERIFY_CA --ssl-ca="$WORK/ca.pem" \
+            --single-transaction --routines --triggers --set-gtid-purged=OFF \
+            --no-tablespaces --hex-blob --default-character-set=utf8mb4 \
+            "$LMS_DB_NAME" | gzip -9 > "$WORK/dump.sql.gz"
+          size=$(stat -c %s "$WORK/dump.sql.gz")
+          # Fail loudly on an empty/tiny dump, a dump with no tables, or one that was cut short (no trailer).
+          if [ "$size" -lt 1024 ]; then echo "::error::Dump is only $size bytes (expected well over 1 KB)"; exit 1; fi
+          gzip -t "$WORK/dump.sql.gz"
+          gzip -dc "$WORK/dump.sql.gz" | grep -q '^CREATE TABLE' || { echo "::error::Dump contains no tables"; exit 1; }
+          gzip -dc "$WORK/dump.sql.gz" | tail -n 5 | grep -q '^-- Dump completed' || { echo "::error::Dump has no completion trailer (truncated?)"; exit 1; }
+          echo "Dump OK: $size bytes compressed"
+
+      - name: Encrypt (GPG symmetric AES256)
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "$WORK/passphrase" \
+            --symmetric --cipher-algo AES256 --compress-algo none -o "$WORK/$FILE" "$WORK/dump.sql.gz"
+          # Prove it decrypts with this passphrase before trusting it, then drop the unencrypted copy.
+          gpg --batch --quiet --pinentry-mode loopback --passphrase-file "$WORK/passphrase" --decrypt "$WORK/$FILE" | cmp -s - "$WORK/dump.sql.gz" \
+            || { echo "::error::Encrypted file does not round-trip"; exit 1; }
+          shred -u "$WORK/dump.sql.gz"
+          echo "Encrypted: $(stat -c %s "$WORK/$FILE") bytes"
+
+      - name: Upload to private Supabase bucket
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o "$WORK/resp" -w '%{http_code}' -X POST \
+            -H "@$WORK/headers" -H 'Content-Type: application/octet-stream' -H 'x-upsert: false' \
+            --data-binary "@$WORK/$FILE" "$STORAGE/object/$BUCKET/$FILE")
+          if [ "$code" != "200" ]; then echo "::error::Upload failed, HTTP $code"; cat "$WORK/resp"; echo; exit 1; fi
+          echo "Uploaded $BUCKET/$FILE"
+
+      - name: Prune backups older than retention
+        shell: bash
+        run: |
+          set -euo pipefail
+          # List by name (names carry the UTC timestamp), newest first.
+          code=$(curl -sS -o "$WORK/list.json" -w '%{http_code}' -X POST \
+            -H "@$WORK/headers" -H 'Content-Type: application/json' \
+            -d '{"prefix":"","limit":1000,"sortBy":{"column":"name","order":"desc"}}' "$STORAGE/object/list/$BUCKET")
+          if [ "$code" != "200" ]; then echo "::error::Listing backups failed, HTTP $code"; exit 1; fi
+          cutoff="los_lms-$(date -u -d "$RETAIN_DAYS days ago" +%Y%m%dT%H%M%SZ)"
+          # Only files that look like ours, never the newest KEEP_NEWEST, and only those older than the cutoff.
+          jq -c --arg cutoff "$cutoff" --argjson keep "$KEEP_NEWEST" '
+            [ .[].name | select(test("^los_lms-[0-9]{8}T[0-9]{6}Z\\.sql\\.gz\\.gpg$")) ] | sort | reverse
+            | .[$keep:] | map(select(. < $cutoff))' "$WORK/list.json" > "$WORK/old.json"
+          n=$(jq 'length' "$WORK/old.json")
+          if [ "$n" -eq 0 ]; then echo "Nothing to prune"; exit 0; fi
+          code=$(curl -sS -o "$WORK/resp" -w '%{http_code}' -X DELETE \
+            -H "@$WORK/headers" -H 'Content-Type: application/json' \
+            -d "$(jq -c '{prefixes: .}' "$WORK/old.json")" "$STORAGE/object/$BUCKET")
+          if [ "$code" != "200" ]; then echo "::error::Prune failed, HTTP $code"; cat "$WORK/resp"; echo; exit 1; fi
+          echo "Pruned $n old backup(s)"
+
+      - name: Clean up
+        if: always()
+        shell: bash
+        run: |
+          # Runner is discarded anyway; remove secrets-on-disk and any leftover plaintext regardless.
+          find "$RUNNER_TEMP/backup" -type f -exec shred -u {} + 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/backup"
