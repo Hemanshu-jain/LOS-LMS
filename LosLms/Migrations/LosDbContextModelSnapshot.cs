@@ -1377,6 +1377,24 @@ namespace LosLms.Migrations
                         });
                 });
 
+            modelBuilder.Entity("LosLms.Models.CredentialVaultEntry", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<string>("Blob")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("CredentialVault");
+                });
+
             modelBuilder.Entity("LosLms.Models.Disbursement", b =>
                 {
                     b.Property<int>("Id")
@@ -3167,6 +3185,25 @@ namespace LosLms.Migrations
                         .IsUnique();
 
                     b.ToTable("Viability", (string)null);
+                });
+
+            modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FriendlyName")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Xml")
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DataProtectionKeys");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>

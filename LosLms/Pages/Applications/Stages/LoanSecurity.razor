@@ -11,6 +11,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject LosLms.Services.IFileStore Files
 @inject TenantContext Tenant
 @inject AdminRequestNotifier Notifier
 
@@ -1265,14 +1266,10 @@ else
         // Outside wwwroot, same as Customer Details: these are customer financial documents and
         // anything under wwwroot is downloadable by anyone who guesses the URL. The client's
         // filename is never used in the path — only its whitelisted extension.
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, "security");
-        Directory.CreateDirectory(folder);
-
         var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, "security", fileName, bytes);
 
-        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "security", fileName);
+        var relativePath = savedPath;
 
         if (kind == UploadKind.Invoice)
         {
@@ -1327,14 +1324,10 @@ else
             return;
         }
 
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, "references");
-        Directory.CreateDirectory(folder);
-
         var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, "references", fileName, bytes);
 
-        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "references", fileName);
+        var relativePath = savedPath;
 
         if (kind == ReferenceUploadKind.IdProof)
         {

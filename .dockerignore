@@ -1,0 +1,24 @@
+# Keep secrets, build output and local data out of the image and the build context.
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.tools/
+publish/
+**/App_Data/
+**/updates/
+**/*.user
+.env
+master-key.txt
+tunnel-token.txt
+server-config.json
+update-signing-private.pem
+*.pem
+.claude/
+docs/
+test-data/
+LosLms.Server/
+LosLms.Shell/
+LosLms.Tests/
+LosLms.LicenseTool/

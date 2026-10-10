@@ -14,7 +14,7 @@ public static class EsignService
 
     /// <param name="signerIdentifier">Applicant's mobile or email — Digio sends the signing link there.</param>
     public static async Task<DigioResult> DispatchAsync(
-        DigioClient digio, int companyId, string applicationId, string agreementFullPath,
+        DigioClient digio, int companyId, string applicationId, string agreementFileName, byte[] agreement,
         string signerIdentifier, string? signerName)
     {
         if (digio.Credentials(companyId) is null)
@@ -24,8 +24,8 @@ public static class EsignService
 
         var body = new
         {
-            file_name = Path.GetFileName(agreementFullPath),
-            file_data = Convert.ToBase64String(await File.ReadAllBytesAsync(agreementFullPath)),
+            file_name = agreementFileName,
+            file_data = Convert.ToBase64String(agreement),
             signers = new[]
             {
                 new { identifier = signerIdentifier, name = signerName, reason = "Loan agreement", sign_type = "aadhaar" },

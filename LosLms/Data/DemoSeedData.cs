@@ -42,10 +42,11 @@ public static class DemoSeedData
     /// <summary>Loan-to-value the demo files are written to, which fixes the margin and on-road cost.</summary>
     private const decimal TargetLtv = 0.80m;
 
-    public static async Task SeedAsync(IServiceProvider services, ILogger logger, string contentRootPath)
+    public static async Task SeedAsync(IServiceProvider services, ILogger logger)
     {
         using var scope = services.CreateScope();
         var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<LosDbContext>>();
+        var files = scope.ServiceProvider.GetRequiredService<IFileStore>();
 
         // Unscoped: startup has no signed-in user, and the tenant filter would otherwise hide the
         // rows this is checking for and reject the ones it creates.
@@ -76,7 +77,7 @@ public static class DemoSeedData
 
         foreach (var spec in Specs)
         {
-            Build(db, spec, today, officerIds, contentRootPath, policy);
+            Build(db, spec, today, officerIds, files, policy);
         }
 
         await db.SaveChangesAsync();
@@ -339,7 +340,7 @@ public static class DemoSeedData
         Spec spec,
         DateOnly today,
         IReadOnlyDictionary<string, string> officerIds,
-        string contentRootPath,
+        IFileStore files,
         CompanyPolicy policy)
     {
         var queued = today.AddDays(-spec.QueuedDaysAgo);
@@ -387,11 +388,11 @@ public static class DemoSeedData
 
         if (spec.Stage >= 2) { AddLoanAndSecurity(db, spec, queued, emi); }
         if (spec.Stage >= 3) { AddBankAndFinancial(db, spec, queued); }
-        if (spec.Stage >= 4) { AddDocuments(db, spec, queued, contentRootPath); }
-        if (spec.Stage >= 5) { AddReportsRcu(db, spec, queued, officerIds, contentRootPath); }
+        if (spec.Stage >= 4) { AddDocuments(db, spec, queued, files); }
+        if (spec.Stage >= 5) { AddReportsRcu(db, spec, queued, officerIds, files); }
         if (spec.Stage >= 6) { AddEligibility(db, spec, emi); }
         if (spec.Stage >= 7) { AddApprovals(db, spec, queued, officerIds, processingFee, policy); }
-        if (spec.Stage >= 8) { AddPostSanction(db, spec, queued, emi, contentRootPath); }
+        if (spec.Stage >= 8) { AddPostSanction(db, spec, queued, emi, files); }
 
         if (spec.RejectReason is { } reason)
         {
@@ -641,7 +642,7 @@ public static class DemoSeedData
     /// so the preview and download actually work. The Document Checklist screen creates the rows for
     /// the types not listed here when it first opens, so only what is genuinely collected is seeded.
     /// </summary>
-    private static void AddDocuments(LosDbContext db, Spec spec, DateOnly queued, string contentRootPath)
+    private static void AddDocuments(LosDbContext db, Spec spec, DateOnly queued, IFileStore files)
     {
         var stamped = queued.ToDateTime(TimeOnly.MinValue);
         var parties = new List<string> { "Applicant" };
@@ -654,7 +655,7 @@ public static class DemoSeedData
             {
                 var fileName = $"{type.ToLowerInvariant()}-{Guid.NewGuid():N}.pdf";
                 var relativePath = WriteDemoPdf(
-                    contentRootPath, spec.Id, partyType, fileName,
+                    files, spec.Id, partyType, fileName,
                     label, $"{spec.Id} · {partyType}");
 
                 db.ChecklistDocuments.Add(new ChecklistDocument
@@ -682,7 +683,7 @@ public static class DemoSeedData
         Spec spec,
         DateOnly queued,
         IReadOnlyDictionary<string, string> officerIds,
-        string contentRootPath)
+        IFileStore files)
     {
         var seed = Seed(spec.Id);
         var stamped = queued.ToDateTime(TimeOnly.MinValue);
@@ -751,7 +752,7 @@ public static class DemoSeedData
         {
             ApplicationId = spec.Id,
             SequenceNumber = 1,
-            FilePath = WriteDemoPdf(contentRootPath, spec.Id, "rcu", reportFile,
+            FilePath = WriteDemoPdf(files, spec.Id, "rcu", reportFile,
                 "RCU field verification report", $"{spec.Id} · {spec.Customer}"),
             UploadedAt = stamped,
             Note = "Field verification report — residence and business address.",
@@ -956,7 +957,7 @@ public static class DemoSeedData
     // ---- Stage 8 -------------------------------------------------------------------------------
 
     private static void AddPostSanction(
-        LosDbContext db, Spec spec, DateOnly queued, decimal emi, string contentRootPath)
+        LosDbContext db, Spec spec, DateOnly queued, decimal emi, IFileStore files)
     {
         var seed = Seed(spec.Id);
         var stamped = DateTime.UtcNow;
@@ -975,7 +976,7 @@ public static class DemoSeedData
             Utr = spec.Disbursed ? $"UTR{queued:yyyyMMdd}{100000 + seed % 899999}" : null,
             FirstEmiDate = spec.Disbursed ? valueDate.AddMonths(1) : null,
             MemoFilePath = spec.Disbursed
-                ? WriteDemoPdf(contentRootPath, spec.Id, "postsanction",
+                ? WriteDemoPdf(files, spec.Id, "postsanction",
                     $"memo-{Guid.NewGuid():N}.pdf", "Disbursement memo", $"{spec.Id} · {spec.Customer}")
                 : null,
             CreatedAt = stamped,
@@ -1190,15 +1191,14 @@ public static class DemoSeedData
     /// literal would be a malformed PDF that fails silently in the viewer.
     /// </remarks>
     private static string WriteDemoPdf(
-        string contentRootPath, string applicationId, string folder, string fileName,
+        IFileStore files, string applicationId, string folder, string fileName,
         string title, string subtitle)
     {
-        var directory = Path.Combine(contentRootPath, "App_Data", "uploads", applicationId, folder);
-        Directory.CreateDirectory(directory);
+        var key = Path.Combine("App_Data", "uploads", applicationId, folder, fileName);
 
-        var fullPath = Path.Combine(directory, fileName);
-
-        if (!File.Exists(fullPath))
+        // ponytail: seed-time only, so blocking on the store is fine.
+        using (var existing = files.OpenReadAsync(key).GetAwaiter().GetResult())
+        if (existing is null)
         {
             var bytes = Document.Create(document =>
             {
@@ -1221,9 +1221,9 @@ public static class DemoSeedData
                 });
             }).GeneratePdf();
 
-            File.WriteAllBytes(fullPath, bytes);
+            files.SaveAsync(key, bytes).GetAwaiter().GetResult();
         }
 
-        return Path.Combine("App_Data", "uploads", applicationId, folder, fileName);
+        return key;
     }
 }

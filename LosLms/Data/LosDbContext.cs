@@ -1,5 +1,6 @@
 using LosLms.Models;
 using LosLms.Services;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +21,7 @@ namespace LosLms.Data;
 /// The tenant is snapshotted into plain fields at construction rather than read through a property
 /// chain, because EF parameterises a captured context field cleanly and a chain is fragile.
 /// </remarks>
-public class LosDbContext : IdentityDbContext<ApplicationUser>
+public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionKeyContext
 {
     private readonly int? _companyId;
     private readonly bool _isSuperAdmin;
@@ -127,6 +128,12 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ApiRate> ApiRates => Set<ApiRate>();
 
     public DbSet<ApiUsageLog> ApiUsageLogs => Set<ApiUsageLog>();
+
+    /// <summary>Encrypted admin-set passwords (PasswordVault). Not tenant-filtered.</summary>
+    public DbSet<CredentialVaultEntry> CredentialVault => Set<CredentialVaultEntry>();
+
+    /// <summary>ASP.NET Data Protection keys, kept here on the cloud host so a restart does not sign everyone out.</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     public DbSet<ApiInvoice> ApiInvoices => Set<ApiInvoice>();
 

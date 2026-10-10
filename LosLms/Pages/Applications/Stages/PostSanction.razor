@@ -10,6 +10,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject LosLms.Services.IFileStore Files
 @inject DigioClient Digio
 
 <PageTitle>Post Sanction · @ApplicationId</PageTitle>
@@ -1080,15 +1081,16 @@ else
             return;
         }
 
-        var fullPath = Path.Combine(HostEnvironment.ContentRootPath, _disbursement.AgreementFilePath);
-        if (!File.Exists(fullPath))
+        var agreement = await Files.ReadAllBytesAsync(_disbursement.AgreementFilePath);
+        if (agreement is null)
         {
             _esignNotice = "The agreement file is missing — generate it again.";
             return;
         }
 
         var result = await EsignService.DispatchAsync(
-            Digio, _application.CompanyId, ApplicationId, fullPath, signer, applicant!.FullName);
+            Digio, _application.CompanyId, ApplicationId, Path.GetFileName(_disbursement.AgreementFilePath), agreement,
+            signer, applicant!.FullName);
 
         if (result.Status != DigioStatus.Ok || result.Str("id") is not { } documentId)
         {
@@ -1113,14 +1115,10 @@ else
     /// <summary>Writes generated PDF bytes to the guarded uploads folder, same shape as an upload.</summary>
     private async Task<string> WriteGeneratedAsync(byte[] bytes, string kind)
     {
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application!.Id, "postsanction");
-        Directory.CreateDirectory(folder);
-
         var fileName = $"{kind}-{Guid.NewGuid():N}.pdf";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application!.Id, "postsanction", fileName, bytes);
 
-        return Path.Combine("App_Data", "uploads", _application.Id, "postsanction", fileName);
+        return savedPath;
     }
 
     /// <summary>
@@ -1133,17 +1131,12 @@ else
     {
         var fileName = $"{SafeFileName(_application!.CustomerName)}-{DateTime.Today:yyyy-MM-dd}-welcomeletter.pdf";
 
-        var served = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, "postsanction");
-        Directory.CreateDirectory(served);
-        await File.WriteAllBytesAsync(Path.Combine(served, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, "postsanction", fileName, bytes);
 
         // A browsable archive of every welcome letter, outside the per-application upload tree.
-        var archive = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "welcome-letters");
-        Directory.CreateDirectory(archive);
-        await File.WriteAllBytesAsync(Path.Combine(archive, fileName), bytes);
+        await Files.SaveAsync(Path.Combine("App_Data", "welcome-letters", fileName), bytes);
 
-        return Path.Combine("App_Data", "uploads", _application.Id, "postsanction", fileName);
+        return savedPath;
     }
 
     /// <summary>A filename-safe form of the customer name: letters, digits and single hyphens only.</summary>
@@ -1229,14 +1222,10 @@ else
             return;
         }
 
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, "postsanction");
-        Directory.CreateDirectory(folder);
-
         var fileName = $"{slot}-{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, "postsanction", fileName, bytes);
 
-        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, "postsanction", fileName);
+        var relativePath = savedPath;
 
         // Persist everything the officer has typed before reloading, or an upload would discard it —
         // the lesson from the Stage 5 report upload.

@@ -11,6 +11,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject LosLms.Services.IFileStore Files
 @inject IHttpClientFactory HttpClientFactory
 @inject IJSRuntime JS
 
@@ -1066,14 +1067,10 @@ else
             return null;
         }
 
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, party.PartyType);
-        Directory.CreateDirectory(folder);
-
         var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, party.PartyType, fileName, bytes);
 
-        var relativePath = Path.Combine("App_Data", "uploads", _application.Id, party.PartyType, fileName);
+        var relativePath = savedPath;
 
         switch (kind)
         {

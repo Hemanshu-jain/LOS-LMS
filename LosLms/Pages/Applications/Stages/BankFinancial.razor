@@ -11,6 +11,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
+@inject LosLms.Services.IFileStore Files
 @inject IJSRuntime JS
 @inject IHttpClientFactory HttpClientFactory
 @inject DigioClient Digio
@@ -864,14 +865,10 @@ else
 
         // Outside wwwroot: bank statements are PII and anything under wwwroot is downloadable by
         // anyone who guesses the URL. The client filename is never used in the path.
-        var folder = Path.Combine(HostEnvironment.ContentRootPath, "App_Data", "uploads",
-            _application.Id, "statements");
-        Directory.CreateDirectory(folder);
-
         var fileName = $"statement-{Guid.NewGuid():N}{extension}";
-        await File.WriteAllBytesAsync(Path.Combine(folder, fileName), bytes);
+        var savedPath = await Files.SaveUploadAsync(_application.Id, "statements", fileName, bytes);
 
-        _newFilePath = Path.Combine("App_Data", "uploads", _application.Id, "statements", fileName);
+        _newFilePath = savedPath;
         _newFileName = file.Name;
     }
 
