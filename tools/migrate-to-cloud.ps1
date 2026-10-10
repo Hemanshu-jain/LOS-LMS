@@ -194,11 +194,19 @@ function Get-LocalFiles([string]$Folder) {
     @(Get-ChildItem -LiteralPath $Folder -Recurse -File -Force)
 }
 
+# Supabase auth headers. New-style keys (sb_secret_...) are not JWTs: they go ONLY in `apikey` (as a Bearer token they are
+# rejected with "Invalid Compact JWS"). Legacy service_role keys are JWTs (eyJ...) and also need the Authorization header.
+function Get-SupabaseHeaders([string]$Key) {
+    $h = @{ apikey = $Key }
+    if ($Key -match '^eyJ[^.]+\.[^.]+\.') { $h.Authorization = "Bearer $Key" }
+    $h
+}
+
 # Files in the bucket under a prefix, walking folders (Supabase lists one level at a time; a folder has no id).
 function Get-BucketFileCount([string]$Prefix) {
     $count = 0
     $offset = 0
-    $headers = @{ Authorization = "Bearer $supabaseKey"; apikey = $supabaseKey }
+    $headers = Get-SupabaseHeaders $supabaseKey
     do {
         $body = @{ prefix = $Prefix; limit = 100; offset = $offset; sortBy = @{ column = 'name'; order = 'asc' } } | ConvertTo-Json -Depth 4
         # Windows PowerShell hands a JSON array back as ONE object; piping it unrolls it into its items.
@@ -380,8 +388,9 @@ try {
     Step '5/8 Upload files to Supabase Storage'
     $http = New-Object System.Net.Http.HttpClient
     $http.Timeout = [TimeSpan]::FromMinutes(15)
-    $http.DefaultRequestHeaders.Add('apikey', $supabaseKey)
-    $http.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $supabaseKey)
+    $authHeaders = Get-SupabaseHeaders $supabaseKey
+    $http.DefaultRequestHeaders.Add('apikey', $authHeaders.apikey)
+    if ($authHeaders.Authorization) { $http.DefaultRequestHeaders.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $supabaseKey) }
     $bucketUrl = "$base/storage/v1/object/" + [Uri]::EscapeDataString($Bucket) + '/'
 
     $uploaded = 0
