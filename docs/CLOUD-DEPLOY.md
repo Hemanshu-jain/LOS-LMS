@@ -44,7 +44,8 @@ Values are trimmed, so a stray newline pasted into the Render form is harmless.
 1. Create the private bucket in Supabase and the MySQL database in Aiven (`utf8mb4`).
 2. Set the variables above and deploy. Migrations run at boot (additive; this release adds the tables
    `CredentialVault` and `DataProtectionKeys`).
-3. Moving from the desktop host:
+3. Moving from the desktop host: run `tools\migrate-to-cloud.ps1` (it does the database, the files and the vault below in
+   one go, with checks; start with `-WhatIf`). By hand, if you prefer:
    - **Files:** copy the host's `app\backend\App_Data\uploads\` and `...\welcome-letters\` folders into the bucket,
      keeping the paths: object `App_Data/uploads/{application}/{folder}/{file}`. The database rows already store
      exactly those paths, so they resolve unchanged.
