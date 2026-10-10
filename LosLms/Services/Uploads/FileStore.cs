@@ -93,7 +93,12 @@ public sealed class SupabaseFileStore : IFileStore
         _bucket = bucket;
         _http.BaseAddress = new Uri(url.TrimEnd('/') + "/");
         _http.DefaultRequestHeaders.Add("apikey", serviceKey);
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", serviceKey);
+        // The legacy service_role key is a JWT and is also sent as the bearer. The newer sb_secret_... keys are not
+        // JWTs, and Storage rejects them as a bearer ("Invalid Compact JWS"), so for those the apikey header alone does it.
+        if (serviceKey.StartsWith("eyJ", StringComparison.Ordinal) && serviceKey.Count(c => c == '.') == 2)
+        {
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", serviceKey);
+        }
     }
 
     public async Task SaveAsync(string key, byte[] bytes)

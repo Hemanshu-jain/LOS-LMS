@@ -52,18 +52,34 @@ public sealed class CloudReadinessTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => store.OpenReadAsync(key));
     }
 
+    [Theory]
+    [InlineData("sb_secret_AbCdEf123456")]  // new-format secret key: not a JWT
+    [InlineData("eyJnot-a-three-part-token")] // looks like the start of a JWT but has no dots
+    public async Task SupabaseStore_SendsOnlyTheApikey_ForAKeyThatIsNotAJwt(string key)
+    {
+        var handler = new RecordingHandler();
+        var store = new SupabaseFileStore(new HttpClient(handler), "https://proj.supabase.co/", key, "b");
+
+        await store.SaveAsync("App_Data/uploads/LN-1/rcu/x.pdf", new byte[] { 1 });
+
+        var put = Assert.Single(handler.Requests);
+        Assert.Equal(key, put.Headers["apikey"]);
+        Assert.False(put.Headers.ContainsKey("Authorization")); // a non-JWT bearer is rejected with "Invalid Compact JWS"
+    }
+
     [Fact]
     public async Task SupabaseStore_SpeaksTheStorageRestApi_WithTheServiceKey()
     {
         var handler = new RecordingHandler();
-        var store = new SupabaseFileStore(new HttpClient(handler), "https://proj.supabase.co/", "svc-key", "loan files");
+        const string jwtKey = "eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.c2ln"; // legacy service_role key
+        var store = new SupabaseFileStore(new HttpClient(handler), "https://proj.supabase.co/", jwtKey, "loan files");
 
         await store.SaveAsync("App_Data/uploads/LN-1/rcu/report 1.pdf", new byte[] { 9, 9 });
         var put = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Put, put.Method);
         Assert.Equal("https://proj.supabase.co/storage/v1/object/loan%20files/App_Data/uploads/LN-1/rcu/report%201.pdf", put.Uri);
-        Assert.Equal("svc-key", put.Headers["apikey"]);
-        Assert.Equal("Bearer svc-key", put.Headers["Authorization"]);
+        Assert.Equal(jwtKey, put.Headers["apikey"]);
+        Assert.Equal("Bearer " + jwtKey, put.Headers["Authorization"]);
         Assert.Equal("true", put.Headers["x-upsert"]);
 
         handler.Reply = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[] { 7 }) };
