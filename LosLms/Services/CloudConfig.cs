@@ -49,10 +49,26 @@ public static class CloudConfig
         return builder.ConnectionString;
     }
 
-    /// <summary>Env values can't hold real newlines reliably, so a literal "\n" is accepted in the PEM text.</summary>
-    private static string WriteCaFile(string pem)
+    /// <summary>
+    /// Env values can't hold real newlines reliably, so a literal "\n" is accepted in the PEM text. A bare base64 body
+    /// (pasted without its BEGIN/END lines) is wrapped into a proper certificate block.
+    /// </summary>
+    internal static string NormalizePem(string pem)
     {
         pem = pem.Replace("\\n", "\n");
+        if (pem.Contains("-----BEGIN", StringComparison.Ordinal))
+        {
+            return pem;
+        }
+
+        var body = string.Concat(pem.Where(c => !char.IsWhiteSpace(c)));
+        var lines = Enumerable.Range(0, (body.Length + 63) / 64).Select(i => body.Substring(i * 64, Math.Min(64, body.Length - i * 64)));
+        return "-----BEGIN CERTIFICATE-----\n" + string.Join('\n', lines) + "\n-----END CERTIFICATE-----\n";
+    }
+
+    private static string WriteCaFile(string pem)
+    {
+        pem = NormalizePem(pem);
         var name = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(pem)))[..12];
         var path = Path.Combine(Path.GetTempPath(), $"db-ca-{name}.pem");
         if (!File.Exists(path))
