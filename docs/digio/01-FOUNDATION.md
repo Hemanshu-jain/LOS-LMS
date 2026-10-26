@@ -115,8 +115,8 @@ compatibility. They are written only by the evidence writer, never by the UI.
 ### 3.4 `DigioSettings`: per-company, non-secret configuration
 Product toggles (`PanVerify`, `DigiLocker`, `AadhaarMask`, `Aml`, `IdOcr`, `Face`, `Rc`, `Kyb`, `Esign`,
 `Estamp`, `Enach`, `Debits`, `Ckyc`…), template names, default customer channel
-(`SMS|WHATSAPP|ALL|EMAIL`), link expiry days, NACH `corporate_config_id` (EMI) and (security), sponsor/corporate
-account number, NACH category codes, max-amount multiplier, lender signatory (name, email), e-stamp tag
+(`SMS|WHATSAPP|ALL|EMAIL`), link expiry days, NACH config **per environment** (`corporate_config_id` for EMI and
+security, corporate account number, category codes, frequency, max-amount multiplier; full list in `06-NACH.md` §1), lender signatory (name, email), e-stamp tag
 per state, brand logo URL (https), sign-placement defaults. Secrets stay in the vault, never here.
 
 ### 3.5 Aadhaar at rest (Phase 2, listed here because it is a schema change)
@@ -199,7 +199,9 @@ Styling: reuse existing `.verify-button`, `.gate`, `.chip`, `.pill` classes. No 
   Switching sandbox → production requires typing the company code. It never mixes evidence: old sandbox
   evidence stays badged.
 - **Company Admin → Company Setup → Integrations tab** (new): the operational `DigioSettings` (channel,
-  expiry, signatory, NACH config, e-stamp tags, minimum KYC evidence policy). Read-only view of which
+  expiry, signatory, NACH business policy such as frequency and max multiplier, e-stamp tags, minimum KYC evidence policy).
+  Values Digio issues per environment (NACH config ids, corporate account no.) are entered by the **SuperAdmin**
+  on the keys page, per environment (`06-NACH.md` §1). Read-only view of which
   products are enabled.
 - **Admin → Integrations health** (new, `/admin/integrations`): inbox backlog, failed events (with retry),
   pending customer actions, requests stuck more than 24 h, last webhook time, sandbox/production, links to

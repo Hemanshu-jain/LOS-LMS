@@ -12,6 +12,7 @@
 | `02-FEATURES-BY-STAGE.md` | Every Digio feature, stage by stage: flow, UI, data, gates, acceptance criteria |
 | `03-LMS-COLLECTIONS.md` | Post-disbursal: repayment ledger, NACH debit presentation, bounces, settlement, closure |
 | `04-DIGIO-API-REFERENCE.md` | Curated endpoint/field/webhook reference for everything this plan uses |
+| `06-NACH.md` | NACH end to end: where the NACH config id goes, all mandate routes, lifecycle, amend/cancel, disbursal gate, sandbox test |
 | `05-SESSION-PROMPTS.md` | Copy-paste prompts + checklists for the local Claude session, phase by phase |
 | `appendix/DIGIO-API-SPEC-SUMMARY.md` | Machine summary of all 79 Digio OpenAPI operations (offline grep source) |
 

@@ -35,7 +35,8 @@ uses the vault credentials for ONE company (never print the secret) and calls th
 account has enabled: PAN verify (fetch_id_data/PAN) with a Digio sandbox test PAN; GST verify; Aadhaar mask with a
 sample image; a DigiStudio with_template request for DIGILOCKER_AADHAAR_PAN (notify_customer=false) plus its
 /response; vehicle_rc with a test registration; AML screen with a test name; GET /v3/client/mandate/banks; an e-Sign
-uploadpdf of a 1-page test PDF to my own mobile; a mandate create_form (if DigiCollect is enabled).
+uploadpdf of a 1-page test PDF to my own mobile; and the NACH sandbox test in docs/digio/06-NACH.md §9 using the sandbox
+NACH config id (I will enter it; read it from the vault or a Development-only user-secret, never hard-code or commit it).
 For each one, save the raw JSON response with ALL PII masked (names → "TEST NAME", numbers → X except the last 4) into
 docs/digio/samples/<operation>.json, and record in docs/digio/DECISIONS.md: HTTP status, the error code if any, the
 date format Digio accepted (dob / settlement_date), whether the gateway link format
@@ -89,7 +90,7 @@ staleness, sandbox-vs-production gate, dedupe on hash, no PII in logs.
 
 ## 3.5 Phase 3 — e-Sign hardening, e-stamp, e-NACH
 ```
-Phase 3 (docs/digio/02 §8.1–8.4). Multi-party e-Sign: all parties with verified KYC (+ lender signatory from
+Phase 3 (docs/digio/02 §8.1–8.4 and docs/digio/06-NACH.md, which is the authoritative NACH spec). Multi-party e-Sign: all parties with verified KYC (+ lender signatory from
 settings), signature_verification rules (NAME fuzzy, YOB, AADHAAR last 4, GENDER) built from evidence, callback =
 our request id, the agreement hash as fingerprint, cancel + re-send when the agreement changes, per-signer status rows with
 Resend/Open on this device. e-stamp via estamp_request tags from settings (behind its toggle). e-NACH: replace the

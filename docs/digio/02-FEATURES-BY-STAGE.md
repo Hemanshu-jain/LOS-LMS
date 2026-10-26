@@ -244,6 +244,9 @@ Nothing from Digio until Account Aggregator (3.3) exists. Do not derive income f
 - An unused stamp auto-returns to inventory if signing expires. Show the stamp id (`ExternalEstampMasterResponse`) on the file.
 
 ### 8.3 e-NACH mandate registration — P0 (Phase 3)
+> **Full specification: `06-NACH.md`** (config id handling, validation, all routes, lifecycle, amend/cancel,
+> gate, sandbox test). The summary below is kept for overview; where they differ, `06` wins.
+
 - **Replace the stub** in `Components/Shared/MandateFlow.razor` (E-Nach tab) for `EnachMandate`.
 - **Before the request:** penny-drop evidence on the debit account (3.1 → reuse it). Call `GET /v3/client/mandate/banks?mode=API`
   (cache it daily) to show which auth modes the customer's bank supports (`apiMandateNetBanking`,

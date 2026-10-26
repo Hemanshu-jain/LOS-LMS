@@ -13,7 +13,7 @@ Write "TBD — owner: <name>" rather than leaving a line blank.
 | 4 | Aadhaar at rest: keep last 4 + keyed hash + masked image only (plan R3)? Compliance sign-off | | |
 | 5 | Loan agreement signers (applicant / co-applicants / guarantors / lender signatory: name and email), sequential or parallel | | |
 | 6 | e-Stamp: states, denominations, inventory owner | | |
-| 7 | NACH: e-NACH vs physical default; frequency (Adhoc / Monthly); max amount = EMI × ?; category codes (EMI, security); corporate_config_id(s); corporate account no. | | |
+| 7 | NACH: e-NACH vs physical default; frequency (Adhoc / Monthly); max amount = EMI × ?; category codes (EMI, security); corporate_config_id(s); corporate account no. (record only "sandbox id received on <date>", never the value; see 06-NACH.md §1) | | |
 | 8 | Release-funds gate: agreement Signed? mandate Registered? Admin bypass allowed? | | |
 | 9 | Collections: auto-present EMIs? bounce charge; re-presentation attempts / gap; receipt policy | | |
 | 10 | Compliance owner for CKYC, sanctions screening, V-CIP, retention period | | |
