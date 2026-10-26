@@ -87,7 +87,9 @@ jobs:
           # Fail loudly on an empty/tiny dump, a dump with no tables, or one that was cut short (no trailer).
           if [ "$size" -lt 1024 ]; then echo "::error::Dump is only $size bytes (expected well over 1 KB)"; exit 1; fi
           gzip -t "$WORK/dump.sql.gz"
-          gzip -dc "$WORK/dump.sql.gz" | grep -q '^CREATE TABLE' || { echo "::error::Dump contains no tables"; exit 1; }
+          # grep -c (not -q): -q exits at the first match, gzip then dies on a broken pipe and pipefail reports a false failure.
+          tables=$(gzip -dc "$WORK/dump.sql.gz" | grep -c '^CREATE TABLE' || true)
+          [ "$tables" -gt 0 ] || { echo "::error::Dump contains no tables"; exit 1; }
           gzip -dc "$WORK/dump.sql.gz" | tail -n 5 | grep -q '^-- Dump completed' || { echo "::error::Dump has no completion trailer (truncated?)"; exit 1; }
           echo "Dump OK: $size bytes compressed"
 
