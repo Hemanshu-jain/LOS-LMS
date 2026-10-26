@@ -15,6 +15,10 @@ Golden rule already enforced in code: **no provider ever fabricates a result.** 
 
 ---
 
+> **Digio:** the complete integration plan (all products, every stage, webhooks, LMS collections, prompts) is in
+> [`docs/digio/00-MASTER-PLAN.md`](./digio/00-MASTER-PLAN.md). The Digio sections below describe what is built today.
+> Correction: the KYC endpoints listed as "not in Digio's public docs" **are** public. See `docs/digio/04-DIGIO-API-REFERENCE.md`.
+
 ## Gemini (`Gemini__ApiKey`)
 
 Config section `Gemini` in `appsettings.json` (`ApiKey` blank, `Model` = `gemini-2.5-flash`). Set the
