@@ -59,6 +59,7 @@ public sealed class DigioWebhookTests : IDisposable
         services.AddSingleton<IFileStore>(_files);
         services.AddSingleton(Options.Create(new ApiBillingOptions()));
         services.AddSingleton<DigioWebhookHealth>();
+        services.AddSingleton<DigioBackgroundTasks>();
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
         services.AddScoped<DigioWebhookService>();
@@ -121,7 +122,8 @@ public sealed class DigioWebhookTests : IDisposable
 
         await scope.ServiceProvider.GetRequiredService<DigioWebhookService>().HandleAsync(1, Payload("doc.signed", "DID123", null));
 
-        await Eventually(() => Disbursement().AgreementEsignStatus == "Signed");
+        await _provider.GetRequiredService<DigioBackgroundTasks>().WhenIdleAsync();
+        Assert.Equal("Signed", Disbursement().AgreementEsignStatus);
         Assert.Equal(1, UsageRows());
     }
 
@@ -254,12 +256,6 @@ public sealed class DigioWebhookTests : IDisposable
         return db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.ESignAadhaar && l.IsSuccess);
     }
 
-    private static async Task Eventually(Func<bool> condition)
-    {
-        for (var i = 0; i < 80 && !condition(); i++) { await Task.Delay(50); }
-        Assert.True(condition(), "the background confirmation did not complete in time");
-    }
-
     /// <summary>A webhook has no user, exactly how the real endpoint runs.</summary>
     private LosDbContext Anonymous()
     {
@@ -270,6 +266,7 @@ public sealed class DigioWebhookTests : IDisposable
 
     public void Dispose()
     {
+        _provider.GetRequiredService<DigioBackgroundTasks>().WhenIdleAsync().GetAwaiter().GetResult(); // no confirm may outlive the test's database
         _provider.Dispose();
         SqliteConnection.ClearAllPools();
         File.Delete(_file);

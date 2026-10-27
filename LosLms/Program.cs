@@ -148,6 +148,7 @@ builder.Services.AddScoped<ApiBillingService>();
 builder.Services.AddScoped<DigioClient>();
 builder.Services.AddScoped<DigioWebhookService>();
 builder.Services.AddSingleton<DigioWebhookHealth>();
+builder.Services.AddSingleton<DigioBackgroundTasks>();
 
 // "Connect to LOS-LMS": OAuth device-flow server for partner desktop software (Paavan), the PartnerBearer
 // scheme + loans:read / loans:write policies the partner data API uses, the /link wrong-code limiter and
