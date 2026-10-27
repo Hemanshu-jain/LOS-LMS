@@ -1,0 +1,40 @@
+@* "Digio says X, the file says Y". Apply fills the field from Digio; Keep mine leaves it; Accept mismatch is Admin-only and
+   needs a note, which becomes the recorded AcceptedMismatch decision. Nothing is changed here: the parent handles each choice. *@
+<div class="dg-diff">
+    <span class="dg-diff-field">@Field</span>
+    <span>Digio says <strong>@DigioValue</strong></span>
+    <span>File says <strong>@(string.IsNullOrWhiteSpace(FileValue) ? "(blank)" : FileValue)</strong></span>
+    <button type="button" class="verify-button" @onclick="OnApply">Apply</button>
+    <button type="button" class="verify-button" @onclick="OnKeep">Keep mine</button>
+    @if (CanAccept)
+    {
+        <input class="field-input" placeholder="Why accept the mismatch? (required)" maxlength="300" aria-label="Reason"
+               @bind="_note" @bind:event="oninput" />
+        <button type="button" class="verify-button" disabled="@string.IsNullOrWhiteSpace(_note)" @onclick="AcceptAsync">Accept mismatch</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Field { get; set; } = "";
+    [Parameter, EditorRequired] public string DigioValue { get; set; } = "";
+    [Parameter] public string? FileValue { get; set; }
+
+    /// <summary>Only an Admin may accept a mismatch.</summary>
+    [Parameter] public bool CanAccept { get; set; }
+
+    [Parameter] public EventCallback OnApply { get; set; }
+    [Parameter] public EventCallback OnKeep { get; set; }
+
+    /// <summary>Receives the (non-blank, trimmed) note.</summary>
+    [Parameter] public EventCallback<string> OnAcceptMismatch { get; set; }
+
+    private string _note = "";
+
+    private async Task AcceptAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_note))
+        {
+            await OnAcceptMismatch.InvokeAsync(_note.Trim());
+        }
+    }
+}

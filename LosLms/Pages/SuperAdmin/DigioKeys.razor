@@ -1,5 +1,6 @@
 @page "/system/digio"
 @using LosLms.Data
+@using LosLms.Models
 @using LosLms.Services
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
@@ -7,6 +8,7 @@
 @inject DigioClient Digio
 @inject DigioWebhookHealth WebhookHealth
 @inject NavigationManager Nav
+@inject IConfiguration Config
 
 <PageTitle>Digio keys · LOS/LMS</PageTitle>
 
@@ -48,14 +50,26 @@
                         <label>Webhook secret<input class="field-input" type="password" @bind="r.WebhookSecret"
                                                     placeholder="@(r.HasWebhookSecret ? "•••••• (unchanged)" : "")" autocomplete="new-password" /></label>
                         <label class="dk-check"><input type="checkbox" @bind="r.Production" /> Production (untick = sandbox)</label>
+                        @if (r.Production && !r.WasProduction)
+                        {
+                            <label>Type the company code (@r.Code) to switch to production<input class="field-input" @bind="r.ConfirmCode" autocomplete="off" /></label>
+                        }
                     </div>
 
+                    <fieldset class="dk-products">
+                        <legend>Products switched on for this company</legend>
+                        @foreach (var name in ProductNames)
+                        {
+                            <label class="dk-check"><input type="checkbox" checked="@r.Products[name]" @onchange="e => r.Products[name] = (bool)(e.Value ?? false)" /> @Label(name)</label>
+                        }
+                    </fieldset>
+
                     <p class="dk-muted">Webhook URL for the Digio dashboard (Profile → Webhooks):
-                        <code>@(Nav.BaseUri)webhooks/digio/@r.Id</code></p>
+                        <code>@WebhookBase()webhooks/digio/@r.Id</code></p>
 
                     @if (r.LastReceived is not null || r.LastProblemAt is not null)
                     {
-                        <p class="dk-muted">Since this server started — last webhook received:
+                        <p class="dk-muted">Last webhook received:
                             @(r.LastReceived?.ToLocalTime().ToString("d MMM, HH:mm") ?? "none").
                             @if (r.LastProblemAt is not null)
                             {
@@ -65,7 +79,9 @@
                     }
 
                     <button type="button" class="dk-btn" @onclick="() => Save(r)">Save</button>
+                    <button type="button" class="dk-btn" disabled="@(!r.Configured || r.Testing)" @onclick="() => TestAsync(r)">@(r.Testing ? "Testing…" : "Test connection")</button>
                     @if (r.Message is not null) { <span class="dk-msg">@r.Message</span> }
+                    @if (r.TestResult is not null) { <span class="dk-msg">@r.TestResult</span> }
                 </section>
             }
         }
@@ -84,7 +100,10 @@
     .dk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px 14px; }
     .dk-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; font-weight: 600; color: #3a4553; }
     .dk-grid .dk-check { flex-direction: row; align-items: center; gap: 6px; font-weight: 500; }
-    .dk-btn { margin-top: 6px; padding: 5px 14px; font-size: 12px; font-weight: 600; color: #fff; background: #1d2733; border: 0; border-radius: 3px; cursor: pointer; }
+    .dk-products { border: 1px solid #e4e8ee; margin: 10px 0; padding: 6px 12px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; }
+    .dk-products legend { font-size: 11.5px; font-weight: 600; color: #3a4553; padding: 0 6px; }
+    .dk-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .dk-btn { margin-right: 8px; margin-top: 6px; padding: 5px 14px; font-size: 12px; font-weight: 600; color: #fff; background: #1d2733; border: 0; border-radius: 3px; cursor: pointer; }
     .dk-btn:hover { background: #0f161e; }
     .dk-btn:focus-visible { outline: 2px solid #1d2733; outline-offset: 2px; }
     .dk-problem { color: #8a1f1f; }
@@ -102,9 +121,36 @@
         public int Id; public string Name = ""; public string? Code;
         public bool Configured; public bool HasWebhookSecret;
         public string ClientId = ""; public string ClientSecret = ""; public string WebhookSecret = "";
-        public bool Production; public string? Message;
+        public bool Production, WasProduction; public string? Message;
         public DateTime? LastReceived, LastProblemAt; public string? Problem;
+        public string ConfirmCode = ""; public bool Testing; public string? TestResult;
+        public Dictionary<string, bool> Products = new();
     }
+
+    // The DigioSettings product switches, by property name (the form and the table stay in step through this one list).
+    private static readonly string[] ProductNames =
+        typeof(DigioSettings).GetProperties().Where(p => p.PropertyType == typeof(bool) && p.CanWrite).Select(p => p.Name).ToArray();
+
+    private static string Label(string name) => name switch
+    {
+        "PanVerify" => "PAN verify",
+        "DigiLocker" => "DigiLocker (Aadhaar + PAN)",
+        "AadhaarMask" => "Aadhaar masking",
+        "Aml" => "AML screening",
+        "IdOcr" => "ID OCR",
+        "Face" => "Face match / liveness",
+        "Rc" => "Vehicle RC verify",
+        "Kyb" => "Business (KYB)",
+        "Esign" => "e-Sign",
+        "Estamp" => "e-Stamp",
+        "Enach" => "e-NACH mandate",
+        "Debits" => "Mandate debits",
+        "Ckyc" => "CKYC",
+        _ => name,
+    };
+
+    /// <summary>The address Digio posts to: PublicBaseUrl when set (the page may be open on an internal address), else this page's own.</summary>
+    private string WebhookBase() => (Config["PublicBaseUrl"]?.Trim().TrimEnd('/') is { Length: > 0 } b ? b : Nav.BaseUri.TrimEnd('/')) + "/";
 
     protected override async Task OnInitializedAsync()
     {
@@ -112,24 +158,32 @@
         var companies = await db.Companies.AsNoTracking().Where(c => c.Name != "").OrderBy(c => c.Name)
             .Select(c => new { c.Id, c.Name, c.Code }).ToListAsync();
 
+        var settings = await db.DigioSettings.AsNoTracking().ToListAsync();
+        var lastWebhook = await db.DigioWebhookInbox.GroupBy(i => i.CompanyId)
+            .Select(g => new { CompanyId = g.Key, At = g.Max(i => i.ReceivedAt) }).ToListAsync();
+
         _rows = companies.Select(c =>
         {
             var saved = Digio.Credentials(c.Id);
+            var row = settings.FirstOrDefault(s => s.CompanyId == c.Id);
             return new Row
             {
+                WasProduction = saved?.Production ?? false,
+                Products = ProductNames.ToDictionary(n => n, n => row is not null && (bool)typeof(DigioSettings).GetProperty(n)!.GetValue(row)!),
                 Id = c.Id, Name = c.Name, Code = c.Code,
                 Configured = saved is not null,
                 HasWebhookSecret = !string.IsNullOrEmpty(saved?.WebhookSecret),
                 ClientId = saved?.ClientId ?? "",
                 Production = saved?.Production ?? false,
-                LastReceived = WebhookHealth.For(c.Id).Received,
+                LastReceived = lastWebhook.FirstOrDefault(w => w.CompanyId == c.Id)?.At is { } at && at > (WebhookHealth.For(c.Id).Received ?? DateTime.MinValue)
+                    ? at : WebhookHealth.For(c.Id).Received,
                 LastProblemAt = WebhookHealth.For(c.Id).ProblemAt,
                 Problem = WebhookHealth.For(c.Id).Problem,
             };
         }).ToList();
     }
 
-    private void Save(Row r)
+    private async Task Save(Row r)
     {
         var saved = Digio.Credentials(r.Id);
         var secret = string.IsNullOrWhiteSpace(r.ClientSecret) ? saved?.ClientSecret : r.ClientSecret.Trim();
@@ -139,12 +193,63 @@
             return;
         }
 
+        // Sandbox -> production changes what is billed and what counts as evidence, so it needs the company code typed.
+        if (r.Production && !r.WasProduction && !string.Equals(r.ConfirmCode?.Trim(), r.Code, StringComparison.OrdinalIgnoreCase))
+        {
+            r.Message = $"Type the company code ({r.Code}) to switch to production.";
+            return;
+        }
+
         var webhook = string.IsNullOrWhiteSpace(r.WebhookSecret) ? saved?.WebhookSecret : r.WebhookSecret.Trim();
         Digio.SaveCredentials(r.Id, new DigioCredentials(r.ClientId.Trim(), secret!, webhook, r.Production));
+        await SaveProductsAsync(r);
+        r.WasProduction = r.Production;
+        r.ConfirmCode = "";
 
         r.ClientSecret = r.WebhookSecret = "";
         r.Configured = true;
         r.HasWebhookSecret = !string.IsNullOrEmpty(webhook);
         r.Message = "Saved.";
+    }
+
+    private async Task SaveProductsAsync(Row r)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.DigioSettings.FirstOrDefaultAsync(s => s.CompanyId == r.Id);
+        if (row is null)
+        {
+            row = new DigioSettings { CompanyId = r.Id };
+            db.DigioSettings.Add(row);
+        }
+
+        foreach (var (name, on) in r.Products)
+        {
+            typeof(DigioSettings).GetProperty(name)!.SetValue(row, on);
+        }
+
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>A harmless authenticated call (the DigiCollect bank list). OK means the keys work; 403 means they work but the product is off.</summary>
+    private async Task TestAsync(Row r)
+    {
+        r.Testing = true;
+        r.TestResult = null;
+        try
+        {
+            var result = await Digio.GetAsync(r.Id, null, "/v3/client/mandate/banks", null);
+            r.TestResult = result.Status switch
+            {
+                DigioStatus.Ok => "Test OK: Digio accepted the keys.",
+                DigioStatus.NotConfigured => "Save the keys first.",
+                DigioStatus.Paused => "Paused: " + result.Error,
+                _ => "Test failed: " + (result.Error ?? "Digio did not answer."),
+            };
+        }
+        finally
+        {
+            r.Testing = false;
+        }
     }
 }
