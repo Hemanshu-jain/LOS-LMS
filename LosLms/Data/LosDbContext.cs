@@ -129,6 +129,14 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
     public DbSet<ApiUsageLog> ApiUsageLogs => Set<ApiUsageLog>();
 
+    public DbSet<DigioRequest> DigioRequests => Set<DigioRequest>();
+
+    public DbSet<DigioWebhookInbox> DigioWebhookInbox => Set<DigioWebhookInbox>();
+
+    public DbSet<VerificationEvidence> VerificationEvidence => Set<VerificationEvidence>();
+
+    public DbSet<DigioSettings> DigioSettings => Set<DigioSettings>();
+
     /// <summary>Encrypted admin-set passwords (PasswordVault). Not tenant-filtered.</summary>
     public DbSet<CredentialVaultEntry> CredentialVault => Set<CredentialVaultEntry>();
 
@@ -1017,6 +1025,40 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
         modelBuilder.Entity<ApiUsageLog>()
             .HasQueryFilter(l => _isSuperAdmin || l.CompanyId == _companyId);
+
+        // Digio foundation tables: company-scoped. The webhook processor and the reconciler have no user, so they bypass the
+        // filter on purpose and scope by an explicit CompanyId instead.
+        modelBuilder.Entity<DigioRequest>(entity =>
+        {
+            entity.ToTable("DigioRequest");
+            entity.HasIndex(r => new { r.CompanyId, r.DigioId }).IsUnique(); // NULL DigioIds do not collide
+            entity.HasIndex(r => new { r.CompanyId, r.ApplicationId });
+            entity.HasIndex(r => new { r.Status, r.LastPolledAt });          // the reconciler's "not final yet" scan
+            entity.HasQueryFilter(r => _isSuperAdmin || r.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<DigioWebhookInbox>(entity =>
+        {
+            entity.ToTable("DigioWebhookInbox");
+            entity.HasIndex(i => new { i.CompanyId, i.DigioEventId }).IsUnique(); // at-least-once delivery: a repeat is a no-op
+            entity.HasIndex(i => new { i.Status, i.NextAttemptAt });
+            entity.HasQueryFilter(i => _isSuperAdmin || i.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<VerificationEvidence>(entity =>
+        {
+            entity.ToTable("VerificationEvidence");
+            entity.Property(e => e.Score).HasPrecision(6, 2);
+            entity.HasIndex(e => new { e.CompanyId, e.ApplicationId, e.Subject });
+            entity.HasQueryFilter(e => _isSuperAdmin || e.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<DigioSettings>(entity =>
+        {
+            entity.ToTable("DigioSettings");
+            entity.HasIndex(s => s.CompanyId).IsUnique();
+            entity.HasQueryFilter(s => _isSuperAdmin || s.CompanyId == _companyId);
+        });
 
         modelBuilder.Entity<ApiInvoice>()
             .HasQueryFilter(i => _isSuperAdmin || i.CompanyId == _companyId);

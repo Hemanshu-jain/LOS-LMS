@@ -225,6 +225,7 @@ else
                                                @oninput="e => party.Aadhaar = e.Value?.ToString()"
                                                @onblur='() => { _aadhaarFocused = false; Validate("aadhaar"); }' />
                                     </FormField>
+                                    <button type="button" class="verify-button" @onclick="() => _aadhaarShown = !_aadhaarShown">@(_aadhaarShown ? "Hide" : "Show")</button>
                                     <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "aadhaar-ocr", AadhaarOcrUnavailable)'>Verify OCR</button>
                                 </div>
                                 @if (_notices.TryGetValue("aadhaar-ocr", out var aadhaarNotice))
@@ -309,9 +310,35 @@ else
                             <div class="panel-body">
                                 <div class="gate gate-@DedupeClass(party.DedupeStatus)">
                                     <span class="gate-label">Dedupe check</span>
-                                    <span class="gate-value">@DedupeText(party.DedupeStatus)</span>
-                                    <span class="gate-note">Blocks stage completion when a match exists</span>
+                                    <span class="gate-value">@(party.DedupeStatus == "Fail" && _dedupe.TryGetValue(party.PartyType, out var failed) && failed.Reason is { } why ? "✕ " + why : DedupeText(party.DedupeStatus))</span>
+                                    <span class="gate-note">Blocks stage completion when this person has another open application</span>
                                 </div>
+
+                                @if (_dedupe.TryGetValue(party.PartyType, out var dedupe))
+                                {
+                                    @if (dedupe.Earlier.Count > 0)
+                                    {
+                                        <div class="gate gate-pass">
+                                            <span class="gate-label">Returning customer</span>
+                                            <span class="gate-value">Returning customer: @dedupe.Earlier.Count earlier application@(dedupe.Earlier.Count == 1 ? "" : "s")</span>
+                                            <span class="gate-note">
+                                                <select class="field-input" aria-label="Earlier application"
+                                                        @onchange="e => _copyFrom[party.PartyType] = e.Value?.ToString() ?? string.Empty">
+                                                    @foreach (var earlier in dedupe.Earlier)
+                                                    {
+                                                        <option value="@earlier.ApplicationId" selected="@(earlier.ApplicationId == DefaultSource(dedupe).ApplicationId)">@earlier.ApplicationId (@earlier.Status)</option>
+                                                    }
+                                                </select>
+                                                <button type="button" class="verify-button" @onclick="() => CopyFromEarlierAsync(party)">Copy details from earlier application</button>
+                                            </span>
+                                        </div>
+                                    }
+
+                                    @if (dedupe.MobileWarning)
+                                    {
+                                        <p class="field-caption field-caption-warn">Another application in your company uses this mobile number. Check it is the same person.</p>
+                                    }
+                                }
 
                                 <div class="gate gate-@(string.IsNullOrWhiteSpace(party.VideoKycPath) ? "inactive" : "pass")">
                                     <span class="gate-label">Video KYC</span>
@@ -557,6 +584,7 @@ else
     private bool _loading = true;
     private string _activeTab = "Applicant";
     private bool _aadhaarFocused;
+    private bool _aadhaarShown;
     private string? _uploadError;
     private string? _toast;
     private CancellationTokenSource? _toastCts;
@@ -614,6 +642,7 @@ else
 
         if (_application is not null)
         {
+            await RefreshDedupeAsync();
             _autoSave.Start(() => InvokeAsync(() => PersistAsync(completeStage: false)), TimeSpan.FromSeconds(8));
         }
     }
@@ -637,6 +666,7 @@ else
         // in-progress edits survive tab switching until a save writes all three.
         _activeTab = tab;
         _aadhaarFocused = false;
+        _aadhaarShown = false;
         _errors.Clear();
         _notices.Clear();
         _uploadError = null;
@@ -888,12 +918,12 @@ else
     private string AadhaarDisplay(PartyForm party)
     {
         var value = party.Aadhaar;
-        if (_aadhaarFocused || string.IsNullOrWhiteSpace(value) || !AadhaarPattern.IsMatch(value))
+        if (_aadhaarFocused || _aadhaarShown || string.IsNullOrWhiteSpace(value) || !AadhaarPattern.IsMatch(value))
         {
             return value ?? string.Empty;
         }
 
-        return "•••• •••• " + value[^4..];
+        return AadhaarMask.Of(value);
     }
 
     // ---------------------------------------------------------------------
@@ -1296,7 +1326,9 @@ else
         }
 
         // Fields are filled, so any remaining BlockedReason is the dedupe check — surface it as a toast
-        // rather than a silent no-op now that the button is no longer disabled.
+        // rather than a silent no-op now that the button is no longer disabled. Re-run it live first: the
+        // other application may have been sanctioned or rejected since this page was opened.
+        await RefreshDedupeAsync();
         if (BlockedReason is { } reason)
         {
             await ShowToastAsync(reason);
@@ -1417,6 +1449,48 @@ else
         return true;
     }
 
+    /// <summary>Live dedupe outcome per party tab (returning-customer list, mobile warning, fail reason).</summary>
+    private readonly Dictionary<string, DedupeResult> _dedupe = new();
+
+    /// <summary>The earlier application the officer picked to copy from, per party tab.</summary>
+    private readonly Dictionary<string, string> _copyFrom = new();
+
+    /// <summary>Re-runs the dedupe for every saved party and stores the result, so the gate never shows a stale answer.</summary>
+    private async Task RefreshDedupeAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var rows = await db.Parties.Where(p => p.ApplicationId == ApplicationId).ToListAsync();
+        foreach (var row in rows)
+        {
+            var result = await PartyDedupeService.CheckAsync(db, row);
+            row.DedupeStatus = result.Status;
+            _dedupe[row.PartyType] = result;
+            if (_parties.TryGetValue(row.PartyType, out var form))
+            {
+                form.DedupeStatus = result.Status;
+            }
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private static EarlierApplication DefaultSource(DedupeResult result) =>
+        result.Earlier.FirstOrDefault(e => e.Status == "Sanctioned") ?? result.Earlier[0];
+
+    /// <summary>Fills this party's blank fields from the chosen earlier application (same company only, never identifiers or files).</summary>
+    private async Task CopyFromEarlierAsync(PartyForm party)
+    {
+        if (!_dedupe.TryGetValue(party.PartyType, out var result) || result.Earlier.Count == 0)
+        {
+            return;
+        }
+
+        var chosen = _copyFrom.GetValueOrDefault(party.PartyType);
+        var source = result.Earlier.FirstOrDefault(e => e.ApplicationId == chosen) ?? DefaultSource(result);
+        PartyDedupeService.CopyBlanks(source.Party, party);
+        await ShowToastAsync($"Blank fields filled from {source.ApplicationId}. Review them, then save.");
+    }
+
     private async Task PersistAsync(bool completeStage)
     {
         if (_application is null)
@@ -1454,11 +1528,11 @@ else
             }
             else
             {
-                AddIdentifiers(affectedIdentifiers, entity.Pan, entity.Aadhaar, entity.Mobile);
+                PartyDedupeService.AddIdentifiers(affectedIdentifiers, entity.Pan, entity.Aadhaar, entity.Mobile);
             }
 
             MapFormToEntity(form, entity);
-            AddIdentifiers(affectedIdentifiers, entity.Pan, entity.Aadhaar, entity.Mobile);
+            PartyDedupeService.AddIdentifiers(affectedIdentifiers, entity.Pan, entity.Aadhaar, entity.Mobile);
             touched.Add((form, entity));
         }
 
@@ -1468,7 +1542,9 @@ else
         foreach (var (form, entity) in touched)
         {
             form.Id = entity.Id;
-            entity.DedupeStatus = await RunDedupeAsync(db, entity);
+            var dedupe = await PartyDedupeService.CheckAsync(db, entity);
+            entity.DedupeStatus = dedupe.Status;
+            _dedupe[form.PartyType] = dedupe;
         }
 
         // Also re-evaluate the OTHER side of any match: any party sharing an identifier with one just
@@ -1476,7 +1552,7 @@ else
         // cleared), and the counterpart of a just-broken match keeps reading "Fail" forever. Statuses
         // set here are persisted by the SaveChanges below, together with the stage advance.
         var touchedIds = touched.Select(t => t.Entity.Id).ToHashSet();
-        await RecomputeDedupeAsync(db, affectedIdentifiers, touchedIds);
+        await PartyDedupeService.RecomputeAsync(db, affectedIdentifiers, touchedIds);
 
         foreach (var (form, entity) in touched)
         {
@@ -1509,85 +1585,6 @@ else
 
         // Refresh the summary rail from what was actually stored.
         _application = await db.Applications.AsNoTracking().FirstAsync(a => a.Id == application.Id);
-    }
-
-    /// <summary>
-    /// Looks for any other party — on any application — sharing this one's PAN, Aadhaar or mobile.
-    /// </summary>
-    /// <remarks>
-    /// Blank identifiers are skipped: matching on null would make every empty party a duplicate of
-    /// every other empty party. Three small queries rather than one composite predicate, because
-    /// this shape is guaranteed to translate to SQL and is obvious at a glance.
-    ///
-    /// The matched party is never surfaced to the officer — only that a match exists.
-    /// </remarks>
-    private static async Task<string> RunDedupeAsync(LosDbContext db, Party party)
-    {
-        var pan = Blank(party.Pan);
-        var aadhaar = Blank(party.Aadhaar);
-        var mobile = Blank(party.Mobile);
-
-        if (pan is not null && await db.Parties.AnyAsync(p => p.Id != party.Id && p.Pan == pan))
-        {
-            return "Fail";
-        }
-
-        if (aadhaar is not null && await db.Parties.AnyAsync(p => p.Id != party.Id && p.Aadhaar == aadhaar))
-        {
-            return "Fail";
-        }
-
-        if (mobile is not null && await db.Parties.AnyAsync(p => p.Id != party.Id && p.Mobile == mobile))
-        {
-            return "Fail";
-        }
-
-        return "Pass";
-    }
-
-    /// <summary>
-    /// Recomputes the dedupe status of every party that shares any of <paramref name="identifiers"/>,
-    /// so both sides of a match agree. Uses the unfiltered Parties set on purpose — a PAN is national,
-    /// so a duplicate on another company's file is still a duplicate, exactly as
-    /// <see cref="RunDedupeAsync"/> already searches. Changed rows are left tracked for the caller's
-    /// SaveChanges to persist.
-    /// </summary>
-    private static async Task RecomputeDedupeAsync(
-        LosDbContext db, IReadOnlyCollection<string> identifiers, IReadOnlySet<int> alreadyDone)
-    {
-        if (identifiers.Count == 0)
-        {
-            return;
-        }
-
-        var affected = await db.Parties
-            .Where(p => (p.Pan != null && identifiers.Contains(p.Pan))
-                || (p.Aadhaar != null && identifiers.Contains(p.Aadhaar))
-                || (p.Mobile != null && identifiers.Contains(p.Mobile)))
-            .ToListAsync();
-
-        foreach (var party in affected)
-        {
-            // The saved parties were already recomputed by the caller.
-            if (alreadyDone.Contains(party.Id))
-            {
-                continue;
-            }
-
-            party.DedupeStatus = await RunDedupeAsync(db, party);
-        }
-    }
-
-    /// <summary>Adds each non-blank identifier (trimmed, matching <see cref="Blank"/>) to the set.</summary>
-    private static void AddIdentifiers(HashSet<string> set, params string?[] values)
-    {
-        foreach (var value in values)
-        {
-            if (Blank(value) is { } identifier)
-            {
-                set.Add(identifier);
-            }
-        }
     }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

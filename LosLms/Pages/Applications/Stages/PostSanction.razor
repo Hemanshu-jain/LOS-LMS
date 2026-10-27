@@ -12,6 +12,7 @@
 @inject IWebHostEnvironment HostEnvironment
 @inject LosLms.Services.IFileStore Files
 @inject DigioClient Digio
+@inject DigioWebhookService DigioWebhook
 
 <PageTitle>Post Sanction · @ApplicationId</PageTitle>
 
@@ -294,7 +295,22 @@ else
                                                 <div class="doc-row">
                                                     <button type="button" class="doc-action" @onclick="SendForEsignAsync" disabled="@(agreement is null)">Send for e-Signature</button>
                                                     <span class="doc-status">Status: @_disbursement.AgreementEsignStatus</span>
+                                                    @if (_disbursement.AgreementEsignStatus == "Signed")
+                                                    {
+                                                        @if (_disbursement.SignedAgreementFilePath is { } signedPath)
+                                                        {
+                                                            <a class="file-link" href="@UrlFor(signedPath)" target="_blank">✓ Signed agreement</a>
+                                                        }
+                                                        else
+                                                        {
+                                                            <button type="button" class="doc-action" @onclick="FetchSignedCopyAsync">Fetch signed copy</button>
+                                                        }
+                                                    }
                                                 </div>
+                                                @if (_disbursement.AgreementEsignStatus is "Failed" or "Rejected" && _disbursement.EsignFailureReason is { } why)
+                                                {
+                                                    <p class="inline-notice" role="status">@why</p>
+                                                }
                                                 @if (_esignNotice is not null)
                                                 {
                                                     <p class="inline-notice" role="status">@_esignNotice</p>
@@ -1112,6 +1128,21 @@ else
         _esignNotice = $"Sent to the applicant ({signer}) for Aadhaar e-Sign.";
     }
 
+    /// <summary>Retries downloading the signed PDF when the webhook marked it Signed but the copy could not be fetched then.</summary>
+    private async Task FetchSignedCopyAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        var ok = await DigioWebhook.FetchSignedCopyAsync(_application.CompanyId, ApplicationId);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _disbursement.SignedAgreementFilePath = await db.Disbursements.AsNoTracking()
+            .Where(d => d.ApplicationId == ApplicationId).Select(d => d.SignedAgreementFilePath).FirstOrDefaultAsync();
+        _esignNotice = ok ? null : "Digio has not made the signed copy available yet. Try again shortly.";
+    }
+
     /// <summary>Writes generated PDF bytes to the guarded uploads folder, same shape as an upload.</summary>
     private async Task<string> WriteGeneratedAsync(byte[] bytes, string kind)
     {
@@ -1336,8 +1367,9 @@ else
         disbursement.WelcomeSmsStatus = _disbursement.WelcomeSmsStatus;
         disbursement.WelcomeSmsSentAt = _disbursement.WelcomeSmsSentAt;
         disbursement.AgreementFilePath = _disbursement.AgreementFilePath;
-        // AgreementEsignStatus is deliberately NOT copied: the Digio webhook sets it server-side, and this
-        // (auto)save from a stale page would otherwise overwrite 'Signed'. SendForEsignAsync writes it.
+        // AgreementEsignStatus, SignedAgreementFilePath and EsignFailureReason are deliberately NOT copied: the Digio webhook
+        // sets them server-side, and this (auto)save from a stale page would otherwise overwrite 'Signed'. SendForEsignAsync
+        // writes the status.
 
         var enach = await db.EnachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
         if (enach is null)

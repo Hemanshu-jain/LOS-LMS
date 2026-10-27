@@ -51,6 +51,8 @@ public static class SanctionService
         // Never move an application backwards.
         application.CurrentStage = Math.Max(application.CurrentStage, 8);
         application.Status = "Sanctioned";
+        // This person's newer drafts were blocked by this open application; it is closed now, so re-evaluate them.
+        await PartyDedupeService.RecomputeForStatusChangeAsync(db, applicationId, application.Status);
         application.UpdatedAt = DateTime.UtcNow;
     }
 }
