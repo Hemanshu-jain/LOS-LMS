@@ -150,6 +150,12 @@ public sealed class PasswordVault
         return key;
     }
 
+    /// <summary>Encrypts arbitrary text with the vault key (AES-256-GCM, nonce|tag|ciphertext, base64): for payloads that hold personal data.</summary>
+    public string Seal(string plaintext) => Encrypt(plaintext);
+
+    /// <summary>Reverses <see cref="Seal"/>; throws if the text was not sealed with this key.</summary>
+    public string Unseal(string sealedText) => Decrypt(sealedText);
+
     private string Encrypt(string plaintext)
     {
         var nonce = RandomNumberGenerator.GetBytes(NonceSize);

@@ -121,7 +121,7 @@ public sealed class DigioWebhookTests : IDisposable
 
         await scope.ServiceProvider.GetRequiredService<DigioWebhookService>().HandleAsync(1, Payload("doc.signed", "DID123", null));
 
-        await Eventually(() => Disbursement().AgreementEsignStatus == "Signed");
+        await Eventually(() => Disbursement().AgreementEsignStatus == "Signed" && UsageRows() == 1); // status flips just before the meter row lands
         Assert.Equal(1, UsageRows());
     }
 
