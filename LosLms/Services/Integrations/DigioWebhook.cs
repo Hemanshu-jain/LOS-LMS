@@ -24,6 +24,21 @@ public sealed class DigioWebhookHealth
         _state.TryGetValue(companyId, out var s) ? s : default;
 }
 
+/// <summary>Background confirmations in flight, so shutdown and tests can wait for them instead of guessing.</summary>
+public sealed class DigioBackgroundTasks
+{
+    private readonly ConcurrentDictionary<Task, byte> _running = new();
+
+    public void Track(Func<Task> work)
+    {
+        var task = Task.Run(work);
+        _running[task] = 0;
+        _ = task.ContinueWith(t => _running.TryRemove(t, out _), TaskScheduler.Default);
+    }
+
+    public Task WhenIdleAsync() => Task.WhenAll(_running.Keys);
+}
+
 /// <summary>
 /// Acts on a VERIFIED Digio webhook. Only e-Sign events today. The only place an agreement becomes 'Signed' (all parties,
 /// <c>agreement_status == "completed"</c>); the transition is one atomic statement so a redelivery or a concurrent delivery
@@ -31,7 +46,7 @@ public sealed class DigioWebhookHealth
 /// </summary>
 public sealed class DigioWebhookService(
     IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, ApiBillingService billing, IFileStore files,
-    IServiceScopeFactory scopes, ILogger<DigioWebhookService> log)
+    IServiceScopeFactory scopes, DigioBackgroundTasks background, ILogger<DigioWebhookService> log)
 {
     private const string Signed = "Signed";
 
@@ -82,7 +97,7 @@ public sealed class DigioWebhookService(
         }
     }
 
-    private void ConfirmInBackground(int companyId, string docId) => _ = Task.Run(async () =>
+    private void ConfirmInBackground(int companyId, string docId) => background.Track(async () =>
     {
         try
         {
