@@ -46,12 +46,12 @@ public sealed class DigioBackgroundTasks
 /// </summary>
 public sealed class DigioWebhookService(
     IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, ApiBillingService billing, IFileStore files,
-    IServiceScopeFactory scopes, DigioBackgroundTasks background, ILogger<DigioWebhookService> log)
+    IServiceScopeFactory scopes, DigioBackgroundTasks background, DigioStatusNotifier notifier, ILogger<DigioWebhookService> log)
 {
     private const string Signed = "Signed";
 
-    /// <summary>Throws only for a malformed body (the endpoint turns every exception into a logged 200).</summary>
-    public async Task HandleAsync(int companyId, string body)
+    /// <summary>Throws only for a malformed body. True when the event is one we act on, false when it is ignored.</summary>
+    public async Task<bool> HandleAsync(int companyId, string body)
     {
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
@@ -59,7 +59,7 @@ public sealed class DigioWebhookService(
         if (!root.TryGetProperty("payload", out var payload) || !payload.TryGetProperty("document", out var document)
             || Str(document, "id") is not { Length: > 0 } docId)
         {
-            return;
+            return false;
         }
 
         switch (evt)
@@ -84,7 +84,11 @@ public sealed class DigioWebhookService(
             case "doc.sign.rejected":
                 await FailAsync(companyId, docId, "Rejected", Reason(document));
                 break;
+            default:
+                return false;
         }
+
+        return true;
     }
 
     /// <summary>Asks Digio for the document's real status and completes it if every party has signed.</summary>
@@ -134,6 +138,7 @@ public sealed class DigioWebhookService(
         // The e-Sign credit is consumed on signing, so that is when it is metered.
         await billing.RecordAsync(companyId, DigioRates.ESignAadhaar, success: true, applicationId: row.ApplicationId, providerRef: docId);
         await SaveSignedCopyAsync(companyId, row.Id, row.ApplicationId, docId);
+        await notifier.NotifyAsync(row.ApplicationId);
     }
 
     private async Task FailAsync(int companyId, string docId, string status, string? reason)
@@ -141,16 +146,20 @@ public sealed class DigioWebhookService(
         await using var db = await dbFactory.CreateDbContextAsync();
         var id = await db.Disbursements.IgnoreQueryFilters()
             .Where(d => d.EsignDocumentId == docId && d.Application!.CompanyId == companyId)
-            .Select(d => (int?)d.Id).FirstOrDefaultAsync();
+            .Select(d => new { d.Id, d.ApplicationId }).FirstOrDefaultAsync();
         if (id is null)
         {
             return;
         }
 
         // Never un-signs; a repeat of the same outcome changes nothing.
-        await db.Disbursements.IgnoreQueryFilters()
-            .Where(d => d.Id == id && d.AgreementEsignStatus != Signed && d.AgreementEsignStatus != status)
+        var changed = await db.Disbursements.IgnoreQueryFilters()
+            .Where(d => d.Id == id.Id && d.AgreementEsignStatus != Signed && d.AgreementEsignStatus != status)
             .ExecuteUpdateAsync(s => s.SetProperty(d => d.AgreementEsignStatus, status).SetProperty(d => d.EsignFailureReason, reason));
+        if (changed == 1)
+        {
+            await notifier.NotifyAsync(id.ApplicationId);
+        }
     }
 
     /// <summary>
@@ -272,7 +281,10 @@ public static class DigioWebhookEndpoint
                 else
                 {
                     health.Received(companyId);
-                    await context.RequestServices.GetRequiredService<DigioWebhookService>().HandleAsync(companyId, body);
+                    if (await context.RequestServices.GetRequiredService<DigioInbox>().StoreAsync(companyId, body, ClientIp.Of(context)) == DigioStored.Unreadable)
+                    {
+                        health.Problem(companyId, "A webhook could not be processed (unreadable body); see the Digio inbox.");
+                    }
                 }
             }
         }

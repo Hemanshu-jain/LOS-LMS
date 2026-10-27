@@ -60,6 +60,10 @@ public sealed class DigioWebhookTests : IDisposable
         services.AddSingleton(Options.Create(new ApiBillingOptions()));
         services.AddSingleton<DigioWebhookHealth>();
         services.AddSingleton<DigioBackgroundTasks>();
+        services.AddSingleton<DigioStatusNotifier>();
+        services.AddSingleton<DigioEventProcessor>();
+        services.AddScoped<DigioInbox>();
+        services.AddScoped<DigioReconciler>();
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
         services.AddScoped<DigioWebhookService>();
@@ -216,9 +220,123 @@ public sealed class DigioWebhookTests : IDisposable
         Assert.Contains("could not be processed", health.For(1).Problem);
         Assert.Equal("Sent", Disbursement().AgreementEsignStatus);
 
-        Assert.Equal(200, await Post("1", good, Sign(good)));                            // the real one
+        Assert.Equal(200, await Post("1", good, Sign(good)));                            // the real one: stored, then processed
+        Assert.Equal("Sent", Disbursement().AgreementEsignStatus);
+        await _provider.GetRequiredService<DigioEventProcessor>().ProcessPendingAsync();
         Assert.Equal("Signed", Disbursement().AgreementEsignStatus);
         Assert.NotNull(health.For(1).Received);
+    }
+
+    // ---- the inbox, processor and reconciler ----
+
+    [Fact]
+    public async Task ReplayedWebhook_IsStoredOnce_AndChangesStateOnce()
+    {
+        _digio.OnDownload = () => Pdf;
+        var good = Payload("doc.signed", "DID123", "completed");
+
+        await Post("1", good, Sign(good));
+        await Post("1", good, Sign(good)); // Digio redelivers
+        Assert.Single(Inbox());
+
+        var processor = _provider.GetRequiredService<DigioEventProcessor>();
+        Assert.Equal(1, await processor.ProcessPendingAsync());
+        Assert.Equal(0, await processor.ProcessPendingAsync());
+        await Post("1", good, Sign(good)); // redelivered after processing: still one row, nothing to do
+        Assert.Equal(0, await processor.ProcessPendingAsync());
+
+        Assert.Equal("Processed", Assert.Single(Inbox()).Status);
+        Assert.Equal("Signed", Disbursement().AgreementEsignStatus);
+        Assert.Equal(1, UsageRows());
+        Assert.DoesNotContain("DID123", Assert.Single(Inbox()).PayloadJson); // sealed, never plain
+    }
+
+    [Fact]
+    public async Task UnknownEvent_IsIgnored_AndAnUnreadableBodyIsKeptAsFailedWithoutRetries()
+    {
+        var other = """{"id":"w9","event":"kyc.something","entities":["kyc"],"payload":{"kyc":{"id":"K1"}}}""";
+        const string broken = "{not json";
+        await Post("1", other, Sign(other));
+        await Post("1", broken, Sign(broken));
+
+        await _provider.GetRequiredService<DigioEventProcessor>().ProcessPendingAsync();
+
+        var rows = Inbox().ToDictionary(r => r.Event);
+        Assert.Equal("Ignored", rows["kyc.something"].Status);
+        Assert.Equal("K1", rows["kyc.something"].EntityId);
+        Assert.Equal(("Failed", DigioEventProcessor.MaxAttempts), (rows["unreadable"].Status, rows["unreadable"].Attempts));
+    }
+
+    [Fact]
+    public async Task AFailingRow_BacksOff_AndIsRetried()
+    {
+        using (var db = Anonymous())
+        {
+            db.DigioWebhookInbox.Add(new DigioWebhookInbox { CompanyId = 1, DigioEventId = "w1", Event = "doc.signed", ReceivedAt = DateTime.UtcNow, PayloadJson = "not-sealed" });
+            db.SaveChanges();
+        }
+
+        var processor = _provider.GetRequiredService<DigioEventProcessor>();
+        var t0 = DateTime.UtcNow;
+        await processor.ProcessPendingAsync(t0);
+        var row = Assert.Single(Inbox());
+        Assert.Equal(("Failed", 1), (row.Status, row.Attempts));
+        Assert.True(row.NextAttemptAt > t0.AddSeconds(30));
+
+        await processor.ProcessPendingAsync(t0.AddSeconds(30));    // not due yet
+        Assert.Equal(1, Assert.Single(Inbox()).Attempts);
+        await processor.ProcessPendingAsync(t0.AddMinutes(2));     // due
+        Assert.Equal(2, Assert.Single(Inbox()).Attempts);
+    }
+
+    [Fact]
+    public async Task Reconciler_RecoversAMissedWebhook_AndBacksOff()
+    {
+        _digio.OnGet = _ => """{"id":"DID123","agreement_status":"completed"}""";
+        _digio.OnDownload = () => Pdf;
+        var reconciler = _provider.GetRequiredService<DigioReconciler>();
+        var now = DateTime.UtcNow;
+
+        Assert.Equal(1, await reconciler.ReconcileAsync(now));
+        Assert.Equal("Signed", Disbursement().AgreementEsignStatus);
+        Assert.Equal(1, UsageRows());
+        Assert.Equal(0, await reconciler.ReconcileAsync(now.AddMinutes(10))); // no longer Sent
+    }
+
+    [Fact]
+    public async Task Reconciler_AsksAgainOnlyWhenTheBackoffHasPassed()
+    {
+        _digio.OnGet = _ => """{"id":"DID123","agreement_status":"requested"}""";
+        var reconciler = _provider.GetRequiredService<DigioReconciler>();
+        var now = DateTime.UtcNow;
+
+        Assert.Equal(1, await reconciler.ReconcileAsync(now));
+        Assert.Equal(0, await reconciler.ReconcileAsync(now.AddMinutes(1)));
+        Assert.Equal(1, await reconciler.ReconcileAsync(now.AddMinutes(6)));
+        Assert.Equal(0, await reconciler.ReconcileAsync(now.AddMinutes(10))); // next wait is 15 min
+        Assert.Equal("Sent", Disbursement().AgreementEsignStatus);
+    }
+
+    [Fact]
+    public async Task Notifier_TellsAPageWhenTheAgreementIsSigned()
+    {
+        var seen = new List<string>();
+        var notifier = _provider.GetRequiredService<DigioStatusNotifier>();
+        notifier.Changed += a => { seen.Add(a); return Task.CompletedTask; };
+        _digio.OnDownload = () => Pdf;
+        using var scope = _provider.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<DigioWebhookService>();
+
+        await svc.HandleAsync(1, Payload("doc.signed", "DID123", "completed"));
+        await svc.HandleAsync(1, Payload("doc.signed", "DID123", "completed")); // redelivery: no second notice
+
+        Assert.Equal(["A1"], seen);
+    }
+
+    private List<DigioWebhookInbox> Inbox()
+    {
+        using var db = Anonymous();
+        return db.DigioWebhookInbox.IgnoreQueryFilters().AsNoTracking().OrderBy(i => i.Id).ToList();
     }
 
     // ---- plumbing ----

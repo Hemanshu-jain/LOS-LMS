@@ -1,0 +1,12 @@
+@using LosLms.Services
+
+@* One chip for every Digio state. The wording comes from DigioUi.Badge, never from the screen using it. *@
+<span class="dg-chip dg-@Info.Css" title="@Info.Tooltip">@Info.Label</span>
+@if (Info.Sandbox)
+{
+    <span class="dg-chip dg-sandbox" title="Result from Digio's test environment">SANDBOX</span>
+}
+
+@code {
+    [Parameter, EditorRequired] public BadgeInfo Info { get; set; } = default!;
+}

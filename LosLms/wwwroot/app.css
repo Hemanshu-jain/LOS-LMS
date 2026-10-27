@@ -1159,3 +1159,24 @@ a.auth-submit {
     font-size: 12px;
     color: #1f3a5f;
 }
+
+/* Digio UI kit (Components/Shared/Digio): one chip per honest state, the customer panel, diff row, evidence table. */
+.dg-chip { display: inline-block; padding: 1px 9px; border-radius: 9px; font-size: 11px; font-weight: 600; background: #eef1f5; color: #5b6472; vertical-align: middle; }
+.dg-ok { background: #e3f4e6; color: #1d6b2c; }
+.dg-bad { background: #f8d7d7; color: #8a1f1f; }
+.dg-warn { background: #fdf0d5; color: #8a5a1f; }
+.dg-info { background: #e1ebf8; color: #1f3a5f; }
+.dg-off { background: #eef1f5; color: #5b6472; }
+.dg-sandbox { background: #1f3a5f; color: #fff; margin-left: 4px; letter-spacing: .06em; }
+.dg-muted { color: #5b6472; font-size: 11.5px; margin: 4px 0; }
+.dg-panel { border: 1px solid #d8dbe1; padding: 10px 12px; margin: 8px 0; }
+.dg-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dg-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.dg-timeline { list-style: none; margin: 6px 0 0; padding: 0; font-size: 11.5px; color: #3a4553; }
+.dg-timeline span { color: #6b7686; margin-right: 6px; }
+.dg-diff { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; border: 1px solid #f0d9a8; background: #fdf7ec; font-size: 12px; }
+.dg-diff-field { font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: .05em; color: #8a5a1f; }
+.dg-consent { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+.dg-evidence { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dg-evidence th, .dg-evidence td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e4e8ee; }
+.dg-evidence th { color: #5b6472; font-weight: 600; }

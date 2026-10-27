@@ -1,0 +1,66 @@
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject DigioClient Digio
+
+@* Everything Digio has told us about one application: the latest verdict per subject, then the requests behind them.
+   Read through the tenant-filtered context, so only the viewer's own company is ever listed. *@
+@if (_loaded && _evidence.Count == 0 && _requests.Count == 0)
+{
+    <p class="dg-muted">No Digio checks have been run on this application.</p>
+}
+else if (_loaded)
+{
+    <table class="dg-evidence">
+        <thead><tr><th>Check</th><th>Result</th><th>Summary</th></tr></thead>
+        <tbody>
+        @foreach (var e in _evidence)
+        {
+            <tr>
+                <td>@e.Subject.Replace('_', ' ')</td>
+                <td><VerifyBadge Info="@Badge(null, e)" /></td>
+                <td>@e.Summary</td>
+            </tr>
+        }
+        @foreach (var r in _requests)
+        {
+            <tr>
+                <td>@r.Operation.Replace('_', ' ')</td>
+                <td><VerifyBadge Info="@Badge(r, null)" /></td>
+                <td>@(r.ErrorMessage ?? r.ProviderStatus)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+
+    private List<VerificationEvidence> _evidence = new();
+    private List<DigioRequest> _requests = new();
+    private bool _production;
+    private bool _loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var all = await db.VerificationEvidence.AsNoTracking().Where(e => e.ApplicationId == ApplicationId).ToListAsync();
+        _evidence = all.GroupBy(e => e.Subject).Select(g => g.OrderByDescending(e => e.CreatedAt).First()).OrderBy(e => e.Subject).ToList();
+
+        // Requests with no evidence yet (in flight, expired, failed). Finished ones are already shown as their evidence.
+        var withEvidence = _evidence.Select(e => e.DigioRequestId).Where(id => id is not null).ToHashSet();
+        _requests = (await db.DigioRequests.AsNoTracking().Where(r => r.ApplicationId == ApplicationId).OrderByDescending(r => r.RequestedAt).Take(50).ToListAsync())
+            .Where(r => !withEvidence.Contains(r.Id)).ToList();
+
+        var companyId = _evidence.FirstOrDefault()?.CompanyId ?? _requests.FirstOrDefault()?.CompanyId;
+        _production = companyId is { } id && Digio.Credentials(id)?.Production == true;
+        _loaded = true;
+    }
+
+    // ponytail: no fingerprint here (the list does not know the current inputs), so Stale is only shown by screens that do.
+    private BadgeInfo Badge(DigioRequest? request, VerificationEvidence? evidence) =>
+        DigioUi.Badge(true, false, _production, request, evidence, null);
+}

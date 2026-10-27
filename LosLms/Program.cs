@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.RateLimiting;
@@ -74,6 +75,8 @@ builder.Services.AddSingleton<AdminRequestNotifier>();
 
 // One shared update-check result for the whole server, kept current by a background poller so the
 // SuperAdmin sees a "new version available" banner without opening the System Updates page.
+// The /digio/return page asks this to look at a request at once. Part 2 (the pipeline) registers the real one; until then a no-op.
+builder.Services.TryAddSingleton<IDigioReconcileTrigger, NoopDigioReconcileTrigger>();
 builder.Services.AddSingleton<UpdateNotificationService>();
 // Not on a cloud host: there is no launcher to apply an update, so the container is redeployed instead.
 if (!builder.Configuration.IsCloud())
@@ -149,6 +152,11 @@ builder.Services.AddScoped<DigioClient>();
 builder.Services.AddScoped<DigioWebhookService>();
 builder.Services.AddSingleton<DigioWebhookHealth>();
 builder.Services.AddSingleton<DigioBackgroundTasks>();
+builder.Services.AddSingleton<DigioStatusNotifier>();
+builder.Services.AddScoped<DigioInbox>();
+builder.Services.AddSingleton<DigioEventProcessor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DigioEventProcessor>());
+builder.Services.AddHostedService<DigioReconciler>();
 
 // "Connect to LOS-LMS": OAuth device-flow server for partner desktop software (Paavan), the PartnerBearer
 // scheme + loans:read / loans:write policies the partner data API uses, the /link wrong-code limiter and
@@ -484,6 +492,9 @@ app.UsePartnerOAuth();
 // auth/maintenance/antiforgery, and short-circuits. Trust comes from the HMAC (X-Digio-Checksum, per-company secret). It
 // ALWAYS answers 200 (Digio's queue is head-of-line; non-200s stall it and get webhooks disabled): see DigioWebhookEndpoint.
 app.UseDigioWebhook();
+#if DEBUG
+app.MapDigioHarness(); // Phase 0 throwaway: Development + SuperAdmin only; absent from Release builds.
+#endif
 
 app.UseAuthentication();
 
