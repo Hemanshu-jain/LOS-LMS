@@ -56,6 +56,7 @@ public static class RejectionService
         });
 
         application.Status = "Rejected";
+        await PartyDedupeService.RecomputeForStatusChangeAsync(db, applicationId, application.Status);
 
         await db.SaveChangesAsync();
     }
