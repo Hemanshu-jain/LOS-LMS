@@ -110,11 +110,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # A paused/deleted Supabase project stops resolving: say so plainly instead of a bare curl exit code.
+          host="${STORAGE#*://}"; host="${host%%/*}"
+          getent hosts "$host" >/dev/null || { echo "::error::Supabase host does not resolve (project paused or deleted? check SUPABASE_URL)"; exit 1; }
           code=$(curl -sS -o "$WORK/resp" -w '%{http_code}' -X POST \
             -H "@$WORK/headers" -H 'Content-Type: application/octet-stream' -H 'x-upsert: false' \
             --data-binary "@$WORK/$FILE" "$STORAGE/object/$BUCKET/$FILE")
           if [ "$code" != "200" ]; then echo "::error::Upload failed, HTTP $code"; cat "$WORK/resp"; echo; exit 1; fi
           echo "Uploaded $BUCKET/$FILE"
+          # Keep-alive: Supabase pauses free projects after ~1 week of inactivity. One cheap authenticated call; never fails the job.
+          ping=$(curl -sS -o /dev/null -w '%{http_code}' -H "@$WORK/headers" "${STORAGE%/storage/v1}/rest/v1/" || true)
+          echo "Keep-alive HTTP ${ping:-none}"
 
       - name: Prune backups older than retention
         shell: bash
