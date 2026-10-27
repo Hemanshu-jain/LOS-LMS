@@ -1,0 +1,37 @@
+@* Disabled with its reason shown when the inputs are missing, the product is off or a request is already running.
+   One click runs the handler once: clicks while it is working are ignored (the request id itself is the second guard). *@
+<button type="button" class="verify-button" disabled="@(DisabledReason is not null || _busy)" title="@DisabledReason"
+        @onclick="ClickAsync">@(_busy ? "Working…" : Label)</button>
+@if (DisabledReason is not null)
+{
+    <span class="field-caption">@DisabledReason</span>
+}
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+
+    /// <summary>Why it can't be clicked right now; null when it can.</summary>
+    [Parameter] public string? DisabledReason { get; set; }
+
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private bool _busy;
+
+    private async Task ClickAsync()
+    {
+        if (_busy || DisabledReason is not null)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            await OnClick.InvokeAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

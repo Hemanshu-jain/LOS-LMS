@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.RateLimiting;
@@ -74,6 +75,8 @@ builder.Services.AddSingleton<AdminRequestNotifier>();
 
 // One shared update-check result for the whole server, kept current by a background poller so the
 // SuperAdmin sees a "new version available" banner without opening the System Updates page.
+// The /digio/return page asks this to look at a request at once. Part 2 (the pipeline) registers the real one; until then a no-op.
+builder.Services.TryAddSingleton<IDigioReconcileTrigger, NoopDigioReconcileTrigger>();
 builder.Services.AddSingleton<UpdateNotificationService>();
 // Not on a cloud host: there is no launcher to apply an update, so the container is redeployed instead.
 if (!builder.Configuration.IsCloud())

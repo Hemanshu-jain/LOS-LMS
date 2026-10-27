@@ -1,0 +1,16 @@
+@* Captured before any Aadhaar, AML or CKYC action. The text and its version are stored with the request (Stamp), so what the
+   customer agreed to can be shown later even after the wording changes. *@
+<label class="dg-consent">
+    <input type="checkbox" checked="@Checked" @onchange="e => CheckedChanged.InvokeAsync((bool)(e.Value ?? false))" />
+    <span>@Text <small>(text @Version)</small></span>
+</label>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public string Version { get; set; } = "v1";
+    [Parameter] public bool Checked { get; set; }
+    [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+
+    /// <summary>What to store with the request: the exact wording and its version.</summary>
+    public static string Stamp(string text, string version) => $"{text} (text {version})";
+}

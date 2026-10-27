@@ -1,0 +1,148 @@
+@page "/admin/integrations"
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = TenantContext.AdminRoles)]
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject DigioClient Digio
+@inject TenantContext Tenant
+
+<PageTitle>Integrations health · LOS/LMS</PageTitle>
+
+@* What Digio is doing for this company right now. Read through the tenant-filtered context (a company Admin sees their own
+   company; a SuperAdmin not acting as one sees all). Retry only puts a failed event back in the queue: the processor does the work. *@
+<div class="ih-page">
+    <div class="ih-card">
+        <span class="ih-label">LOS/LMS · Integrations</span>
+        <h1 class="ih-title">Integrations health</h1>
+
+        @if (_h is null)
+        {
+            <p class="ih-muted">Loading…</p>
+        }
+        else
+        {
+            <div class="ih-stats">
+                <div><strong>@_h.Backlog</strong><span>Events waiting</span></div>
+                <div><strong>@_h.Failed.Count</strong><span>Failed events</span></div>
+                <div><strong>@_h.Waiting</strong><span>Waiting for a customer</span></div>
+                <div><strong>@_h.Stuck.Count</strong><span>Stuck over 24 h</span></div>
+            </div>
+
+            <p class="ih-muted">
+                Last webhook received: @(_h.LastWebhook is { } w ? w.ToString("d MMM yyyy, HH:mm") + " UTC" : "none yet").
+                Environment: @(_h.Environments.Count == 0 ? "no Digio keys saved" : string.Join(", ", _h.Environments)).
+                <a href="/admin/api-usage">API usage and bills</a>
+            </p>
+
+            <h2 class="ih-h2">Failed events</h2>
+            @if (_h.Failed.Count == 0)
+            {
+                <p class="ih-muted">None.</p>
+            }
+            else
+            {
+                <table class="ih-table">
+                    <thead><tr><th>Received</th><th>Event</th><th>Tries</th><th>Last error</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var f in _h.Failed)
+                    {
+                        <tr>
+                            <td>@f.ReceivedAt.ToString("d MMM HH:mm")</td>
+                            <td>@f.Event</td>
+                            <td>@f.Attempts</td>
+                            <td>@f.LastError</td>
+                            <td><button type="button" class="verify-button" @onclick="() => RetryAsync(f.Id)">Retry</button></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <h2 class="ih-h2">Requests stuck for more than 24 hours</h2>
+            @if (_h.Stuck.Count == 0)
+            {
+                <p class="ih-muted">None.</p>
+            }
+            else
+            {
+                <table class="ih-table">
+                    <thead><tr><th>Started</th><th>Operation</th><th>Application</th><th>Status</th></tr></thead>
+                    <tbody>
+                    @foreach (var r in _h.Stuck)
+                    {
+                        <tr><td>@r.RequestedAt.ToString("d MMM HH:mm")</td><td>@r.Operation.Replace('_', ' ')</td><td>@r.ApplicationId</td><td>@r.Status</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .ih-page { padding: 20px 24px 40px; background: #eef1f5; min-height: 100vh; }
+    .ih-card { max-width: 900px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+    .ih-label { font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #6b7686; }
+    .ih-title { margin: 4px 0 10px; font-size: 17px; font-weight: 600; color: #1d2733; }
+    .ih-h2 { margin: 18px 0 6px; font-size: 13px; font-weight: 600; color: #1d2733; }
+    .ih-muted { color: #6b7686; font-size: 12.5px; margin: 6px 0; }
+    .ih-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 10px 0; }
+    .ih-stats div { border: 1px solid #e4e8ee; padding: 10px 12px; display: flex; flex-direction: column; }
+    .ih-stats strong { font-size: 22px; color: #1d2733; }
+    .ih-stats span { font-size: 11px; color: #6b7686; }
+    .ih-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ih-table th, .ih-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e4e8ee; }
+    .ih-table th { color: #5b6472; font-weight: 600; }
+</style>
+
+@code {
+    private sealed record Health(
+        int Backlog, int Waiting, DateTime? LastWebhook, List<DigioWebhookInbox> Failed, List<DigioRequest> Stuck, List<string> Environments);
+
+    private Health? _h;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        string[] inFlight = { "Sending", "Sent", "Processing", "WaitingForCustomer" };
+
+        var backlog = await db.DigioWebhookInbox.CountAsync(i => i.Status == "Pending");
+        var failed = await db.DigioWebhookInbox.AsNoTracking().Where(i => i.Status == "Failed").OrderByDescending(i => i.ReceivedAt).Take(50).ToListAsync();
+        var last = await db.DigioWebhookInbox.MaxAsync(i => (DateTime?)i.ReceivedAt);
+        var waiting = await db.DigioRequests.CountAsync(r => r.Status == "WaitingForCustomer");
+        var stuck = await db.DigioRequests.AsNoTracking().Where(r => inFlight.Contains(r.Status) && r.RequestedAt < cutoff)
+            .OrderBy(r => r.RequestedAt).Take(50).ToListAsync();
+
+        // The environment each company in scope is on: what its saved keys point at.
+        var companyIds = await db.DigioSettings.Select(s => s.CompanyId).ToListAsync();
+        if (Tenant.CompanyId is { } own && !companyIds.Contains(own))
+        {
+            companyIds.Add(own);
+        }
+
+        var environments = companyIds.Select(id => Digio.Credentials(id)).Where(c => c is not null)
+            .Select(c => DigioEndpoints.Environment(c!.Production)).Distinct().ToList();
+
+        _h = new Health(backlog, waiting, last, failed, stuck, environments);
+    }
+
+    /// <summary>Back in the queue; the processor picks it up. Nothing is processed here.</summary>
+    private async Task RetryAsync(long id)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.DigioWebhookInbox.FirstOrDefaultAsync(i => i.Id == id && i.Status == "Failed");
+        if (row is not null)
+        {
+            row.Status = "Pending";
+            row.NextAttemptAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,41 @@
+@page "/digio/return"
+@using LosLms.Services
+@attribute [AllowAnonymous]
+@inject IDigioReconcileTrigger Reconcile
+
+<PageTitle>Thank you · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+@* Where Digio sends the customer back to. Everything in the query string is a HINT and is never believed: not the status, not
+   any document id. The only thing used is our own request id (r), to ask the server to look the request up right now. The
+   page shows the same words whatever happened and no personal data. *@
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Thank you</h1>
+            <p class="auth-sub">You can close this window.</p>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>Our request id (32 hex characters). Anything else is ignored.</summary>
+    [SupplyParameterFromQuery(Name = "r")] private string? RequestId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (RequestId is { Length: 32 } id && id.All(Uri.IsHexDigit))
+        {
+            try
+            {
+                await Reconcile.RequestReconcileAsync(id);
+            }
+            catch (Exception)
+            {
+                // A failed hint changes nothing: the reconciler polls the request anyway.
+            }
+        }
+    }
+}

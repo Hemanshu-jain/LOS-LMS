@@ -1,0 +1,47 @@
+@using LosLms.Models
+@using LosLms.Services
+
+@* For checks the customer finishes on their own phone: what was sent, to where (masked), how long is left, and the
+   four things staff can do. Resend means a fresh link for the SAME request, never a new request. *@
+<div class="dg-panel">
+    <div class="dg-panel-head">
+        <strong>@Request.Operation.Replace('_', ' ')</strong>
+        <span class="dg-chip dg-@(Final ? "off" : "info")">@Request.Status</span>
+    </div>
+    <p class="dg-muted">
+        @(Request.CustomerChannel is "Link" ? "Link sent" : Request.CustomerChannel is "OnDevice" ? "Opened on this device" : "Started")
+        @if (!string.IsNullOrWhiteSpace(Request.NotifiedTo)) { <text> to @Request.NotifiedTo</text> }
+        · @DigioUi.Countdown(Request.ExpiresAt, DateTime.UtcNow)
+    </p>
+
+    <div class="dg-actions">
+        <button type="button" class="verify-button" disabled="@Final" @onclick="OnResend">Resend</button>
+        <button type="button" class="verify-button" disabled="@Final" @onclick="OnOpenOnDevice">Open on this device</button>
+        <button type="button" class="verify-button" @onclick="OnRefresh">Refresh status</button>
+        <button type="button" class="verify-button" disabled="@Final" @onclick="OnCancel">Cancel</button>
+    </div>
+
+    @if (Events is { Count: > 0 })
+    {
+        <ul class="dg-timeline">
+            @foreach (var e in Events)
+            {
+                <li><span>@e.At.ToString("d MMM HH:mm") UTC</span> @e.Text</li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DigioRequest Request { get; set; } = default!;
+
+    /// <summary>Mini timeline, oldest first (events the processor recorded for this request).</summary>
+    [Parameter] public IReadOnlyList<(DateTime At, string Text)>? Events { get; set; }
+
+    [Parameter] public EventCallback OnResend { get; set; }
+    [Parameter] public EventCallback OnOpenOnDevice { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private bool Final => Request.Status is "Succeeded" or "Failed" or "Rejected" or "Expired" or "Cancelled";
+}
