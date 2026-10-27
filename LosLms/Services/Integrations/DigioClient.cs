@@ -44,6 +44,9 @@ public sealed record DigioResult(DigioStatus Status, JsonElement? Data, string? 
     /// <summary>The body of a binary download (signed PDF…); null for JSON calls and failures.</summary>
     public byte[]? Bytes { get; init; }
 
+    /// <summary>The HTTP status Digio answered with; 0 when it never answered.</summary>
+    public int HttpStatus { get; init; }
+
     /// <summary>Sandbox or Production, whenever a call was actually made.</summary>
     public string? Environment { get; init; }
 
@@ -182,12 +185,12 @@ public sealed class DigioClient(
                 var ok = response.IsSuccessStatusCode;
                 if (ok && call.ExpectBinary)
                 {
-                    return new DigioResult(DigioStatus.Ok, null, null) { Bytes = await response.Content.ReadAsByteArrayAsync() };
+                    return new DigioResult(DigioStatus.Ok, null, null) { Bytes = await response.Content.ReadAsByteArrayAsync(), HttpStatus = (int)response.StatusCode };
                 }
 
                 JsonElement? data = null;
                 try { data = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone(); } catch (JsonException) { }
-                var parsed = new DigioResult(ok ? DigioStatus.Ok : DigioStatus.Failed, data, null);
+                var parsed = new DigioResult(ok ? DigioStatus.Ok : DigioStatus.Failed, data, null) { HttpStatus = (int)response.StatusCode };
                 if (ok)
                 {
                     return parsed;
