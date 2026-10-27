@@ -5,6 +5,7 @@
 @attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject DigioClient Digio
+@inject DigioWebhookHealth WebhookHealth
 @inject NavigationManager Nav
 
 <PageTitle>Digio keys · LOS/LMS</PageTitle>
@@ -52,6 +53,17 @@
                     <p class="dk-muted">Webhook URL for the Digio dashboard (Profile → Webhooks):
                         <code>@(Nav.BaseUri)webhooks/digio/@r.Id</code></p>
 
+                    @if (r.LastReceived is not null || r.LastProblemAt is not null)
+                    {
+                        <p class="dk-muted">Since this server started — last webhook received:
+                            @(r.LastReceived?.ToLocalTime().ToString("d MMM, HH:mm") ?? "none").
+                            @if (r.LastProblemAt is not null)
+                            {
+                                <span class="dk-problem">Last problem @r.LastProblemAt.Value.ToLocalTime().ToString("d MMM, HH:mm"): @r.Problem</span>
+                            }
+                        </p>
+                    }
+
                     <button type="button" class="dk-btn" @onclick="() => Save(r)">Save</button>
                     @if (r.Message is not null) { <span class="dk-msg">@r.Message</span> }
                 </section>
@@ -75,6 +87,7 @@
     .dk-btn { margin-top: 6px; padding: 5px 14px; font-size: 12px; font-weight: 600; color: #fff; background: #1d2733; border: 0; border-radius: 3px; cursor: pointer; }
     .dk-btn:hover { background: #0f161e; }
     .dk-btn:focus-visible { outline: 2px solid #1d2733; outline-offset: 2px; }
+    .dk-problem { color: #8a1f1f; }
     .dk-msg { margin-left: 10px; font-size: 12.5px; color: #1d6b2c; }
     .pill { display: inline-block; padding: 1px 9px; border-radius: 9px; font-size: 11px; font-weight: 600; background: #eef1f5; color: #5b6472; }
     .pill-ok { background: #e3f4e6; color: #1d6b2c; }
@@ -90,6 +103,7 @@
         public bool Configured; public bool HasWebhookSecret;
         public string ClientId = ""; public string ClientSecret = ""; public string WebhookSecret = "";
         public bool Production; public string? Message;
+        public DateTime? LastReceived, LastProblemAt; public string? Problem;
     }
 
     protected override async Task OnInitializedAsync()
@@ -108,6 +122,9 @@
                 HasWebhookSecret = !string.IsNullOrEmpty(saved?.WebhookSecret),
                 ClientId = saved?.ClientId ?? "",
                 Production = saved?.Production ?? false,
+                LastReceived = WebhookHealth.For(c.Id).Received,
+                LastProblemAt = WebhookHealth.For(c.Id).ProblemAt,
+                Problem = WebhookHealth.For(c.Id).Problem,
             };
         }).ToList();
     }

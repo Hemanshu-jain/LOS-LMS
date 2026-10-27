@@ -146,6 +146,8 @@ builder.Services.AddScoped<CompanyProvisioningService>();
 builder.Services.Configure<ApiBillingOptions>(builder.Configuration.GetSection(ApiBillingOptions.Section));
 builder.Services.AddScoped<ApiBillingService>();
 builder.Services.AddScoped<DigioClient>();
+builder.Services.AddScoped<DigioWebhookService>();
+builder.Services.AddSingleton<DigioWebhookHealth>();
 
 // "Connect to LOS-LMS": OAuth device-flow server for partner desktop software (Paavan), the PartnerBearer
 // scheme + loans:read / loans:write policies the partner data API uses, the /link wrong-code limiter and
@@ -477,65 +479,10 @@ app.UseRateLimiter();
 // branch before auth, maintenance, the company-setup redirect and antiforgery. Rate-limited above.
 app.UsePartnerOAuth();
 
-// Digio webhooks: POST /webhooks/digio/{companyId}. Server-to-server, so no user, no antiforgery — it is
-// handled here, before auth/maintenance/antiforgery, and short-circuits. Trust comes from the HMAC
-// (X-Digio-Checksum, per-company secret) — not Digio's IPs, which the Cloudflare tunnel hides. Always
-// answers fast: Digio wants 200 within 10 s and retries otherwise.
-app.Use(async (context, next) =>
-{
-    if (!HttpMethods.IsPost(context.Request.Method)
-        || !context.Request.Path.StartsWithSegments("/webhooks/digio", out var rest))
-    {
-        await next();
-        return;
-    }
-
-    // Always write a body: an empty 4xx gets re-executed by the status-code pages as a POST to the error
-    // route, which Blazor's antiforgery then turns into a misleading 400 (same as /api/party-media).
-    Task Respond(int status, string text)
-    {
-        context.Response.StatusCode = status;
-        return context.Response.WriteAsync(text);
-    }
-
-    if (!int.TryParse(rest.Value?.Trim('/'), out var companyId)
-        || context.Request.ContentLength is > 1_000_000)
-    {
-        await Respond(StatusCodes.Status400BadRequest, "bad request");
-        return;
-    }
-
-    using var reader = new StreamReader(context.Request.Body);
-    var body = await reader.ReadToEndAsync();
-
-    var digio = context.RequestServices.GetRequiredService<DigioClient>();
-    var secret = digio.Credentials(companyId)?.WebhookSecret;
-    if (string.IsNullOrEmpty(secret)
-        || !DigioClient.ChecksumMatches(secret, body, context.Request.Headers["X-Digio-Checksum"]))
-    {
-        await Respond(StatusCodes.Status401Unauthorized, "invalid checksum");
-        return;
-    }
-
-    try
-    {
-        var factory = context.RequestServices.GetRequiredService<IDbContextFactory<LosDbContext>>();
-        await using var db = await factory.CreateDbContextAsync();
-        if (await DigioClient.ApplyWebhookAsync(db, companyId, body))
-        {
-            // The e-Sign credit is consumed on signing, so that is when it is metered.
-            await context.RequestServices.GetRequiredService<ApiBillingService>()
-                .RecordAsync(companyId, DigioRates.ESignAadhaar, success: true);
-        }
-    }
-    catch (System.Text.Json.JsonException)
-    {
-        await Respond(StatusCodes.Status400BadRequest, "bad json");
-        return;
-    }
-
-    await Respond(StatusCodes.Status200OK, "ok");
-});
+// Digio webhooks: POST /webhooks/digio/{companyId}. Server-to-server, so no user, no antiforgery: handled here, before
+// auth/maintenance/antiforgery, and short-circuits. Trust comes from the HMAC (X-Digio-Checksum, per-company secret). It
+// ALWAYS answers 200 (Digio's queue is head-of-line; non-200s stall it and get webhooks disabled): see DigioWebhookEndpoint.
+app.UseDigioWebhook();
 
 app.UseAuthentication();
 

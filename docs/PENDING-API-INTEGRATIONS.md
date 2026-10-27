@@ -46,7 +46,12 @@ and pre-fill fields). Same key. Flag before building — needs its own UI.
   (base64 agreement, Aadhaar sign, link to applicant's mobile/email). Status becomes **Sent**; only Digio's
   webhook sets **Signed** — and that is when the ₹10.60 credit is metered.
 - **Webhook:** `POST /webhooks/digio/{companyId}` — verified by `X-Digio-Checksum` (HMAC-SHA256 of body with the
-  company's webhook secret). Paste the URL shown on the Digio keys page into Digio dashboard → Profile → Webhooks
+  company's webhook secret). It ALWAYS answers 200 (Digio's queue is head-of-line; non-200s stall it and get webhooks
+  disabled): an unknown company, an oversize body (1 MB, enforced on the bytes read), a bad signature and any processing
+  error are logged and ignored, and the Digio keys page shows the last webhook / last problem since the server started.
+  An agreement becomes **Signed** only when `agreement_status == "completed"` (every party signed; when the payload does
+  not say, the server asks Digio in the background); the transition is atomic, so the e-Sign credit is metered once, and the
+  signed PDF is kept under `postsanction/signed-{DID}.pdf` (`Disbursement.SignedAgreementFilePath`, download link on Post Sanction). Paste the URL shown on the Digio keys page into Digio dashboard → Profile → Webhooks
   and enable DOC.SIGNED / DOC.SIGN.FAILED / DOC.SIGN.REJECTED.
 - **Billing:** usage report `/admin/api-usage`; postpaid bill per closed month, due month-end + 7 days
   (`ApiBilling:GraceDays`); unpaid after that the company's app is paused until SuperAdmin clicks **Mark paid**.

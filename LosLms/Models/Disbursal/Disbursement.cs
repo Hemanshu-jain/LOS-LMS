@@ -86,7 +86,7 @@ public class Disbursement
 
     /// <summary>
     /// NotSent / Sent / Signed / Failed / Rejected. 'Sent' only after Digio accepts the document; the rest
-    /// ONLY from Digio's verified webhook (<see cref="Services.DigioClient.ApplyWebhookAsync"/>).
+    /// ONLY from Digio's verified webhook (<see cref="Services.DigioWebhookService"/>).
     /// </summary>
     [MaxLength(20)]
     public string AgreementEsignStatus { get; set; } = "NotSent";
@@ -94,6 +94,14 @@ public class Disbursement
     /// <summary>Digio's document id for the agreement sent for e-Sign; the webhook finds the file by it.</summary>
     [MaxLength(80)]
     public string? EsignDocumentId { get; set; }
+
+    /// <summary>The fully signed agreement, downloaded from Digio when signing completes (the legal artefact).</summary>
+    [MaxLength(400)]
+    public string? SignedAgreementFilePath { get; set; }
+
+    /// <summary>Why Digio reported Failed or Rejected: its error code/message, or which signer checks failed. No PII.</summary>
+    [MaxLength(300)]
+    public string? EsignFailureReason { get; set; }
 
     [MaxLength(400)]
     public string? WelcomeLetterFilePath { get; set; }

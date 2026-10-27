@@ -1447,6 +1447,10 @@ namespace LosLms.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("varchar(80)");
 
+                    b.Property<string>("EsignFailureReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
                     b.Property<DateOnly?>("FirstEmiDate")
                         .HasColumnType("date");
 
@@ -1470,6 +1474,10 @@ namespace LosLms.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
+
+                    b.Property<string>("SignedAgreementFilePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
 
                     b.Property<decimal?>("TradeAdvance")
                         .HasPrecision(18, 2)

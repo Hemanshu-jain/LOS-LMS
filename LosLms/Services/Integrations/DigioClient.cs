@@ -18,6 +18,9 @@ public enum DigioStatus { NotConfigured, Paused, Failed, Ok }
 /// <summary>Outcome of a Digio call. <see cref="Data"/> is Digio's JSON body when there was one.</summary>
 public sealed record DigioResult(DigioStatus Status, JsonElement? Data, string? Error)
 {
+    /// <summary>The body of a binary download (signed PDF…); null for JSON calls and failures.</summary>
+    public byte[]? Bytes { get; init; }
+
     public static readonly DigioResult NotConfigured = new(DigioStatus.NotConfigured, null, null);
 
     public string? Str(string name) =>
@@ -52,7 +55,19 @@ public sealed class DigioClient(
     /// POSTs JSON to Digio for a company. <paramref name="apiCode"/> is the rate-card code to meter, or
     /// null when Digio bills the action elsewhere (e.g. e-Sign is billed on DOC.SIGNED, not on upload).
     /// </summary>
-    public async Task<DigioResult> PostAsync(int companyId, string? apiCode, string path, object body, string? applicationId)
+    public Task<DigioResult> PostAsync(int companyId, string? apiCode, string path, object body, string? applicationId) =>
+        SendAsync(companyId, apiCode, HttpMethod.Post, path, body, applicationId, binary: false);
+
+    /// <summary>GET with the same gate (keys, billing pause, metering) as <see cref="PostAsync"/>.</summary>
+    public Task<DigioResult> GetAsync(int companyId, string? apiCode, string path, string? applicationId) =>
+        SendAsync(companyId, apiCode, HttpMethod.Get, path, null, applicationId, binary: false);
+
+    /// <summary>GET of a binary body (e.g. the signed agreement PDF); <see cref="DigioResult.Bytes"/> on success.</summary>
+    public Task<DigioResult> DownloadAsync(int companyId, string? apiCode, string path, string? applicationId) =>
+        SendAsync(companyId, apiCode, HttpMethod.Get, path, null, applicationId, binary: true);
+
+    private async Task<DigioResult> SendAsync(
+        int companyId, string? apiCode, HttpMethod method, string path, object? body, string? applicationId, bool binary)
     {
         if (Credentials(companyId) is not { } c)
         {
@@ -65,25 +80,33 @@ public sealed class DigioClient(
             return new DigioResult(DigioStatus.Paused, null, access.Reason);
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, (c.Production ? ProductionUrl : SandboxUrl) + path)
+        using var request = new HttpRequestMessage(method, (c.Production ? ProductionUrl : SandboxUrl) + path)
         {
-            Content = JsonContent.Create(body),
+            Content = body is null ? null : JsonContent.Create(body),
         };
         request.Headers.Authorization = new("Basic",
             Convert.ToBase64String(Encoding.UTF8.GetBytes($"{c.ClientId}:{c.ClientSecret}")));
 
         bool ok;
         JsonElement? data = null;
+        byte[]? bytes = null;
         string? error = null;
         try
         {
             var http = httpFactory.CreateClient();
             http.Timeout = TimeSpan.FromSeconds(60);
             using var response = await http.SendAsync(request);
-            var text = await response.Content.ReadAsStringAsync();
-            try { data = JsonDocument.Parse(text).RootElement.Clone(); } catch (JsonException) { }
-
             ok = response.IsSuccessStatusCode;
+            if (binary && ok)
+            {
+                bytes = await response.Content.ReadAsByteArrayAsync();
+            }
+            else
+            {
+                var text = await response.Content.ReadAsStringAsync();
+                try { data = JsonDocument.Parse(text).RootElement.Clone(); } catch (JsonException) { }
+            }
+
             if (!ok)
             {
                 error = new DigioResult(DigioStatus.Failed, data, null).Str("message") ?? $"Digio returned {(int)response.StatusCode}.";
@@ -97,7 +120,7 @@ public sealed class DigioClient(
             error = "Could not reach Digio. Please try again.";
         }
 
-        var result = new DigioResult(ok ? DigioStatus.Ok : DigioStatus.Failed, data, error);
+        var result = new DigioResult(ok ? DigioStatus.Ok : DigioStatus.Failed, data, error) { Bytes = bytes };
         if (apiCode is not null)
         {
             // Failed calls are logged too (not billed) so the report shows them.
@@ -119,45 +142,5 @@ public sealed class DigioClient(
         return CryptographicOperations.FixedTimeEquals(
             Encoding.ASCII.GetBytes(expected.ToLowerInvariant()),
             Encoding.ASCII.GetBytes(header.Trim().ToLowerInvariant()));
-    }
-
-    /// <summary>
-    /// Applies a verified webhook. Only DigiSign events are acted on today: the ONLY place an agreement
-    /// becomes 'Signed'. Idempotent — Digio delivers at least once, and a repeat changes nothing.
-    /// Returns true when the agreement newly became signed (the caller meters the e-Sign credit).
-    /// </summary>
-    public static async Task<bool> ApplyWebhookAsync(LosDbContext db, int companyId, string body)
-    {
-        using var doc = JsonDocument.Parse(body);
-        var root = doc.RootElement;
-        var evt = root.TryGetProperty("event", out var e) ? e.GetString()?.ToLowerInvariant() : null;
-        var newStatus = evt switch
-        {
-            "doc.signed" => "Signed",
-            "doc.sign.failed" => "Failed",
-            "doc.sign.rejected" => "Rejected",
-            _ => null,
-        };
-
-        if (newStatus is null
-            || !root.TryGetProperty("payload", out var payload)
-            || !payload.TryGetProperty("document", out var document)
-            || !document.TryGetProperty("id", out var idProp)
-            || idProp.GetString() is not { Length: > 0 } documentId)
-        {
-            return false;
-        }
-
-        // No signed-in user on a webhook, so bypass the tenant filter and scope by the URL's company.
-        var disbursement = await db.Disbursements.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(d => d.EsignDocumentId == documentId && d.Application!.CompanyId == companyId);
-        if (disbursement is null || disbursement.AgreementEsignStatus == newStatus || disbursement.AgreementEsignStatus == "Signed")
-        {
-            return false;
-        }
-
-        disbursement.AgreementEsignStatus = newStatus;
-        await db.SaveChangesAsync();
-        return newStatus == "Signed";
     }
 }

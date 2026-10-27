@@ -1,0 +1,292 @@
+using System.Collections.Concurrent;
+using System.Text;
+using System.Text.Json;
+using LosLms.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace LosLms.Services;
+
+/// <summary>
+/// What the last Digio webhooks looked like, per company, for the Digio keys page. In memory: it shows "since this server
+/// started" (Phase 1's inbox makes it durable).
+/// </summary>
+public sealed class DigioWebhookHealth
+{
+    private readonly ConcurrentDictionary<int, (DateTime? Received, DateTime? ProblemAt, string? Problem)> _state = new();
+
+    public void Received(int companyId, DateTime? nowUtc = null) =>
+        _state.AddOrUpdate(companyId, (nowUtc ?? DateTime.UtcNow, null, null), (_, s) => (nowUtc ?? DateTime.UtcNow, s.ProblemAt, s.Problem));
+
+    public void Problem(int companyId, string what, DateTime? nowUtc = null) =>
+        _state.AddOrUpdate(companyId, (null, nowUtc ?? DateTime.UtcNow, what), (_, s) => (s.Received, nowUtc ?? DateTime.UtcNow, what));
+
+    public (DateTime? Received, DateTime? ProblemAt, string? Problem) For(int companyId) =>
+        _state.TryGetValue(companyId, out var s) ? s : default;
+}
+
+/// <summary>
+/// Acts on a VERIFIED Digio webhook. Only e-Sign events today. The only place an agreement becomes 'Signed' (all parties,
+/// <c>agreement_status == "completed"</c>); the transition is one atomic statement so a redelivery or a concurrent delivery
+/// changes nothing and meters the e-Sign credit exactly once.
+/// </summary>
+public sealed class DigioWebhookService(
+    IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, ApiBillingService billing, IFileStore files,
+    IServiceScopeFactory scopes, ILogger<DigioWebhookService> log)
+{
+    private const string Signed = "Signed";
+
+    /// <summary>Throws only for a malformed body (the endpoint turns every exception into a logged 200).</summary>
+    public async Task HandleAsync(int companyId, string body)
+    {
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        var evt = Str(root, "event")?.ToLowerInvariant();
+        if (!root.TryGetProperty("payload", out var payload) || !payload.TryGetProperty("document", out var document)
+            || Str(document, "id") is not { Length: > 0 } docId)
+        {
+            return;
+        }
+
+        switch (evt)
+        {
+            case "doc.signed":
+                switch (Str(document, "agreement_status"))
+                {
+                    case "completed":
+                        await CompleteAsync(companyId, docId);
+                        break;
+                    case null:
+                        // Not stated: ask Digio, but not inside the webhook (it must answer fast); the document stays 'Sent' meanwhile.
+                        ConfirmInBackground(companyId, docId);
+                        break;
+                    // anything else (e.g. 'requested'): another signer is still to sign, nothing to record yet.
+                }
+
+                break;
+            case "doc.sign.failed":
+                await FailAsync(companyId, docId, "Failed", Reason(document));
+                break;
+            case "doc.sign.rejected":
+                await FailAsync(companyId, docId, "Rejected", Reason(document));
+                break;
+        }
+    }
+
+    /// <summary>Asks Digio for the document's real status and completes it if every party has signed.</summary>
+    public async Task ConfirmAsync(int companyId, string docId)
+    {
+        var result = await digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null);
+        if (result.Status == DigioStatus.Ok && result.Str("agreement_status") == "completed")
+        {
+            await CompleteAsync(companyId, docId);
+        }
+    }
+
+    private void ConfirmInBackground(int companyId, string docId) => _ = Task.Run(async () =>
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<DigioWebhookService>().ConfirmAsync(companyId, docId);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Confirming Digio document {DocId} for company {CompanyId} failed", docId, companyId);
+        }
+    });
+
+    private async Task CompleteAsync(int companyId, string docId)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        // No signed-in user on a webhook: bypass the tenant filter and scope by the URL's company.
+        var row = await db.Disbursements.IgnoreQueryFilters()
+            .Where(d => d.EsignDocumentId == docId && d.Application!.CompanyId == companyId)
+            .Select(d => new { d.Id, d.ApplicationId }).FirstOrDefaultAsync();
+        if (row is null)
+        {
+            return;
+        }
+
+        // One statement decides who completes it. Redelivery or a parallel delivery gets 0 rows: no second credit.
+        var won = await db.Disbursements.IgnoreQueryFilters()
+            .Where(d => d.Id == row.Id && d.AgreementEsignStatus != Signed)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.AgreementEsignStatus, Signed).SetProperty(d => d.EsignFailureReason, (string?)null));
+        if (won != 1)
+        {
+            return;
+        }
+
+        // The e-Sign credit is consumed on signing, so that is when it is metered.
+        await billing.RecordAsync(companyId, DigioRates.ESignAadhaar, success: true, applicationId: row.ApplicationId, providerRef: docId);
+        await SaveSignedCopyAsync(companyId, row.Id, row.ApplicationId, docId);
+    }
+
+    private async Task FailAsync(int companyId, string docId, string status, string? reason)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var id = await db.Disbursements.IgnoreQueryFilters()
+            .Where(d => d.EsignDocumentId == docId && d.Application!.CompanyId == companyId)
+            .Select(d => (int?)d.Id).FirstOrDefaultAsync();
+        if (id is null)
+        {
+            return;
+        }
+
+        // Never un-signs; a repeat of the same outcome changes nothing.
+        await db.Disbursements.IgnoreQueryFilters()
+            .Where(d => d.Id == id && d.AgreementEsignStatus != Signed && d.AgreementEsignStatus != status)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.AgreementEsignStatus, status).SetProperty(d => d.EsignFailureReason, reason));
+    }
+
+    /// <summary>
+    /// Downloads the signed PDF and keeps it with the file. A failure is logged and leaves the path empty (the Post Sanction
+    /// page then offers "Fetch signed copy"); it never undoes the Signed status.
+    /// </summary>
+    public async Task<bool> FetchSignedCopyAsync(int companyId, string applicationId)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var row = await db.Disbursements.IgnoreQueryFilters()
+            .Where(d => d.ApplicationId == applicationId && d.Application!.CompanyId == companyId && d.AgreementEsignStatus == Signed)
+            .Select(d => new { d.Id, d.EsignDocumentId, d.SignedAgreementFilePath }).FirstOrDefaultAsync();
+        if (row?.EsignDocumentId is not { } docId)
+        {
+            return false;
+        }
+
+        return row.SignedAgreementFilePath is not null || await SaveSignedCopyAsync(companyId, row.Id, applicationId, docId);
+    }
+
+    private async Task<bool> SaveSignedCopyAsync(int companyId, int disbursementId, string applicationId, string docId)
+    {
+        try
+        {
+            var download = await digio.DownloadAsync(
+                companyId, null, $"/v2/client/document/download?document_id={Uri.EscapeDataString(docId)}", applicationId);
+            if (download.Bytes is not { } bytes || !FileSignature.Matches(".pdf", bytes))
+            {
+                log.LogWarning("No signed PDF for Digio document {DocId} (company {CompanyId}): {Status}", docId, companyId, download.Status);
+                return false;
+            }
+
+            var key = FileKey.Normalize(await files.SaveUploadAsync(applicationId, "postsanction", $"signed-{docId}.pdf", bytes));
+            await using var db = await dbFactory.CreateDbContextAsync();
+            await db.Disbursements.IgnoreQueryFilters().Where(d => d.Id == disbursementId)
+                .ExecuteUpdateAsync(s => s.SetProperty(d => d.SignedAgreementFilePath, key));
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Saving the signed PDF for Digio document {DocId} (company {CompanyId}) failed", docId, companyId);
+            return false;
+        }
+    }
+
+    // "ESP-123: UIDAI Server Down", or for a rejection the signer checks that failed: "Checks failed: AADHAAR, YOB".
+    private static string? Reason(JsonElement document)
+    {
+        var parts = new List<string>();
+        if (Str(document, "error_code") is { } code) { parts.Add(code); }
+        if (Str(document, "error_message") is { } message) { parts.Add(message); }
+        var text = string.Join(": ", parts);
+
+        if (document.TryGetProperty("validation_results", out var results) && results.ValueKind == JsonValueKind.Object
+            && results.TryGetProperty("ruleResults", out var rules) && rules.ValueKind == JsonValueKind.Array)
+        {
+            var failed = rules.EnumerateArray()
+                .SelectMany(r => r.TryGetProperty("conditions", out var c) && c.ValueKind == JsonValueKind.Array ? c.EnumerateArray() : [])
+                .Where(c => Str(c, "result") == "FAIL").Select(c => Str(c, "field")).Where(f => f is not null).Distinct().ToList();
+            if (failed.Count > 0)
+            {
+                text = (text.Length > 0 ? text + ". " : "") + "Signer checks failed: " + string.Join(", ", failed);
+            }
+        }
+
+        return text.Length == 0 ? null : text.Length > 300 ? text[..300] : text;
+    }
+
+    private static string? Str(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+}
+
+/// <summary>
+/// POST /webhooks/digio/{companyId}. Digio's delivery queue is head-of-line per account and webhooks are disabled after 24 h of
+/// failures, so this ALWAYS answers 200: an unknown company, an oversize or unreadable body, a bad checksum and any processing
+/// error are logged (ids only, never the body) and ignored. Only a body with a valid checksum is processed.
+/// </summary>
+public static class DigioWebhookEndpoint
+{
+    public const int MaxBodyBytes = 1_000_000;
+
+    public static void UseDigioWebhook(this WebApplication app) => app.Use(async (context, next) =>
+    {
+        if (!HttpMethods.IsPost(context.Request.Method)
+            || !context.Request.Path.StartsWithSegments("/webhooks/digio", out var rest))
+        {
+            await next();
+            return;
+        }
+
+        await HandleAsync(context, rest.Value?.Trim('/'));
+    });
+
+    public static async Task HandleAsync(HttpContext context, string? companyIdText)
+    {
+        var log = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("DigioWebhook");
+        var health = context.RequestServices.GetRequiredService<DigioWebhookHealth>();
+        var companyId = 0;
+        try
+        {
+            if (!int.TryParse(companyIdText, out companyId))
+            {
+                log.LogWarning("Digio webhook for an unreadable company id ignored (from {Ip})", ClientIp.Of(context));
+            }
+            else if (await ReadBoundedAsync(context.Request.Body) is not { } body)
+            {
+                log.LogWarning("Digio webhook for company {CompanyId} ignored: body over {Max} bytes", companyId, MaxBodyBytes);
+                health.Problem(companyId, "A webhook body was too large and was ignored.");
+            }
+            else
+            {
+                var secret = context.RequestServices.GetRequiredService<DigioClient>().Credentials(companyId)?.WebhookSecret;
+                if (string.IsNullOrEmpty(secret)
+                    || !DigioClient.ChecksumMatches(secret, body, context.Request.Headers["X-Digio-Checksum"]))
+                {
+                    log.LogWarning("Digio webhook for company {CompanyId} ignored: signature missing or wrong (from {Ip})", companyId, ClientIp.Of(context));
+                    health.Problem(companyId, "Signature mismatch: check the webhook secret on this page.");
+                }
+                else
+                {
+                    health.Received(companyId);
+                    await context.RequestServices.GetRequiredService<DigioWebhookService>().HandleAsync(companyId, body);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Never a non-200 to Digio: record it and move on.
+            log.LogError(ex, "Digio webhook for company {CompanyId} could not be processed", companyId);
+            health.Problem(companyId, "A webhook could not be processed (" + ex.GetType().Name + "); see the server log.");
+        }
+
+        if (!context.Response.HasStarted)
+        {
+            // A body on purpose: an empty reply would be re-executed by the status-code pages as a POST to the error route.
+            context.Response.StatusCode = StatusCodes.Status200OK;
+            await context.Response.WriteAsync("ok");
+        }
+    }
+
+    /// <summary>The body as text, or null when it is bigger than the cap: enforced on the bytes read, so chunked requests can't skip it.</summary>
+    internal static async Task<string?> ReadBoundedAsync(Stream stream)
+    {
+        var buffer = new byte[MaxBodyBytes + 1];
+        var read = 0;
+        int n;
+        while (read < buffer.Length && (n = await stream.ReadAsync(buffer.AsMemory(read))) > 0)
+        {
+            read += n;
+        }
+
+        return read > MaxBodyBytes ? null : Encoding.UTF8.GetString(buffer, 0, read);
+    }
+}
