@@ -61,7 +61,16 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         var status = r.Str("status")?.ToLowerInvariant();
         if (status is null)
         {
-            return await RecordAsync(companyId, applicationId, partyId, "PAN", "Unavailable", null, "Digio gave no PAN status.", requestId, r, fingerprint);
+            // A 200 with no status is how Digio says "nothing found" (the GST sample did the same: only error_message). Its reason is the answer.
+            var reason = r.Str("error_message") ?? r.Str("message");
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                return await RecordAsync(companyId, applicationId, partyId, "PAN", "Failed", null, "Digio: " + Cut(reason.Trim(), 200), requestId, r, fingerprint);
+            }
+
+            // Neither a status nor a reason: show the field NAMES (never values) so the shape can be mapped.
+            var keys = r.Data is { ValueKind: JsonValueKind.Object } o ? string.Join(", ", o.EnumerateObject().Select(x => x.Name).Take(15)) : "not an object";
+            return await RecordAsync(companyId, applicationId, partyId, "PAN", "Unavailable", null, Cut("Digio's reply had no PAN status. Fields: " + keys, 300), requestId, r, fingerprint);
         }
 
         var nameOk = r.Bool("name_as_per_pan_match") == true;
@@ -69,7 +78,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         var isIndividual = !individual || string.Equals(r.Str("category"), "individual", StringComparison.OrdinalIgnoreCase);
         var note = r.Str("aadhaar_seeding_status") is { } seed && !seed.Equals("y", StringComparison.OrdinalIgnoreCase) ? "; Aadhaar not seeded to PAN" : "";
 
-        var (verdict, summary) = status != "valid" ? ("Failed", "PAN is not valid")
+        var (verdict, summary) = status != "valid" ? ("Failed", "PAN is not valid (Digio status: " + Cut(status, 30) + ")")
             : !isIndividual ? ("Mismatch", "PAN is not an individual's")
             : nameOk && dobOk ? ("Verified", "Name matches" + (dob is null ? "" : ", DOB matches") + note)
             : ("Mismatch", (nameOk ? "Name matches" : "Name does not match") + (dob is null ? "" : dobOk ? ", DOB matches" : ", DOB does not match") + note);

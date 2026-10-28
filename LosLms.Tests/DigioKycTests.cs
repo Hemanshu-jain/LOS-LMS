@@ -133,6 +133,31 @@ public sealed class DigioKycTests : IDisposable
         Assert.Empty(_digio.Calls);
     }
 
+    [Fact]
+    public async Task Pan_Digio200WithOnlyAnErrorMessage_IsFailedWithDigiosReason_NotUnavailable()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"error_message":"PAN not found","id":"X1"}""");
+
+        var o = await Kyc().VerifyPanAsync(1, "A1", PartyId(), "ABCPE1234F", "Raj Kumar", null, true, null);
+
+        Assert.Equal("Failed", o.Verdict);
+        Assert.Contains("PAN not found", o.Message);
+    }
+
+    [Fact]
+    public async Task Pan_StatusInvalid_IsFailed_AndAReplyWithNoStatusOrReasonNamesItsFieldsOnly()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"status":"INVALID"}""");
+        Assert.Equal("Failed", (await Kyc().VerifyPanAsync(1, "A1", PartyId(), "ABCPE1234F", "Raj Kumar", null, true, null)).Verdict);
+
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"pan_status":"E","holder":"SECRET NAME"}""");
+        var o = await Kyc().VerifyPanAsync(1, "A1", PartyId(), "ABCPE1234G", "Raj Kumar", null, true, null);
+
+        Assert.Equal("Unavailable", o.Verdict);
+        Assert.Contains("pan_status, holder", o.Message);
+        Assert.DoesNotContain("SECRET", o.Message);
+    }
+
     // ---- name match ----
 
     [Theory]
