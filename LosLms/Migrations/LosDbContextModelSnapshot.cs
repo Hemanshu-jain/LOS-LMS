@@ -1411,6 +1411,10 @@ namespace LosLms.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Consent")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
                     b.Property<string>("CustomerChannel")
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
@@ -1536,11 +1540,23 @@ namespace LosLms.Migrations
                     b.Property<bool>("Enach")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("EnachConfigIdProduction")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("EnachConfigIdSandbox")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
                     b.Property<bool>("Esign")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("Estamp")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("EstampTag")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
 
                     b.Property<bool>("Face")
                         .HasColumnType("tinyint(1)");
@@ -1559,8 +1575,29 @@ namespace LosLms.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("LenderSignaturePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
                     b.Property<int>("LinkExpiryDays")
                         .HasColumnType("int");
+
+                    b.Property<string>("NachCategory")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<int>("NachFinalBufferMonths")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NachFrequency")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<decimal>("NachMaxMultiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
 
                     b.Property<bool>("PanVerify")
                         .HasColumnType("tinyint(1)");
@@ -1666,6 +1703,14 @@ namespace LosLms.Migrations
                         .HasMaxLength(400)
                         .HasColumnType("varchar(400)");
 
+                    b.Property<string>("AgreementFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("AgreementHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<string>("ApplicationId")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1702,6 +1747,10 @@ namespace LosLms.Migrations
                     b.Property<string>("EsignFailureReason")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
+
+                    b.Property<string>("EsignRequestId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
 
                     b.Property<DateOnly?>("FirstEmiDate")
                         .HasColumnType("date");
@@ -1892,6 +1941,10 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("AuthMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<string>("BankBranch")
                         .HasMaxLength(150)
                         .HasColumnType("varchar(150)");
@@ -1899,6 +1952,13 @@ namespace LosLms.Migrations
                     b.Property<string>("BankName")
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
+
+                    b.Property<string>("BankState")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<decimal?>("CollectionAmount")
+                        .HasColumnType("decimal(65,30)");
 
                     b.Property<bool>("ConfirmationAccepted")
                         .ValueGeneratedOnAdd()
@@ -1910,6 +1970,22 @@ namespace LosLms.Migrations
 
                     b.Property<DateOnly?>("DebitDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("DestinationBankId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("DigioMandateId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("DigioRequestId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("DigioState")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
 
                     b.Property<string>("DigitalMode")
                         .HasMaxLength(20)
@@ -1927,6 +2003,9 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<decimal?>("MaximumAmount")
+                        .HasColumnType("decimal(65,30)");
+
                     b.Property<DateTime?>("NameMatchCheckedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1936,6 +2015,17 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)")
                         .HasDefaultValue("NotRun");
+
+                    b.Property<DateTime?>("RegisteredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("SignedFormPath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1957,6 +2047,67 @@ namespace LosLms.Migrations
                         .IsUnique();
 
                     b.ToTable("EnachMandate", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.EsignSigner", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DocumentId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("Identifier")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int?>("PartyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PartyType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int>("SignOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "ApplicationId", "DocumentId");
+
+                    b.ToTable("EsignSigner", (string)null);
                 });
 
             modelBuilder.Entity("LosLms.Models.ExistingLoan", b =>
@@ -3184,6 +3335,10 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("AuthMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<string>("BankBranch")
                         .HasMaxLength(150)
                         .HasColumnType("varchar(150)");
@@ -3192,6 +3347,13 @@ namespace LosLms.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
+                    b.Property<string>("BankState")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<decimal?>("CollectionAmount")
+                        .HasColumnType("decimal(65,30)");
+
                     b.Property<bool>("ConfirmationAccepted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")
@@ -3199,6 +3361,22 @@ namespace LosLms.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DestinationBankId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("DigioMandateId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("DigioRequestId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("DigioState")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
 
                     b.Property<string>("DigitalMode")
                         .HasMaxLength(20)
@@ -3216,6 +3394,9 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<decimal?>("MaximumAmount")
+                        .HasColumnType("decimal(65,30)");
+
                     b.Property<DateTime?>("NameMatchCheckedAt")
                         .HasColumnType("datetime(6)");
 
@@ -3225,6 +3406,17 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)")
                         .HasDefaultValue("NotRun");
+
+                    b.Property<DateTime?>("RegisteredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("RejectReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("SignedFormPath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
 
                     b.Property<string>("Status")
                         .IsRequired()

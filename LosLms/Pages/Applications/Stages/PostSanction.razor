@@ -1,6 +1,7 @@
 @page "/applications/{ApplicationId}/post-sanction"
 @using System.Globalization
 @using LosLms.Components.Shared
+@using LosLms.Components.Shared.Digio
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
@@ -12,7 +13,9 @@
 @inject IWebHostEnvironment HostEnvironment
 @inject LosLms.Services.IFileStore Files
 @inject DigioClient Digio
-@inject DigioWebhookService DigioWebhook
+@inject DigioStatusNotifier DigioNotifier
+@inject TenantContext Tenant
+@inject AdminRequestNotifier AdminNotifier
 
 <PageTitle>Post Sanction · @ApplicationId</PageTitle>
 
@@ -48,6 +51,28 @@ else
                             BlockedReason="@ReleaseBlockedReason"
                             OnSaveDraft="GoToDisbursementTab"
                             OnCompleteStage="ReleaseFundsAsync" />
+
+            @if (!_digioGate.CanAdvance)
+            {
+                <div class="dg-gate" role="alert">
+                    <span>⛔ @_digioGate.BlockedReason@(_isElevated ? " An Admin can release anyway; the override is logged." : "")</span>
+                    @if (!_isElevated && _digioGate.RequestType is not null)
+                    {
+                        @if (_digioGate.RequestPending)
+                        {
+                            <span class="dg-muted">Admin request pending.</span>
+                        }
+                        else
+                        {
+                            <button type="button" class="verify-button" @onclick="RequestDigioBypassAsync">Request admin bypass</button>
+                        }
+                        @if (_digioGate.DeniedNote is { } denied)
+                        {
+                            <span class="dg-muted">Denied: @denied</span>
+                        }
+                    }
+                </div>
+            }
 
             <div class="stepper-band">
                 <StageStepper CurrentStep="8" MaxStep="@_application?.CurrentStage" ApplicationId="@ApplicationId" />
@@ -292,29 +317,8 @@ else
                                                         <a class="file-link" href="@UrlFor(_disbursement.AgreementFilePath!)" target="_blank">✓ @agreement</a>
                                                     }
                                                 </div>
-                                                <div class="doc-row">
-                                                    <button type="button" class="doc-action" @onclick="SendForEsignAsync" disabled="@(agreement is null)">Send for e-Signature</button>
-                                                    <span class="doc-status">Status: @_disbursement.AgreementEsignStatus</span>
-                                                    @if (_disbursement.AgreementEsignStatus == "Signed")
-                                                    {
-                                                        @if (_disbursement.SignedAgreementFilePath is { } signedPath)
-                                                        {
-                                                            <a class="file-link" href="@UrlFor(signedPath)" target="_blank">✓ Signed agreement</a>
-                                                        }
-                                                        else
-                                                        {
-                                                            <button type="button" class="doc-action" @onclick="FetchSignedCopyAsync">Fetch signed copy</button>
-                                                        }
-                                                    }
-                                                </div>
-                                                @if (_disbursement.AgreementEsignStatus is "Failed" or "Rejected" && _disbursement.EsignFailureReason is { } why)
-                                                {
-                                                    <p class="inline-notice" role="status">@why</p>
-                                                }
-                                                @if (_esignNotice is not null)
-                                                {
-                                                    <p class="inline-notice" role="status">@_esignNotice</p>
-                                                }
+                                                <EsignPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" UserId="@Tenant.UserId"
+                                                            OnChanged="OnEsignChangedAsync" />
                                             </div>
                                         </div>
                                     </Panel>
@@ -408,7 +412,11 @@ else
                                                      IdPrefix="ps-enach"
                                                      PartyLabel="the applicant"
                                                      PartyName="@PartyNameFor(ApplicantPartyType)"
-                                                     OnSubmit="SaveMandatesAsync" />
+                                                     OnSubmit="SaveMandatesAsync"
+                                                     DigioEnabled="_digioNach" Tab="@DigioNachService.EnachTab" ApplicationId="@ApplicationId"
+                                                     CompanyId="_application.CompanyId" UserId="@Tenant.UserId" Terms="NachTermsOrNull"
+                                                     Mobile="@ContactOf(ApplicantPartyType).Mobile" Email="@ContactOf(ApplicantPartyType).Email"
+                                                     OnChanged="RefreshMandatesAsync" />
                                     </Panel>
                                 }
 
@@ -426,7 +434,11 @@ else
                                                      IdPrefix="ps-snach"
                                                      PartyLabel="the guarantor"
                                                      PartyName="@PartyNameFor(GuarantorPartyType)"
-                                                     OnSubmit="SaveMandatesAsync" />
+                                                     OnSubmit="SaveMandatesAsync"
+                                                     DigioEnabled="_digioNach" Tab="@DigioNachService.SecurityTab" ApplicationId="@ApplicationId"
+                                                     CompanyId="_application.CompanyId" UserId="@Tenant.UserId" Terms="NachTermsOrNull"
+                                                     Mobile="@ContactOf(GuarantorPartyType).Mobile" Email="@ContactOf(GuarantorPartyType).Email"
+                                                     OnChanged="RefreshMandatesAsync" />
                                     </Panel>
                                 }
 
@@ -738,6 +750,12 @@ else
 
         _loading = false;
 
+        if (!_subscribed)
+        {
+            _subscribed = true;
+            DigioNotifier.Changed += OnDigioChangedAsync;
+        }
+
         if (_application is not null)
         {
             _autoSave.Start(() => InvokeAsync(async () =>
@@ -760,6 +778,10 @@ else
         _partyNames = await db.Parties.AsNoTracking()
             .Where(p => p.ApplicationId == ApplicationId)
             .ToDictionaryAsync(p => p.PartyType, p => p.FullName, StringComparer.Ordinal);
+
+        _contacts = await db.Parties.AsNoTracking()
+            .Where(p => p.ApplicationId == ApplicationId)
+            .ToDictionaryAsync(p => p.PartyType, p => (p.Mobile, p.Email), StringComparer.Ordinal);
 
         _decision = await db.ApprovalDecisions.AsNoTracking()
             .FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
@@ -823,6 +845,90 @@ else
 
         _pdds = await db.Pdds.AsNoTracking()
             .Where(p => p.ApplicationId == ApplicationId).OrderBy(p => p.Id).ToListAsync();
+
+        await LoadDigioStateAsync(db);
+    }
+
+    /// <summary>The Digio-side facts the page needs: is e-NACH on, may this user bypass, is the release gate met.</summary>
+    private async Task LoadDigioStateAsync(LosDbContext db)
+    {
+        var companyId = _application?.CompanyId ?? 0;
+        _isElevated = db.IsElevatedUser;
+        _digioNach = Digio.Credentials(companyId) is not null
+            && await db.DigioSettings.AsNoTracking().AnyAsync(s => s.CompanyId == companyId && s.Enach);
+        _digioGate = await DigioReleaseGate.CheckAsync(db, ApplicationId, await IsProductionAsync());
+    }
+
+    private Task<bool> IsProductionAsync() => Task.FromResult(Digio.Credentials(_application?.CompanyId ?? 0)?.Production ?? false);
+
+    private (string? Mobile, string? Email) ContactOf(string partyType) => _contacts.GetValueOrDefault(partyType);
+
+    /// <summary>EMI, first and last due date from the schedule on this page; null until the schedule exists.</summary>
+    private NachTerms? NachTermsOrNull
+    {
+        get
+        {
+            var schedule = Schedule;
+            return schedule.Count > 0 && schedule[^1].DueDate is { } last && _disbursement.FirstEmiDate is { } first
+                ? new NachTerms(FirstMonthEmi, first, last) : null;
+        }
+    }
+
+    /// <summary>A Digio webhook or action changed a mandate or the agreement: re-read them and the gate.</summary>
+    private async Task RefreshMandatesAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var e = await db.EnachMandates.AsNoTracking().FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
+        var s = await db.SecurityNachMandates.AsNoTracking().FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId);
+        if (e is not null)
+        {
+            CopyDigioFields(e, _enach);
+        }
+
+        if (s is not null)
+        {
+            CopyDigioFields(s, _snach);
+        }
+
+        _digioGate = await DigioReleaseGate.CheckAsync(db, ApplicationId, await IsProductionAsync());
+    }
+
+    private Task OnEsignChangedAsync() => RefreshMandatesAsync();
+
+    private async Task OnDigioChangedAsync(string applicationId)
+    {
+        if (applicationId == ApplicationId)
+        {
+            await InvokeAsync(async () => { await RefreshMandatesAsync(); StateHasChanged(); });
+        }
+    }
+
+    private async Task RequestDigioBypassAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var raised = await GateCheckService.RaiseRequestAsync(db, AdminNotifier, ApplicationId, AdminRequest.DigioReleaseBypass,
+            Tenant.UserId, _digioGate.BlockedReason);
+        await RefreshMandatesAsync();
+        await ShowToastAsync(raised ? "Request sent to an Admin" : "A request is already waiting");
+    }
+
+    private static void CopyDigioFields(INachMandate from, INachMandate to)
+    {
+        to.Umrn = from.Umrn;
+        to.Status = from.Status;
+        to.MandateType = from.MandateType;
+        to.DigioMandateId = from.DigioMandateId;
+        to.AuthMode = from.AuthMode;
+        to.DestinationBankId = from.DestinationBankId;
+        to.DigioState = from.DigioState;
+        to.BankState = from.BankState;
+        to.RejectReason = from.RejectReason;
+        to.DigioRequestId = from.DigioRequestId;
+        to.CollectionAmount = from.CollectionAmount;
+        to.MaximumAmount = from.MaximumAmount;
+        to.RegisteredAt = from.RegisteredAt;
+        to.SignedFormPath = from.SignedFormPath;
     }
 
     private static T Track<T>(DbSet<T> set, T entity, ref bool created) where T : class
@@ -875,11 +981,16 @@ else
     // Release is allowed once every item on the branch disbursement checklist reads Cleared. An empty
     // checklist never releases — a file must have its checklist created before any funds move.
     private bool ReleaseBlocked =>
-        _checklist.Count == 0 || _checklist.Any(c => c.Flag != "Cleared");
+        _checklist.Count == 0 || _checklist.Any(c => c.Flag != "Cleared") || DigioBlocked;
+
+    // The Digio gate (agreement signed, mandate registered) blocks officers; an Admin may release anyway and that is logged.
+    private bool DigioBlocked => !_digioGate.CanAdvance && !_isElevated;
 
     private string? ReleaseBlockedReason =>
         !ReleaseBlocked
             ? null
+            : DigioBlocked && _checklist.Count > 0 && _checklist.All(c => c.Flag == "Cleared")
+            ? _digioGate.BlockedReason
             : _checklist.Count == 0
                 ? "The disbursement checklist has not been created yet."
                 : $"{_checklist.Count - ClearedCount} checklist item(s) still pending.";
@@ -993,8 +1104,10 @@ else
 
     private string _companyName = string.Empty;
     private string? _applicantMobile;
+    private Dictionary<string, (string? Mobile, string? Email)> _contacts = new(StringComparer.Ordinal);
+    private GateResult _digioGate = GateResult.Clear;
+    private bool _isElevated, _digioNach, _subscribed;
     private string? _smsNotice;
-    private string? _esignNotice;
 
     /// <summary>The SMS text the officer sees — composed for real from the loan's merge fields.</summary>
     private string WelcomeSmsText =>
@@ -1039,9 +1152,18 @@ else
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
         }
 
-        var bytes = LoanAgreementPdf.Build(_companyName, _application, _decision, FirstMonthEmi, parties, security);
+        byte[]? lenderSignature = null;
+        await using (var db = await DbFactory.CreateDbContextAsync())
+        {
+            var key = await db.DigioSettings.AsNoTracking().Where(s => s.CompanyId == _application.CompanyId)
+                .Select(s => s.LenderSignaturePath).FirstOrDefaultAsync();
+            lenderSignature = key is null ? null : await Files.ReadAllBytesAsync(key);
+        }
+
+        var bytes = LoanAgreementPdf.Build(_companyName, _application, _decision, FirstMonthEmi, parties, security, lenderSignature);
 
         _disbursement.AgreementFilePath = await WriteGeneratedAsync(bytes, "agreement");
+        _disbursement.AgreementHash = DigioEsignService.Sha256(bytes);
         await SaveDisbursementAsync();
         await ShowToastAsync("Agreement generated");
     }
@@ -1065,82 +1187,6 @@ else
         _disbursement.WelcomeSmsStatus = "Sent";
         _disbursement.WelcomeSmsSentAt = DateTime.UtcNow;
         await SaveDisbursementAsync();
-    }
-
-    /// <summary>
-    /// Sends the generated agreement to Digio for Aadhaar e-Sign. On acceptance the status becomes 'Sent';
-    /// never 'Signed' — only Digio's verified webhook may set that.
-    /// </summary>
-    private async Task SendForEsignAsync()
-    {
-        _esignNotice = null;
-
-        if (_application is null || string.IsNullOrWhiteSpace(_disbursement.AgreementFilePath))
-        {
-            _esignNotice = "Generate the agreement first.";
-            return;
-        }
-
-        if (_disbursement.AgreementEsignStatus is "Sent" or "Signed")
-        {
-            _esignNotice = $"Already {_disbursement.AgreementEsignStatus.ToLowerInvariant()} — not sent again.";
-            return;
-        }
-
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var applicant = await db.Parties.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant");
-        var signer = !string.IsNullOrWhiteSpace(applicant?.Mobile) ? applicant.Mobile : applicant?.Email;
-        if (string.IsNullOrWhiteSpace(signer))
-        {
-            _esignNotice = "Add the applicant's mobile or email on Customer Details first — the signing link goes there.";
-            return;
-        }
-
-        var agreement = await Files.ReadAllBytesAsync(_disbursement.AgreementFilePath);
-        if (agreement is null)
-        {
-            _esignNotice = "The agreement file is missing — generate it again.";
-            return;
-        }
-
-        var result = await EsignService.DispatchAsync(
-            Digio, _application.CompanyId, ApplicationId, Path.GetFileName(_disbursement.AgreementFilePath), agreement,
-            signer, applicant!.FullName);
-
-        if (result.Status != DigioStatus.Ok || result.Str("id") is not { } documentId)
-        {
-            _esignNotice = result.Status switch
-            {
-                DigioStatus.NotConfigured => EsignService.Unavailable,
-                _ => result.Error ?? "Digio did not accept the document.",
-            };
-            return;
-        }
-
-        // Make sure the row exists with the current fields, then record the dispatch itself.
-        await PersistAsync(db);
-        await db.SaveChangesAsync();
-        var row = await db.Disbursements.FirstAsync(d => d.ApplicationId == ApplicationId);
-        row.AgreementEsignStatus = _disbursement.AgreementEsignStatus = "Sent";
-        row.EsignDocumentId = _disbursement.EsignDocumentId = documentId;
-        await db.SaveChangesAsync();
-        _esignNotice = $"Sent to the applicant ({signer}) for Aadhaar e-Sign.";
-    }
-
-    /// <summary>Retries downloading the signed PDF when the webhook marked it Signed but the copy could not be fetched then.</summary>
-    private async Task FetchSignedCopyAsync()
-    {
-        if (_application is null)
-        {
-            return;
-        }
-
-        var ok = await DigioWebhook.FetchSignedCopyAsync(_application.CompanyId, ApplicationId);
-        await using var db = await DbFactory.CreateDbContextAsync();
-        _disbursement.SignedAgreementFilePath = await db.Disbursements.AsNoTracking()
-            .Where(d => d.ApplicationId == ApplicationId).Select(d => d.SignedAgreementFilePath).FirstOrDefaultAsync();
-        _esignNotice = ok ? null : "Digio has not made the signed copy available yet. Try again shortly.";
     }
 
     /// <summary>Writes generated PDF bytes to the guarded uploads folder, same shape as an upload.</summary>
@@ -1320,6 +1366,18 @@ else
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
+        var digio = await DigioReleaseGate.CheckAsync(db, ApplicationId, await IsProductionAsync());
+        if (!digio.CanAdvance)
+        {
+            if (!db.IsElevatedUser)
+            {
+                return; // a crafted event or a stale circuit: the gate is re-checked here, the banner is only UX
+            }
+
+            await Tenant.EnsureLoadedAsync();
+            await DigioReleaseGate.LogOverrideAsync(db, ApplicationId, Tenant.UserId, digio.BlockedReason ?? "");
+        }
+
         await PersistAsync(db);
 
         var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
@@ -1367,6 +1425,7 @@ else
         disbursement.WelcomeSmsStatus = _disbursement.WelcomeSmsStatus;
         disbursement.WelcomeSmsSentAt = _disbursement.WelcomeSmsSentAt;
         disbursement.AgreementFilePath = _disbursement.AgreementFilePath;
+        disbursement.AgreementHash = _disbursement.AgreementHash;
         // AgreementEsignStatus, SignedAgreementFilePath and EsignFailureReason are deliberately NOT copied: the Digio webhook
         // sets them server-side, and this (auto)save from a stale page would otherwise overwrite 'Signed'. SendForEsignAsync
         // writes the status.
@@ -1378,8 +1437,13 @@ else
             db.EnachMandates.Add(enach);
         }
 
-        enach.Umrn = _enach.Umrn;
-        enach.Status = _enach.Status;
+        // A Digio-routed mandate's UMRN and status belong to Digio's webhook / confirm; this (auto)save must not overwrite them.
+        if (enach.DigioMandateId is null)
+        {
+            enach.Umrn = _enach.Umrn;
+            enach.Status = _enach.Status;
+        }
+
         enach.DebitDate = _enach.DebitDate;
         enach.LinkedAccount = _enach.LinkedAccount;
         CopyMandateFlow(_enach, enach);
@@ -1391,8 +1455,12 @@ else
             db.SecurityNachMandates.Add(snach);
         }
 
-        snach.Umrn = _snach.Umrn;
-        snach.Status = _snach.Status;
+        if (snach.DigioMandateId is null)
+        {
+            snach.Umrn = _snach.Umrn;
+            snach.Status = _snach.Status;
+        }
+
         snach.MandateHolder = _snach.MandateHolder;
         CopyMandateFlow(_snach, snach);
 
@@ -1517,6 +1585,7 @@ else
 
     public void Dispose()
     {
+        DigioNotifier.Changed -= OnDigioChangedAsync;
         _autoSave.Dispose();
         _toastCts?.Cancel();
         _toastCts?.Dispose();

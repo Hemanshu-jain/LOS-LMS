@@ -1,0 +1,11 @@
+{
+  "_captured": "2026-10-28, sandbox, POST /v4/client/kyc/aadhaar/mask, http 200",
+  "response": {
+    "masked_output": "\u003Cbase64 omitted\u003E",
+    "error_message": "No ID card detected in the image",
+    "details": {
+      "already_masked_count": 0,
+      "masking_done_count": 0
+    }
+  }
+}

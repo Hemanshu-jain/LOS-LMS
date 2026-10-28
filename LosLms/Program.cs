@@ -75,8 +75,8 @@ builder.Services.AddSingleton<AdminRequestNotifier>();
 
 // One shared update-check result for the whole server, kept current by a background poller so the
 // SuperAdmin sees a "new version available" banner without opening the System Updates page.
-// The /digio/return page asks this to look at a request at once. Part 2 (the pipeline) registers the real one; until then a no-op.
-builder.Services.TryAddSingleton<IDigioReconcileTrigger, NoopDigioReconcileTrigger>();
+// The /digio/return page asks this to look at a request at once.
+builder.Services.AddSingleton<IDigioReconcileTrigger, DigioReconcileTrigger>();
 builder.Services.AddSingleton<UpdateNotificationService>();
 // Not on a cloud host: there is no launcher to apply an update, so the container is redeployed instead.
 if (!builder.Configuration.IsCloud())
@@ -149,7 +149,10 @@ builder.Services.AddScoped<CompanyProvisioningService>();
 builder.Services.Configure<ApiBillingOptions>(builder.Configuration.GetSection(ApiBillingOptions.Section));
 builder.Services.AddScoped<ApiBillingService>();
 builder.Services.AddScoped<DigioClient>();
+builder.Services.AddScoped<DigioKyc>();
 builder.Services.AddScoped<DigioWebhookService>();
+builder.Services.AddScoped<DigioEsignService>();
+builder.Services.AddScoped<DigioNachService>();
 builder.Services.AddSingleton<DigioWebhookHealth>();
 builder.Services.AddSingleton<DigioBackgroundTasks>();
 builder.Services.AddSingleton<DigioStatusNotifier>();

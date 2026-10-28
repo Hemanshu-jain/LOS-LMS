@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace LosLms.Models;
 
@@ -75,6 +75,10 @@ public class DigioRequest
 
     [MaxLength(300)]
     public string? ErrorMessage { get; set; }
+
+    /// <summary>The consent wording and version the customer agreed to before this request (Aadhaar, AML, DigiLocker).</summary>
+    [MaxLength(300)]
+    public string? Consent { get; set; }
 
     /// <summary>Minimised result, AES-GCM encrypted with the vault key (see PasswordVault.Seal). Never plain.</summary>
     public string? ResultJson { get; set; }
@@ -204,12 +208,80 @@ public class DigioSettings
     [MaxLength(100)]
     public string? LenderSignatoryName { get; set; }
 
+    /// <summary>IFileStore key of the lender's signature image, stamped onto the agreement by us (the lender is not a Digio signer).</summary>
+    [MaxLength(400)]
+    public string? LenderSignaturePath { get; set; }
+
+    /// <summary>DigiCollect corporate_config_id, one per environment so a sandbox id can never go to production. Not a secret, never in the repo.</summary>
+    [MaxLength(80)]
+    public string? EnachConfigIdSandbox { get; set; }
+
+    [MaxLength(80)]
+    public string? EnachConfigIdProduction { get; set; }
+
+    /// <summary>management_category for the EMI mandate (confirm with the sponsor bank).</summary>
+    [MaxLength(10)]
+    public string NachCategory { get; set; } = "L001";
+
+    /// <summary>Adhoc lets a bounced EMI be re-presented; Monthly allows one success a month.</summary>
+    [MaxLength(20)]
+    public string NachFrequency { get; set; } = "Adhoc";
+
+    /// <summary>maximum_amount = EMI x this, rounded up to Rs 100.</summary>
+    public decimal NachMaxMultiplier { get; set; } = 2m;
+
+    /// <summary>final_collection_date = last EMI + this many months (room to re-present a bounce).</summary>
+    public int NachFinalBufferMonths { get; set; } = 12;
+
+    /// <summary>Digio e-stamp inventory tag (entity_STATE_amount_LOB); empty = no stamp requested.</summary>
+    [MaxLength(80)]
+    public string? EstampTag { get; set; }
+
     [MaxLength(200)]
     public string? LenderSignatoryEmail { get; set; }
 
     /// <summary>https logo shown on Digio's pages.</summary>
     [MaxLength(300)]
     public string? BrandLogoUrl { get; set; }
+
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>One signer on a loan-agreement sign request: the per-signer status rows on Post Sanction. Refreshed from Digio's signing_parties.</summary>
+public class EsignSigner
+{
+    public int Id { get; set; }
+
+    public int CompanyId { get; set; }
+
+    [MaxLength(20)]
+    public string ApplicationId { get; set; } = string.Empty;
+
+    /// <summary>Digio's document id (DID...) this row belongs to; a re-send makes new rows.</summary>
+    [MaxLength(80)]
+    public string DocumentId { get; set; } = string.Empty;
+
+    public int? PartyId { get; set; }
+
+    [MaxLength(20)]
+    public string PartyType { get; set; } = string.Empty;
+
+    [MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>The mobile/email Digio knows the signer by (matches signing_parties[].identifier).</summary>
+    [MaxLength(200)]
+    public string Identifier { get; set; } = string.Empty;
+
+    /// <summary>1-based signing order (sequential).</summary>
+    public int SignOrder { get; set; }
+
+    /// <summary>requested, sequenced (waiting for the earlier signer), signed, failed, rejected, expired, cancelled.</summary>
+    [MaxLength(20)]
+    public string Status { get; set; } = "sequenced";
+
+    [MaxLength(300)]
+    public string? FailureReason { get; set; }
 
     public DateTime UpdatedAt { get; set; }
 }

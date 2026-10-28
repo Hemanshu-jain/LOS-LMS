@@ -1,40 +1,10 @@
 namespace LosLms.Services;
 
 /// <summary>
-/// Sends a generated agreement to Digio for Aadhaar e-Sign (POST /v2/client/document/uploadpdf, base64 PDF).
+/// The loan-agreement e-Sign flow lives in <see cref="DigioEsignService"/>. Nothing sets the agreement Signed except Digio's
+/// verified webhook / confirm (<see cref="DigioWebhookService"/>), which is also when the e-Sign credit is metered.
 /// </summary>
-/// <remarks>
-/// This carries legal weight, so the discipline is absolute: nothing here sets the agreement 'Signed'.
-/// Digio's verified DOC.SIGNED webhook is the only thing allowed to (<see cref="DigioClient.ApplyWebhookAsync"/>),
-/// and that is also when the e-Sign credit is metered — not on upload.
-/// </remarks>
 public static class EsignService
 {
-    public const string Unavailable = "E-Signature dispatch unavailable — Digio is not configured for this company.";
-
-    /// <param name="signerIdentifier">Applicant's mobile or email — Digio sends the signing link there.</param>
-    public static async Task<DigioResult> DispatchAsync(
-        DigioClient digio, int companyId, string applicationId, string agreementFileName, byte[] agreement,
-        string signerIdentifier, string? signerName)
-    {
-        if (digio.Credentials(companyId) is null)
-        {
-            return DigioResult.NotConfigured; // don't read the PDF for nothing
-        }
-
-        var body = new
-        {
-            file_name = agreementFileName,
-            file_data = Convert.ToBase64String(agreement),
-            signers = new[]
-            {
-                new { identifier = signerIdentifier, name = signerName, reason = "Loan agreement", sign_type = "aadhaar" },
-            },
-            expire_in_days = 10,
-            notify_signers = true,
-            send_sign_link = true,
-        };
-
-        return await digio.PostAsync(companyId, apiCode: null, "/v2/client/document/uploadpdf", body, applicationId);
-    }
+    public const string Unavailable = "E-Signature dispatch unavailable — Digio e-Sign is not switched on for this company.";
 }

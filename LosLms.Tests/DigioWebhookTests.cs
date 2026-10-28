@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -64,8 +64,11 @@ public sealed class DigioWebhookTests : IDisposable
         services.AddSingleton<DigioEventProcessor>();
         services.AddScoped<DigioInbox>();
         services.AddScoped<DigioReconciler>();
+        services.AddSingleton<DigioReconcileTrigger>();
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
+        services.AddScoped<DigioEsignService>();
+        services.AddScoped<DigioNachService>();
         services.AddScoped<DigioWebhookService>();
         _provider = services.BuildServiceProvider();
 
@@ -301,6 +304,27 @@ public sealed class DigioWebhookTests : IDisposable
         Assert.Equal("Signed", Disbursement().AgreementEsignStatus);
         Assert.Equal(1, UsageRows());
         Assert.Equal(0, await reconciler.ReconcileAsync(now.AddMinutes(10))); // no longer Sent
+    }
+
+    [Fact]
+    public async Task ReturnPageHint_ConfirmsThatAgreementAtOnce_AndIgnoresOtherRequests()
+    {
+        _digio.OnGet = _ => """{"id":"DID123","agreement_status":"completed"}""";
+        _digio.OnDownload = () => Pdf;
+        using (var db = Anonymous())
+        {
+            db.DigioRequests.Add(new DigioRequest { Id = new string('a', 32), CompanyId = 1, Product = "ESIGN", DigioId = "DID123" });
+            db.DigioRequests.Add(new DigioRequest { Id = new string('b', 32), CompanyId = 1, Product = "KYC_ID", DigioId = "KID9" });
+            db.SaveChanges();
+        }
+        var trigger = _provider.GetRequiredService<DigioReconcileTrigger>();
+
+        await trigger.RequestReconcileAsync(new string('b', 32));
+        await trigger.RequestReconcileAsync(new string('c', 32));
+        Assert.Equal("Sent", Disbursement().AgreementEsignStatus);
+
+        await trigger.RequestReconcileAsync(new string('a', 32));
+        Assert.Equal("Signed", Disbursement().AgreementEsignStatus);
     }
 
     [Fact]

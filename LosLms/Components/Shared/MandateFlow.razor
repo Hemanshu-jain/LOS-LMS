@@ -5,6 +5,7 @@
    physical route, where an officer has actually collected a signed form and says so. *@
 
 @using LosLms.Models
+@using LosLms.Components.Shared.Digio
 @using LosLms.Services
 @inject IHttpClientFactory HttpClientFactory
 @implements IDisposable
@@ -96,71 +97,85 @@
         </label>
     </div>
 
-    @* ---------- 5. Mandate type ---------- *@
-    <div class="mandate-step">
-        <span class="mandate-step-label">5 · Mandate type</span>
-        <div class="field-grid">
-            <FormField Label="Select Mandate Type" For="@($"{IdPrefix}-type")">
-                <select id="@($"{IdPrefix}-type")" class="field-input" @bind="Mandate.MandateType">
-                    <option value="">— Select —</option>
-                    <option value="Digital">Digital Mandate Registration</option>
-                    <option value="Physical">Physical Mandate</option>
-                </select>
-            </FormField>
+    @if (DigioEnabled)
+    {
+        @* Digio-routed: the mandate is created at Digio and its status comes only from Digio's lifecycle. *@
+        <div class="mandate-step">
+            <span class="mandate-step-label">5 · Register the mandate</span>
+            <MandatePanel Mandate="Mandate" Tab="@Tab" ApplicationId="@ApplicationId" CompanyId="CompanyId" UserId="@UserId"
+                          Terms="Terms" CustomerName="@PartyName" Mobile="@Mobile" Email="@Email"
+                          OnBeforeCreate="OnSubmit" OnChanged="OnChanged" />
         </div>
-
-        @if (Mandate.MandateType == "Digital")
-        {
-            <fieldset class="mandate-modes">
-                <legend class="mandate-step-label">Digital Mandate Mode</legend>
-                <label class="mandate-mode">
-                    <input type="radio" name="@($"{IdPrefix}-mode")" value="NetBanking"
-                           checked="@(Mandate.DigitalMode == "NetBanking")"
-                           @onchange="@(() => Mandate.DigitalMode = "NetBanking")" />
-                    <span>Net Banking</span>
-                </label>
-                <label class="mandate-mode">
-                    <input type="radio" name="@($"{IdPrefix}-mode")" value="DebitCard"
-                           checked="@(Mandate.DigitalMode == "DebitCard")"
-                           @onchange="@(() => Mandate.DigitalMode = "DebitCard")" />
-                    <span>Debit Card</span>
-                </label>
-            </fieldset>
-        }
-        else if (Mandate.MandateType == "Physical")
-        {
-            @* The only path with no external dependency: the officer has the signed form in hand,
-               so they are the system of record and may set the status directly. *@
+    }
+    else
+    {
+        @* ---------- 5. Mandate type ---------- *@
+        <div class="mandate-step">
+            <span class="mandate-step-label">5 · Mandate type</span>
             <div class="field-grid">
-                <FormField Label="Registration status" For="@($"{IdPrefix}-status")">
-                    <select id="@($"{IdPrefix}-status")" class="field-input status-select status-@BandFor(Mandate.Status)"
-                            @bind="Mandate.Status">
-                        @foreach (var o in MandateStatuses) { <option value="@o">@o</option> }
+                <FormField Label="Select Mandate Type" For="@($"{IdPrefix}-type")">
+                    <select id="@($"{IdPrefix}-type")" class="field-input" @bind="Mandate.MandateType">
+                        <option value="">— Select —</option>
+                        <option value="Digital">Digital Mandate Registration</option>
+                        <option value="Physical">Physical Mandate</option>
                     </select>
                 </FormField>
-
-                <FormField Label="UMRN (from the signed form)" For="@($"{IdPrefix}-umrn")">
-                    <input id="@($"{IdPrefix}-umrn")" class="field-input" maxlength="40"
-                           @bind="Mandate.Umrn" @bind:event="oninput" />
-                </FormField>
             </div>
-        }
-    </div>
 
-    @* ---------- 6. Submit ---------- *@
-    <div class="mandate-submit-row">
-        <button type="button" class="mandate-submit" disabled="@(!CanSubmit)" @onclick="SubmitAsync">
-            @(Mandate.MandateType == "Physical" ? "Record mandate" : "Register mandate")
-        </button>
-        @if (!CanSubmit && BlockedReason is { } reason)
+            @if (Mandate.MandateType == "Digital")
+            {
+                <fieldset class="mandate-modes">
+                    <legend class="mandate-step-label">Digital Mandate Mode</legend>
+                    <label class="mandate-mode">
+                        <input type="radio" name="@($"{IdPrefix}-mode")" value="NetBanking"
+                               checked="@(Mandate.DigitalMode == "NetBanking")"
+                               @onchange="@(() => Mandate.DigitalMode = "NetBanking")" />
+                        <span>Net Banking</span>
+                    </label>
+                    <label class="mandate-mode">
+                        <input type="radio" name="@($"{IdPrefix}-mode")" value="DebitCard"
+                               checked="@(Mandate.DigitalMode == "DebitCard")"
+                               @onchange="@(() => Mandate.DigitalMode = "DebitCard")" />
+                        <span>Debit Card</span>
+                    </label>
+                </fieldset>
+            }
+            else if (Mandate.MandateType == "Physical")
+            {
+                @* The only path with no external dependency: the officer has the signed form in hand,
+                   so they are the system of record and may set the status directly. *@
+                <div class="field-grid">
+                    <FormField Label="Registration status" For="@($"{IdPrefix}-status")">
+                        <select id="@($"{IdPrefix}-status")" class="field-input status-select status-@BandFor(Mandate.Status)"
+                                @bind="Mandate.Status">
+                            @foreach (var o in MandateStatuses) { <option value="@o">@o</option> }
+                        </select>
+                    </FormField>
+
+                    <FormField Label="UMRN (from the signed form)" For="@($"{IdPrefix}-umrn")">
+                        <input id="@($"{IdPrefix}-umrn")" class="field-input" maxlength="40"
+                               @bind="Mandate.Umrn" @bind:event="oninput" />
+                    </FormField>
+                </div>
+            }
+        </div>
+
+        @* ---------- 6. Submit ---------- *@
+        <div class="mandate-submit-row">
+            <button type="button" class="mandate-submit" disabled="@(!CanSubmit)" @onclick="SubmitAsync">
+                @(Mandate.MandateType == "Physical" ? "Record mandate" : "Register mandate")
+            </button>
+            @if (!CanSubmit && BlockedReason is { } reason)
+            {
+                <span class="mandate-blocked">@reason</span>
+            }
+        </div>
+
+        @if (_submitNotice is not null)
         {
-            <span class="mandate-blocked">@reason</span>
+            <p class="inline-error" role="alert">@_submitNotice</p>
         }
-    </div>
 
-    @if (_submitNotice is not null)
-    {
-        <p class="inline-error" role="alert">@_submitNotice</p>
     }
 </div>
 
@@ -178,6 +193,19 @@
 
     /// <summary>Persists the mandate. The parent owns the DbContext, so saving is its job.</summary>
     [Parameter] public EventCallback OnSubmit { get; set; }
+
+    // ---- Digio-routed registration (06-NACH.md). Off = the manual flow above, unchanged. ----
+    [Parameter] public bool DigioEnabled { get; set; }
+    [Parameter] public string Tab { get; set; } = DigioNachService.EnachTab;
+    [Parameter] public string ApplicationId { get; set; } = string.Empty;
+    [Parameter] public int CompanyId { get; set; }
+    [Parameter] public string? UserId { get; set; }
+    [Parameter] public NachTerms? Terms { get; set; }
+    [Parameter] public string? Mobile { get; set; }
+    [Parameter] public string? Email { get; set; }
+
+    /// <summary>The mandate changed at Digio; the page re-reads it.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
 
     private static readonly string[] MandateStatuses = { "Pending", "Registered", "Rejected" };
 

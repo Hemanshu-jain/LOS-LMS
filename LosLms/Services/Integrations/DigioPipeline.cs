@@ -249,13 +249,58 @@ public sealed class DigioReconciler(IServiceScopeFactory scopes, ILogger<DigioRe
             asked++;
         }
 
-        // Forget documents that are no longer 'Sent'.
-        var live = sent.Select(d => d.DocId).ToHashSet();
+        // DigiLocker requests the customer has not finished: same backoff, keyed by our request id. (The KYC webhook payload shape was not captured, so polling is the path.)
+        var waiting = await db.DigioRequests.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.Operation == "DIGILOCKER_AADHAAR_PAN" && r.Status == "WaitingForCustomer")
+            .Select(r => new { r.CompanyId, r.Id }).ToListAsync();
+        foreach (var r in waiting.Where(r => !_state.TryGetValue(r.Id, out var s) || s.Next <= now).Take(Math.Max(0, PerRun - asked)))
+        {
+            var polls = _state.TryGetValue(r.Id, out var prev) ? prev.Polls : 0;
+            _state[r.Id] = (polls + 1, now + Backoff[Math.Min(polls, Backoff.Length - 1)]);
+            await scope.ServiceProvider.GetRequiredService<DigioKyc>().CompleteDigiLockerAsync(r.CompanyId, r.Id);
+            asked++;
+        }
+
+
+        // Mandates not yet final (physical / eSign ones take days): same backoff, the confirming GET moves them forward.
+        var nach = scope.ServiceProvider.GetRequiredService<DigioNachService>();
+        var open = await nach.OpenMandatesAsync();
+        foreach (var m in open.Where(m => !_state.TryGetValue(m.MandateId, out var s) || s.Next <= now).Take(Math.Max(0, PerRun - asked)))
+        {
+            var polls = _state.TryGetValue(m.MandateId, out var prev) ? prev.Polls : 0;
+            _state[m.MandateId] = (polls + 1, now + Backoff[Math.Min(polls, Backoff.Length - 1)]);
+            await nach.ConfirmAsync(m.CompanyId, m.MandateId);
+            asked++;
+        }
+
+        // Forget documents, DigiLocker requests and mandates that are no longer open.
+        var live = sent.Select(d => d.DocId).Concat(waiting.Select(r => r.Id)).Concat(open.Select(m => m.MandateId)).ToHashSet();
         foreach (var key in _state.Keys.Where(k => !live.Contains(k)))
         {
             _state.TryRemove(key, out _);
         }
 
         return asked;
+    }
+}
+
+/// <summary>The /digio/return page's hint: confirm that agreement (or DigiLocker request) with Digio now instead of at the next poll.</summary>
+public sealed class DigioReconcileTrigger(IServiceScopeFactory scopes) : IDigioReconcileTrigger
+{
+    public async Task RequestReconcileAsync(string requestId)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        await using var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<LosDbContext>>().CreateDbContextAsync();
+        var req = await db.DigioRequests.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.Id == requestId && r.DigioId != null && (r.Product == "ESIGN" || r.Operation == "DIGILOCKER_AADHAAR_PAN"))
+            .Select(r => new { r.CompanyId, r.DigioId, r.Operation }).FirstOrDefaultAsync();
+        if (req?.Operation == "DIGILOCKER_AADHAAR_PAN")
+        {
+            await scope.ServiceProvider.GetRequiredService<DigioKyc>().CompleteDigiLockerAsync(req.CompanyId, requestId);
+        }
+        else if (req is not null)
+        {
+            await scope.ServiceProvider.GetRequiredService<DigioWebhookService>().ConfirmAsync(req.CompanyId, req.DigioId!);
+        }
     }
 }

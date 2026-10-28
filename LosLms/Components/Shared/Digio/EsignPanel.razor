@@ -1,0 +1,197 @@
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject DigioEsignService Esign
+@inject DigioWebhookService Webhook
+@inject DigioStatusNotifier Notifier
+@inject IJSRuntime Js
+
+@* Loan-agreement e-Sign: one channel for the whole send, borrowers sign in order, one status row per signer. Lives on Post Sanction;
+   re-reads its own data from the database, so a webhook (via DigioStatusNotifier) refreshes it without the page's help. *@
+<div class="doc-row">
+    <select class="field-input dg-channel" aria-label="How the signers are told" @bind="_channel">
+        <option value="SMS">SMS</option>
+        <option value="WHATSAPP">WhatsApp</option>
+        <option value="EMAIL">Email</option>
+        <option value="ALL">SMS + WhatsApp + Email</option>
+        <option value="DEVICE">Open on this device</option>
+    </select>
+    <VerifyButton Label="@SendLabel" DisabledReason="@SendBlocked" OnClick="SendAsync" />
+    <span class="doc-status">Status: @(_status ?? "NotSent")@(Progress is { } p ? " · " + p : "")</span>
+    <button type="button" class="doc-action" @onclick="RefreshAsync">Refresh</button>
+</div>
+
+@if (Stale)
+{
+    <p class="inline-notice" role="status">The agreement was regenerated after it was sent. Sending again cancels the earlier request and sends the new one.</p>
+}
+
+@if (_signers.Count > 0)
+{
+    <table class="dg-signers">
+        <thead><tr><th>#</th><th>Signer</th><th>Role</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var s in _signers)
+        {
+            <tr>
+                <td>@s.SignOrder</td>
+                <td>@s.Name <span class="dg-muted">@DigioEsignService.Mask(s.Identifier)</span></td>
+                <td>@s.PartyType</td>
+                <td>
+                    <span class="dg-chip dg-@ChipFor(s.Status)">@LabelFor(s.Status)</span>
+                    @if (s.FailureReason is { } why) { <span class="dg-muted">@why</span> }
+                </td>
+                <td>
+                    @if (s.Status == "requested" && _status == "Sent")
+                    {
+                        <button type="button" class="doc-action" @onclick="() => OpenAsync(s)">Open on this device</button>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@if (_status == "Signed")
+{
+    @if (_signedPath is { } signed)
+    {
+        <a class="file-link" href="@($"/files/{ApplicationId}/postsanction/{Path.GetFileName(signed)}")" target="_blank">✓ Signed agreement</a>
+    }
+    else
+    {
+        <button type="button" class="doc-action" @onclick="FetchSignedAsync">Fetch signed copy</button>
+    }
+}
+
+@if (_status is "Failed" or "Rejected" && _failure is { } failure)
+{
+    <p class="inline-notice" role="status">@failure</p>
+}
+
+@if (_notice is not null)
+{
+    <p class="inline-notice" role="status">@_notice</p>
+}
+
+@code {
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+    [Parameter] public string? UserId { get; set; }
+
+    /// <summary>Called after the agreement's status changed here, so the page can re-check its release gate.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string _channel = "SMS";
+    private string? _status, _failure, _signedPath, _notice, _hash, _fingerprint, _agreementPath;
+    private List<EsignSigner> _signers = new();
+
+    private bool Stale => _status is "Sent" or "Signed" && _hash is not null && _fingerprint is not null && _hash != _fingerprint;
+
+    private string SendLabel => _status == "Sent" || Stale ? (Stale ? "Cancel and re-send" : "Sent") : "Send for e-Signature";
+
+    private string? SendBlocked =>
+        _agreementPath is null ? "Generate the agreement first."
+        : _status is "Sent" or "Signed" && !Stale ? "Already " + _status.ToLowerInvariant() + "."
+        : null;
+
+    private string? Progress => _signers.Count == 0 || _status is not ("Sent" or "Signed") ? null
+        : $"{_signers.Count(s => s.Status == "signed")} of {_signers.Count} signed";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Notifier.Changed += OnDigioChangedAsync;
+        await LoadAsync();
+    }
+
+    private async Task OnDigioChangedAsync(string applicationId)
+    {
+        if (applicationId == ApplicationId)
+        {
+            await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+        }
+    }
+
+    /// <summary>Re-reads the agreement's state (the page may also call this after generating a new agreement).</summary>
+    public async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var d = await db.Disbursements.AsNoTracking().FirstOrDefaultAsync(x => x.ApplicationId == ApplicationId);
+        _status = d?.AgreementEsignStatus;
+        _failure = d?.EsignFailureReason;
+        _signedPath = d?.SignedAgreementFilePath;
+        _hash = d?.AgreementHash;
+        _fingerprint = d?.AgreementFingerprint;
+        _agreementPath = d?.AgreementFilePath;
+        _signers = d?.EsignDocumentId is { } doc
+            ? await db.EsignSigners.AsNoTracking().Where(s => s.ApplicationId == ApplicationId && s.DocumentId == doc).OrderBy(s => s.SignOrder).ToListAsync()
+            : new();
+        var settingsChannel = await db.DigioSettings.AsNoTracking().Select(s => s.DefaultChannel).FirstOrDefaultAsync();
+        if (_channel == "SMS" && settingsChannel is { Length: > 0 } c)
+        {
+            _channel = c;
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        _notice = null;
+        var r = await Esign.SendAsync(CompanyId, ApplicationId, UserId, _channel);
+        _notice = !r.Ok ? r.Error : r.AlreadySent ? "Already sent. Not sent again." : _channel == "DEVICE"
+            ? "Created. Use Open on this device for each signer in turn."
+            : "Sent. The signers are told one after another, in order.";
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        _notice = null;
+        if (_status == "Sent" && await DocIdAsync() is { } doc)
+        {
+            await Webhook.ConfirmAsync(CompanyId, doc);
+        }
+
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task OpenAsync(EsignSigner s)
+    {
+        _notice = null;
+        var url = await Esign.SignerLinkAsync(CompanyId, s.DocumentId, s.Identifier);
+        if (url is null)
+        {
+            _notice = "Digio did not give a signing link for this signer (it is only available while they are next in order).";
+            return;
+        }
+
+        await Js.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    private async Task FetchSignedAsync()
+    {
+        _notice = await Webhook.FetchSignedCopyAsync(CompanyId, ApplicationId) ? null : "Digio has not made the signed copy available yet. Try again shortly.";
+        await LoadAsync();
+    }
+
+    private async Task<string?> DocIdAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        return await db.Disbursements.AsNoTracking().Where(x => x.ApplicationId == ApplicationId).Select(x => x.EsignDocumentId).FirstOrDefaultAsync();
+    }
+
+    private static string ChipFor(string s) => s switch { "signed" => "ok", "requested" => "info", "sequenced" => "off", _ => "bad" };
+
+    private static string LabelFor(string s) => s switch
+    {
+        "signed" => "Signed", "requested" => "Waiting to sign", "sequenced" => "Waiting for earlier signer", "failed" => "Failed",
+        "rejected" => "Rejected", "expired" => "Expired", "cancelled" => "Cancelled", _ => s,
+    };
+
+    public void Dispose() => Notifier.Changed -= OnDigioChangedAsync;
+}

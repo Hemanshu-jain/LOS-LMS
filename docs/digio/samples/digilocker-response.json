@@ -1,0 +1,37 @@
+{
+  "_captured": "2026-10-28, sandbox, POST /client/kyc/v2/{id}/response, http 200",
+  "response": {
+    "id": "KIDXXXXXXXXXXX7874KGSQ1M6G1AO9V9",
+    "updated_at": "2026-10-28 11:38:27",
+    "created_at": "2026-10-28 11:38:28",
+    "status": "requested",
+    "customer_identifier": "XXXXXX9999",
+    "actions": [
+      {
+        "id": "KIAXXXXXXXXXXXX8786ZVRWH9KA9H155",
+        "type": "digilocker",
+        "status": "requested",
+        "execution_request_id": "RIDXXXXXXXXXXXX8785R5LT352POIPZY",
+        "details": {},
+        "validation_result": {},
+        "face_match_obj_type": "none",
+        "face_match_status": "na",
+        "obj_analysis_status": "na",
+        "processing_done": false,
+        "retry_count": 0,
+        "rules_data": {
+          "approval_rule": []
+        }
+      }
+    ],
+    "reference_id": "hce79b6eedl",
+    "transaction_id": "hce79b6eedl",
+    "customer_name": "TEST NAME",
+    "expire_in_days": 10,
+    "reminder_registered": false,
+    "workflow_name": "TEST NAME",
+    "auto_approved": false,
+    "template_id": "KTPXXXXXXXXXXX6968YJVR1TU3QTFZ71",
+    "is_terminated": false
+  }
+}

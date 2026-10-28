@@ -95,6 +95,18 @@ public class Disbursement
     [MaxLength(80)]
     public string? EsignDocumentId { get; set; }
 
+    /// <summary>SHA-256 of the agreement PDF as it stands now (set when it is generated).</summary>
+    [MaxLength(64)]
+    public string? AgreementHash { get; set; }
+
+    /// <summary>SHA-256 of the PDF that was sent to Digio. Differs from <see cref="AgreementHash"/> = the agreement changed after sending: stale.</summary>
+    [MaxLength(64)]
+    public string? AgreementFingerprint { get; set; }
+
+    /// <summary>Our DigioRequest id for the live sign request.</summary>
+    [MaxLength(32)]
+    public string? EsignRequestId { get; set; }
+
     /// <summary>The fully signed agreement, downloaded from Digio when signing completes (the legal artefact).</summary>
     [MaxLength(400)]
     public string? SignedAgreementFilePath { get; set; }

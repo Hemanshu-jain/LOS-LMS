@@ -1,0 +1,23 @@
+{
+  "_captured": "2026-10-28, sandbox, POST /client/kyc/v2/request/with_template, http 200",
+  "response": {
+    "id": "KIDXXXXXXXXXXX7874KGSQ1M6G1AO9V9",
+    "created_at": "2026-10-28 11:38:27",
+    "status": "requested",
+    "customer_identifier": "XXXXXX9999",
+    "reference_id": "hce79b6eedl",
+    "transaction_id": "hce79b6eedl",
+    "customer_name": "TEST NAME",
+    "expire_in_days": 10,
+    "reminder_registered": false,
+    "access_token": {
+      "entity_id": "KIDXXXXXXXXXXX7874KGSQ1M6G1AO9V9",
+      "id": "GWTXXXXXXXXXXX7889F76IIOHE313WLS",
+      "valid_till": "2026-10-29 11:38:27",
+      "created_at": "2026-10-28 11:38:27"
+    },
+    "workflow_name": "TEST NAME",
+    "auto_approved": false,
+    "template_id": "KTPXXXXXXXXXXX6968YJVR1TU3QTFZ71"
+  }
+}
