@@ -133,6 +133,31 @@ public sealed class DigioKycTests : IDisposable
         Assert.Empty(_digio.Calls);
     }
 
+    [Fact]
+    public async Task Pan_Digio200WithOnlyAnErrorMessage_IsFailedWithDigiosReason_NotUnavailable()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"error_message":"PAN not found","id":"X1"}""");
+
+        var o = await Kyc().VerifyPanAsync(1, "A1", PartyId(), "ABCPE1234F", "Raj Kumar", null, true, null);
+
+        Assert.Equal("Failed", o.Verdict);
+        Assert.Contains("PAN not found", o.Message);
+    }
+
+    [Fact]
+    public async Task Pan_StatusInvalid_IsFailed_AndAReplyWithNoStatusOrReasonNamesItsFieldsOnly()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"status":"INVALID"}""");
+        Assert.Equal("Failed", (await Kyc().VerifyPanAsync(1, "A1", PartyId(), "ABCPE1234F", "Raj Kumar", null, true, null)).Verdict);
+
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"pan_status":"E","holder":"SECRET NAME"}""");
+        var o = await Kyc().VerifyPanAsync(1, "A1", PartyId(), "ABCPE1234G", "Raj Kumar", null, true, null);
+
+        Assert.Equal("Unavailable", o.Verdict);
+        Assert.Contains("pan_status, holder", o.Message);
+        Assert.DoesNotContain("SECRET", o.Message);
+    }
+
     // ---- name match ----
 
     [Theory]
@@ -276,10 +301,10 @@ public sealed class DigioKycTests : IDisposable
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested","access_token":{"id":"GWT1"}}""");
         var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
 
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, Requested);
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Requested) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
         Assert.Contains("Waiting", (await Kyc().CompleteDigiLockerAsync(1, start.RequestId!)).Message);
 
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, Done);
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
         Assert.Equal("Verified", (await Kyc().CompleteDigiLockerAsync(1, start.RequestId!)).Verdict);
         await Kyc().CompleteDigiLockerAsync(1, start.RequestId!); // replay: a no-op
 
@@ -298,7 +323,7 @@ public sealed class DigioKycTests : IDisposable
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
         var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
 
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"expired"}""");
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, """{"id":"KID1","status":"expired"}""") : (HttpStatusCode.MethodNotAllowed, "{}");
         await Kyc().CompleteDigiLockerAsync(1, start.RequestId!);
 
         using var db = Anonymous();
@@ -311,7 +336,7 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
         var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, Done);
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
 
         var reconciler = _provider.CreateScope().ServiceProvider.GetRequiredService<DigioReconciler>();
         Assert.Equal(1, await reconciler.ReconcileAsync(DateTime.UtcNow));

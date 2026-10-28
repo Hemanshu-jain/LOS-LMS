@@ -1,4 +1,4 @@
-#if DEBUG
+﻿#if DEBUG
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -125,7 +125,7 @@ public static partial class DigioHarness
             var masked = new JsonObject
             {
                 ["_captured"] = $"{DateTime.UtcNow:yyyy-MM-dd}, sandbox, {p.Method.Method} {p.Path.Split('?')[0]}, http {r.HttpStatus}",
-                ["response"] = Mask(node, null),
+                ["response"] = DigioMasker.Mask(node),
             };
             await File.WriteAllTextAsync(Path.Combine(samples, p.File), masked.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         }
@@ -133,35 +133,6 @@ public static partial class DigioHarness
         var note = r.HttpStatus == 403 ? "not enabled" : r.Status == DigioStatus.Ok ? "ok" : r.Error;
         return new { sample = p.File, http = r.HttpStatus, status = r.Status.ToString(), errorCode = r.ErrorCode, note };
     }
-
-    // ---- masking (docs/digio/samples/README.md): structure and keys kept, values masked ----
-
-    private static JsonNode? Mask(JsonNode? node, string? key) => node switch
-    {
-        JsonObject o => new JsonObject(o.Select(kv => KeyValuePair.Create(kv.Key, Mask(kv.Value, kv.Key)))),
-        JsonArray a => new JsonArray(a.Select(n => Mask(n, key)).ToArray()),
-        JsonValue v when v.TryGetValue<string>(out var s) => JsonValue.Create(MaskString(s, key)),
-        _ => node?.DeepClone(),
-    };
-
-    private static string MaskString(string s, string? key)
-    {
-        var k = key?.ToLowerInvariant() ?? "";
-        if (s.Length > 200) { return "<base64 omitted>"; }
-        if (k.EndsWith("name") && !k.StartsWith("template") && !k.StartsWith("file") && !k.StartsWith("bank") && !k.StartsWith("source") && s.Length > 0) { return "TEST NAME"; }
-        if (k.Contains("address") && s.Length > 0) { return "TEST ADDRESS, CITY, STATE 000000"; }
-        if (s.Contains('@')) { return "test@example.com"; }
-        if (s.StartsWith("http", StringComparison.OrdinalIgnoreCase) && s.Contains('?')) { return s[..s.IndexOf('?')] + "?<omitted>"; }
-
-        s = PanPattern().Replace(s, m => "XXXXX" + m.Value[5..9] + "X");
-        return DigitRun().Replace(s, m => new string('X', m.Length - 4) + m.Value[^4..]);
-    }
-
-    [GeneratedRegex("[A-Z]{5}[0-9]{4}[A-Z]")]
-    private static partial Regex PanPattern();
-
-    [GeneratedRegex("[0-9]{8,}")]
-    private static partial Regex DigitRun();
 
     private static readonly byte[] OnePagePdf = Encoding.ASCII.GetBytes(
         "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +

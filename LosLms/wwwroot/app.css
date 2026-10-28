@@ -1193,3 +1193,13 @@ a.auth-submit {
 .dg-steps li.dg-step-on::before { content: "● "; }
 .dg-gate { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 16px; margin: 0 0 8px; background: #f8d7d7; border: 1px solid #e6b3b3; font-size: 12px; color: #8a1f1f; }
 .dg-gate .dg-muted { color: #7a4b06; }
+
+/* Digio Phase 4: RC check rows */
+.dg-rc { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
+.dg-rc li { padding: 3px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.dg-rc li span { color: #4a5666; }
+.dg-rc-ok strong { color: #1d6b2c; }
+.dg-rc-warn strong { color: #8a5a06; }
+.dg-rc-bad strong { color: #8a1f1f; }
+.dg-rc-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 4px 0 2px; }
+.dg-rc-box .dg-rc { flex-basis: 100%; }
