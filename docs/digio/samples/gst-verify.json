@@ -1,0 +1,8 @@
+{
+  "_captured": "2026-10-28, sandbox, POST /v3/client/kyc/fetch_id_data/GST, http 200",
+  "response": {
+    "error_message": "No records found",
+    "id": "GSTDXXXXXXXXXXX7449OJ89J343NKMPH",
+    "gstin": "27XXXXX0939X1ZV"
+  }
+}

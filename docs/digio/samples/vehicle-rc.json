@@ -1,0 +1,51 @@
+{
+  "_captured": "2026-10-28, sandbox, POST /client/v4/apis/verify/vehicle_rc, http 200",
+  "response": {
+    "user_details": {
+      "owner_name": "TEST NAME",
+      "father_name": "TEST NAME",
+      "mobile_number": "",
+      "owner_number": "3",
+      "present_address": "TEST ADDRESS, CITY, STATE 000000",
+      "permanent_address": "TEST ADDRESS, CITY, STATE 000000"
+    },
+    "vehicle_details": {
+      "rc_number": "MH12AB1234",
+      "registration_date": "1998-11-12",
+      "vehicle_category": "2WN",
+      "vehicle_chassis_number": "DDFBEH11430",
+      "vehicle_engine_number": "DDMBEH11521",
+      "maker_description": "BAJAJ AUTO LTD",
+      "maker_model": "CALIBER",
+      "body_type": "SOLO",
+      "fuel_type": "PETROL",
+      "color": "BLUE",
+      "norms_type": "Not Available",
+      "fit_up_to": "2013-11-11",
+      "vehicle_gross_weight": "0",
+      "number_of_cylinders": "1",
+      "seat_capacity": "2",
+      "unladen_weight": "115",
+      "vehicle_category_description": "M-Cycle/Scooter",
+      "rc_status": "RC CANCEL",
+      "masked_name": false,
+      "registered_at": "PUNE",
+      "cubic_capacity": "111.6"
+    },
+    "finance_details": {
+      "financier": "",
+      "financed": false,
+      "insurance_company": "HDFC ERGO General Insurance Company Ltd",
+      "insurance_policy_number": "XXXXXXXXXXXXXXX0000",
+      "insurance_upto": "2029-07-20",
+      "manufacturing_date": "11/1998",
+      "manufacturing_date_formatted": "1998-11",
+      "latest_by": "2026-10-28",
+      "less_info": true,
+      "tax_paid_upto": "LTT"
+    },
+    "permit_details": {
+      "pucc_number": ""
+    }
+  }
+}

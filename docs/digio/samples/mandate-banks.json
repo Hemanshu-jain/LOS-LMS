@@ -1,0 +1,1251 @@
+{
+  "_captured": "2026-10-28, sandbox, GET /v3/client/mandate/banks, http 200",
+  "response": [
+    {
+      "id": "BNIXXXXXXXXXXX7279IW29M2B4TZ7PAJ",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ICIC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "ICIC",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX7269C77IZ32L14S4DY",
+      "name": "TEST NAME",
+      "ifsc_prefix": "HDFC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "ACBX",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXXX2265L56AKINIMYO3",
+      "name": "TEST NAME",
+      "ifsc_prefix": "AIRP",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "AIRP",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXXXX0592NZA8K5OSFVL",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ANDB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "ANDB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6971QWYMC4WOK86EJ9",
+      "name": "TEST NAME",
+      "ifsc_prefix": "APGB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "APGB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX2678XEJL1552OVRU3C",
+      "name": "TEST NAME",
+      "ifsc_prefix": "AUBL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "AUBL",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6960XLMQOWZUCJJESF",
+      "name": "TEST NAME",
+      "ifsc_prefix": "UTIB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "UTIB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX7284WPSQZYYQSLPCNA",
+      "name": "TEST NAME",
+      "ifsc_prefix": "BDBL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "BDBL",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6969KE2FUVTR3ZZALW",
+      "name": "TEST NAME",
+      "ifsc_prefix": "BARB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "BARB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX9604ENMUAODCIZQO6",
+      "name": "TEST NAME",
+      "ifsc_prefix": "BKID",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "BKID",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6960IJ223F1ON36E5P",
+      "name": "TEST NAME",
+      "ifsc_prefix": "MAHB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "MAHB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6961UMAZK78CFS5MG4",
+      "name": "TEST NAME",
+      "ifsc_prefix": "CNRB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "CNRB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX7298O82HWG8FSIF1DY",
+      "name": "TEST NAME",
+      "ifsc_prefix": "CLBL",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "CLBL",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX9614C4YZHF46DPZQN",
+      "name": "TEST NAME",
+      "ifsc_prefix": "CBIN",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "CBIN",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6961IF5J2V9P3A6ELF",
+      "name": "TEST NAME",
+      "ifsc_prefix": "CITI",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "CITI",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX7297OYXWDMOEE2VQX4",
+      "name": "TEST NAME",
+      "ifsc_prefix": "CITI",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "CITI",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6988F3V7NGVJ966U6G",
+      "name": "TEST NAME",
+      "ifsc_prefix": "CIUB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "CIUB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6969V7K8NG442YEVBE",
+      "name": "TEST NAME",
+      "ifsc_prefix": "CSBK",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "CSBK",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6968GYDFKAO5OTCXGY",
+      "name": "TEST NAME",
+      "ifsc_prefix": "DBSS",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "DBSS",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6183N2CPFPVF8Z6EVY",
+      "name": "TEST NAME",
+      "ifsc_prefix": "DBSS",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "DBSS",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6961FYTAULXBMSMMHU",
+      "name": "TEST NAME",
+      "ifsc_prefix": "DCBL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "DCBL",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6988K9JX2HHCXPM866",
+      "name": "TEST NAME",
+      "ifsc_prefix": "DEUT",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "DEUT",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX7305CT9OOONBMSEE2L",
+      "name": "TEST NAME",
+      "ifsc_prefix": "DEUT",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "DEUT",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX3064R5YJ21NUF4DFW",
+      "name": "TEST NAME",
+      "ifsc_prefix": "DLXB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "DLXB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6970JSNGJMPM1CMJKM",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ESFB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "ESFB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX2550XV6CHPQ6D2L55H",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ESMF",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "ESAF",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6962CYP8381YFL2UVB",
+      "name": "TEST NAME",
+      "ifsc_prefix": "FDRL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "FDRL",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX3026Y1CUQAIUVVYEM3",
+      "name": "TEST NAME",
+      "ifsc_prefix": "FSFB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "FINF",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX2998QE86KJ5AQQX872",
+      "name": "TEST NAME",
+      "ifsc_prefix": "FINO",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "FINO",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6962GBL6SK77EDAFIP",
+      "name": "TEST NAME",
+      "ifsc_prefix": "HDFC",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "HDFC",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6962LH4KV5OT34586N",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ICIC",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "ICIC",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX9632B4F95WJ5Q9ZAC",
+      "name": "TEST NAME",
+      "ifsc_prefix": "IBKL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "IBKL",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "bank_short_code": "IBKL",
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6963B9QKTPA61PZ23J",
+      "name": "TEST NAME",
+      "ifsc_prefix": "IDFB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "IDFB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6063JEGRYZ5CFJQBZI",
+      "name": "TEST NAME",
+      "ifsc_prefix": "IDIB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "IDIB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6064IBRNH8FAT4UNBR",
+      "name": "TEST NAME",
+      "ifsc_prefix": "IOBA",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "IOBA",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6965UAX2HQ6BERQRH6",
+      "name": "TEST NAME",
+      "ifsc_prefix": "INDB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "INDB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX5846XO5LZZOTZQ3P2L",
+      "name": "TEST NAME",
+      "ifsc_prefix": "JSFB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "JSFB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6978DR61J8Y2L3P9GI",
+      "name": "TEST NAME",
+      "ifsc_prefix": "KARB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "KARB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX6806US3ZLJ8G3O6HB",
+      "name": "TEST NAME",
+      "ifsc_prefix": "PKGB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "PGBX",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6990ICW7NVZRH3CA91",
+      "name": "TEST NAME",
+      "ifsc_prefix": "KVGB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "KVGB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6968CX9ACY5Y9KBKL4",
+      "name": "TEST NAME",
+      "ifsc_prefix": "KVBL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "KVBL",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6965PL1VBD4TI3F5DD",
+      "name": "TEST NAME",
+      "ifsc_prefix": "KKBK",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "KKBK",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6082FBLDR2BMZCHS4S",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ICIC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "KNSB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6981GLPXPWC9MJ78HP",
+      "name": "TEST NAME",
+      "ifsc_prefix": "HDFC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "MHSX",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX1662DJA1E15PRO4AF3",
+      "name": "TEST NAME",
+      "ifsc_prefix": "NSPB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "NSPB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX1662DJA1E15PRO4AF4",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ONMG",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "ONMG",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6965L7I4M31AC6Q9KS",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ORBC",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "ORBC",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX0924TEEF7N92QRJSF",
+      "name": "TEST NAME",
+      "ifsc_prefix": "PYTM",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "PYTM",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX1999G9KOSNQY7RKNMC",
+      "name": "TEST NAME",
+      "ifsc_prefix": "PSIB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "PSIB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXXX6583WYCHQ1SFDHHC",
+      "name": "TEST NAME",
+      "ifsc_prefix": "PUNB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "PUNB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6966JVFMYFJUWJLIJO",
+      "name": "TEST NAME",
+      "ifsc_prefix": "RATN",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "RATN",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX0393K9QUE8GWMP327",
+      "name": "TEST NAME",
+      "ifsc_prefix": "STCB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "STCB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6325XFYWYALMSWNA61",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SMCB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "SHIX",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX1828MA29RVGPQYBXUP",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SMCB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "SHIX",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6966PD71XAG43BF45B",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SCBL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "SCBL",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX1072BDZ3VSDLMEGV1",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SBIN",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "SBIN",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit",
+        "other"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX2741F5X2S3N5EYER7L",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SURY",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "SURY",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6967RICEVKHIL88K85",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SYNB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "SYNB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6969U62OA62MTJ6Q35",
+      "name": "TEST NAME",
+      "ifsc_prefix": "TMBL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "TMBL",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX9706SKMNVX5YYFWD2",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ICIC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "ACUX",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX7299EWIH9W5HILVH6V",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ICIC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "CNSX",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6967B5U9SAEQ22TT6I",
+      "name": "TEST NAME",
+      "ifsc_prefix": "COSB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "COSB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX9672YV8MAORD4KAGF",
+      "name": "TEST NAME",
+      "ifsc_prefix": "HSBC",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "HSBC",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6066KBRXJZYU7S7EA9",
+      "name": "TEST NAME",
+      "ifsc_prefix": "JAKA",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "JAKA",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6974BE76658AUZBPYD",
+      "name": "TEST NAME",
+      "ifsc_prefix": "HDFC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "JUCX",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6077ILBVNTMC8RQ2NA",
+      "name": "TEST NAME",
+      "ifsc_prefix": "HDFC",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "JUCX",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX0787IS8VCPYY9HLBC",
+      "name": "TEST NAME",
+      "ifsc_prefix": "KCCB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "KCCB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6969QED1PE3MROC8R5",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SIBL",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "SIBL",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX7505TKQ51WKBLAX365",
+      "name": "TEST NAME",
+      "ifsc_prefix": "SPCB",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "SPCB",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX2253EKFDUH6ZAF21X",
+      "name": "TEST NAME",
+      "ifsc_prefix": "VARA",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "VARA",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX2700PBLMBGQPYSZSZ4",
+      "name": "TEST NAME",
+      "ifsc_prefix": "ZCBL",
+      "active": true,
+      "primary_bank": false,
+      "routing_code": "ZCBL",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6967G8KNVNBAYG1BT4",
+      "name": "TEST NAME",
+      "ifsc_prefix": "UCBA",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "UCBA",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6989R143AW3ZGYXV28",
+      "name": "TEST NAME",
+      "ifsc_prefix": "UJVN",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "USFB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "bank_short_code": "USFB",
+      "bank_short_code_debit": "USFB",
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6968DMRJ3CKZUKBDJ4",
+      "name": "TEST NAME",
+      "ifsc_prefix": "UBIN",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "UBIN",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX1022V7AEC5F7SU6Q2P",
+      "name": "TEST NAME",
+      "ifsc_prefix": "UTBI",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "UTBI",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXXX8024CMUKXN2MGEEGU",
+      "name": "TEST NAME",
+      "ifsc_prefix": "UTKS",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "UTKS",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "debit"
+      ],
+      "penny_less": true
+    },
+    {
+      "id": "BNIXXXXXXXXXXX1624HZ7G2ANY7SAZB1",
+      "name": "TEST NAME",
+      "ifsc_prefix": "VIJB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "VIJB",
+      "esign_mandate": false,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "net_banking",
+        "debit"
+      ],
+      "penny_less": false
+    },
+    {
+      "id": "BNIXXXXXXXXXXX6968VMMR4SV8RT71KJ",
+      "name": "TEST NAME",
+      "ifsc_prefix": "YESB",
+      "active": true,
+      "primary_bank": true,
+      "routing_code": "YESA",
+      "esign_mandate": true,
+      "api_mandate": true,
+      "physical_mandate": true,
+      "allowed_auth_sub_type": [
+        "aadhaar",
+        "net_banking"
+      ],
+      "bank_short_code": "YESB",
+      "bank_short_code_debit": "YESB",
+      "penny_less": false
+    }
+  ]
+}

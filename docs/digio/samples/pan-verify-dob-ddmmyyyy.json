@@ -1,0 +1,11 @@
+{
+  "_captured": "2026-10-28, sandbox, POST /v3/client/kyc/fetch_id_data/PAN, http 200",
+  "response": {
+    "aadhaar_seeding_status": "y",
+    "name_as_per_pan_match": false,
+    "pan": "XXXXX1234X",
+    "category": "individual",
+    "status": "valid",
+    "date_of_birth_match": false
+  }
+}

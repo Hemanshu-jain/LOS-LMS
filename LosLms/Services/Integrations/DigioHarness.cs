@@ -42,16 +42,17 @@ public static partial class DigioHarness
             var run = Guid.NewGuid().ToString("N")[..8];
             var results = new List<object>();
 
+            string? kid = null; // the REAL id: the saved sample has it masked
             foreach (var p in Probes(run, mobile, esign == true, nachConfigId))
             {
-                results.Add(await RunAsync(digio, company, p, samples));
+                results.Add(await RunAsync(digio, company, p, samples, id => { if (p.File == "digilocker-request.json") { kid = id; } }));
             }
 
             // DigiStudio: fetch the result of the request the probe above just created.
-            if (Existing(samples, "digilocker-request.json") is { } kid)
+            if (kid is not null)
             {
                 results.Add(await RunAsync(digio, company,
-                    new Probe("digilocker-response.json", HttpMethod.Post, $"/client/kyc/v2/{kid}/response?detail_response=true", new { }), samples));
+                    new Probe("digilocker-response.json", HttpMethod.Post, $"/client/kyc/v2/{kid}/response?detail_response=true", new { }), samples, null));
             }
 
             return Results.Json(results);
@@ -68,7 +69,7 @@ public static partial class DigioHarness
         yield return new("aadhaar-mask.json", HttpMethod.Post, "/v4/client/kyc/aadhaar/mask", new
         {
             data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-            data_content_type = "image/png", consent = "yes", mask_qr = true, is_validate = false, unique_request_id = "h" + run + "mask",
+            data_content_type = "PNG", consent = "yes", mask_qr = true, is_validate = false, unique_request_id = "h" + run + "mask",
         });
         yield return new("digilocker-request.json", HttpMethod.Post, "/client/kyc/v2/request/with_template", new
         {
@@ -111,12 +112,13 @@ public static partial class DigioHarness
         }
     }
 
-    private static async Task<object> RunAsync(DigioClient digio, int company, Probe p, string samples)
+    private static async Task<object> RunAsync(DigioClient digio, int company, Probe p, string samples, Action<string?>? gotId)
     {
         var r = p.Method == HttpMethod.Get
             ? await digio.GetAsync(company, null, p.Path, null)
             : await digio.PostAsync(company, null, p.Path, p.Body!, null);
 
+        gotId?.Invoke(r.Str("id"));
         if (r.Data is { } data)
         {
             var node = JsonNode.Parse(data.GetRawText());
@@ -130,12 +132,6 @@ public static partial class DigioHarness
 
         var note = r.HttpStatus == 403 ? "not enabled" : r.Status == DigioStatus.Ok ? "ok" : r.Error;
         return new { sample = p.File, http = r.HttpStatus, status = r.Status.ToString(), errorCode = r.ErrorCode, note };
-    }
-
-    private static string? Existing(string samples, string file)
-    {
-        var path = Path.Combine(samples, file);
-        return File.Exists(path) && JsonNode.Parse(File.ReadAllText(path))?["response"]?["id"]?.GetValue<string>() is { } id ? id : null;
     }
 
     // ---- masking (docs/digio/samples/README.md): structure and keys kept, values masked ----
