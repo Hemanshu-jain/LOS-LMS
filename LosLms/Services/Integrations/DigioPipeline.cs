@@ -259,3 +259,20 @@ public sealed class DigioReconciler(IServiceScopeFactory scopes, ILogger<DigioRe
         return asked;
     }
 }
+
+/// <summary>The /digio/return page's hint: confirm that agreement with Digio now instead of at the next poll. Other products have no confirm step yet.</summary>
+public sealed class DigioReconcileTrigger(IServiceScopeFactory scopes) : IDigioReconcileTrigger
+{
+    public async Task RequestReconcileAsync(string requestId)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        await using var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<LosDbContext>>().CreateDbContextAsync();
+        var req = await db.DigioRequests.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.Id == requestId && r.Product == "ESIGN" && r.DigioId != null)
+            .Select(r => new { r.CompanyId, r.DigioId }).FirstOrDefaultAsync();
+        if (req is not null)
+        {
+            await scope.ServiceProvider.GetRequiredService<DigioWebhookService>().ConfirmAsync(req.CompanyId, req.DigioId!);
+        }
+    }
+}
