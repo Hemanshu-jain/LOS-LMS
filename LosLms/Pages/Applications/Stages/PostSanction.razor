@@ -1,6 +1,7 @@
 @page "/applications/{ApplicationId}/post-sanction"
 @using System.Globalization
 @using LosLms.Components.Shared
+@using LosLms.Components.Shared.Digio
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
@@ -53,21 +54,21 @@ else
 
             @if (!_digioGate.CanAdvance)
             {
-                <div class="gate-banner" role="alert">
-                    <span class="gate-banner-text">⛔ @_digioGate.BlockedReason@(_isElevated ? " An Admin can release anyway; the override is logged." : "")</span>
+                <div class="dg-gate" role="alert">
+                    <span>⛔ @_digioGate.BlockedReason@(_isElevated ? " An Admin can release anyway; the override is logged." : "")</span>
                     @if (!_isElevated && _digioGate.RequestType is not null)
                     {
                         @if (_digioGate.RequestPending)
                         {
-                            <span class="gate-banner-note">Admin request pending.</span>
+                            <span class="dg-muted">Admin request pending.</span>
                         }
                         else
                         {
-                            <button type="button" class="stage-button" @onclick="RequestDigioBypassAsync">Request admin bypass</button>
+                            <button type="button" class="verify-button" @onclick="RequestDigioBypassAsync">Request admin bypass</button>
                         }
                         @if (_digioGate.DeniedNote is { } denied)
                         {
-                            <span class="gate-banner-note">Denied: @denied</span>
+                            <span class="dg-muted">Denied: @denied</span>
                         }
                     }
                 </div>

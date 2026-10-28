@@ -126,8 +126,17 @@ public sealed class TenantContext
             return;
         }
 
-        var state = await _authProvider.GetAuthenticationStateAsync();
-        Apply(state.User);
+        // No HttpContext and no circuit: a background service (Digio inbox processor, reconciler) in its own scope. The state
+        // provider throws there; that is "nobody signed in", the same fail-closed tenant a webhook request gets, not an error.
+        try
+        {
+            var state = await _authProvider.GetAuthenticationStateAsync();
+            Apply(state.User);
+        }
+        catch (InvalidOperationException)
+        {
+            Apply(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
     }
 
     private void Apply(ClaimsPrincipal user)

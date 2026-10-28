@@ -361,7 +361,24 @@ public sealed class DigioPhase3Tests : IDisposable
         Assert.True((await DigioReleaseGate.CheckAsync(db, "A1", true)).CanAdvance);
     }
 
+    [Fact]
+    public async Task ABackgroundScope_WithNoCircuit_IsAnAnonymousTenant_NotACrash()
+    {
+        var tenant = new TenantContext(new Throwing(), new HttpContextAccessor(), new ActingCompanyStore());
+
+        await tenant.EnsureLoadedAsync(); // used to throw "Do not call GetAuthenticationStateAsync outside of the DI scope"
+
+        Assert.False(tenant.HasUser);
+        Assert.False(tenant.IsSuperAdmin);
+    }
+
     // ---- plumbing ----
+
+    private sealed class Throwing : AuthenticationStateProvider
+    {
+        public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
+            throw new InvalidOperationException("Do not call GetAuthenticationStateAsync outside of the DI scope for a Razor component.");
+    }
 
     private static string Doc(string id, string status, params string[] signerStatuses) =>
         JsonSerializer.Serialize(new
