@@ -51,6 +51,13 @@ public sealed class DigioKycTests : IDisposable
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
         services.AddScoped<DigioKyc>();
+        services.AddScoped<DigioWebhookService>();
+        services.AddSingleton<DigioWebhookHealth>();
+        services.AddSingleton<DigioBackgroundTasks>();
+        services.AddSingleton<DigioStatusNotifier>();
+        services.AddSingleton<IFileStore, NoFiles>();
+        services.AddSingleton<DigioReconcileTrigger>();
+        services.AddScoped<DigioReconciler>();
         _provider = services.BuildServiceProvider();
         _provider.CreateScope().ServiceProvider.GetRequiredService<DigioClient>().SaveCredentials(1, new DigioCredentials("cid", "csecret", "wh", false));
     }
@@ -297,6 +304,24 @@ public sealed class DigioKycTests : IDisposable
         Assert.Empty(db.VerificationEvidence.IgnoreQueryFilters());
     }
 
+    [Fact]
+    public async Task DigiLocker_ReturnHint_AndTheReconciler_CompleteItWithoutTheOfficerRefreshing()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, Done);
+
+        var reconciler = _provider.CreateScope().ServiceProvider.GetRequiredService<DigioReconciler>();
+        Assert.Equal(1, await reconciler.ReconcileAsync(DateTime.UtcNow));
+
+        using var db = Anonymous();
+        Assert.Equal("Succeeded", db.DigioRequests.IgnoreQueryFilters().Single().Status);
+        Assert.True(db.Parties.IgnoreQueryFilters().Single().AadhaarVerified);
+        Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.DigiLockerFetch));
+        await _provider.GetRequiredService<DigioReconcileTrigger>().RequestReconcileAsync(start.RequestId!); // already done: a no-op
+        Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.DigiLockerFetch));
+    }
+
     // ---- the gate ----
 
     private async Task<GateResult> Gate(bool production = false)
@@ -391,6 +416,12 @@ public sealed class DigioKycTests : IDisposable
     private sealed class Factory(DigioKycTests owner) : IDbContextFactory<LosDbContext>
     {
         public LosDbContext CreateDbContext() => owner.Anonymous();
+    }
+
+    private sealed class NoFiles : IFileStore
+    {
+        public Task SaveAsync(string key, byte[] bytes) => Task.CompletedTask;
+        public Task<Stream?> OpenReadAsync(string key) => Task.FromResult<Stream?>(null);
     }
 
     private sealed class Staff(ClaimsPrincipal user) : AuthenticationStateProvider
