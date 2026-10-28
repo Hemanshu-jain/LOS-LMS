@@ -2,6 +2,7 @@
 @using System.Globalization
 @using System.Text.RegularExpressions
 @using LosLms.Components.Shared
+@using LosLms.Components.Shared.Digio
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
@@ -377,7 +378,9 @@ else
 
                                             <FormField Label="Registration no." For="sec-reg">
                                                 <input id="sec-reg" type="text" class="field-input" @bind="_security.RegNo" />
-                                                <span class="field-caption">Manual entry — Vahan RC verification is v2 scope</span>
+                                                <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
+                                                         Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
+                                                         InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
                                             </FormField>
 
                                             <FormField Label="Chassis no." For="sec-chassis">
@@ -905,6 +908,20 @@ else
     private string _activeTab = LoanTab;
 
     private SecurityForm _security = new();
+
+    /// <summary>A verified RC fills only what is still blank: make/model and the registration year.</summary>
+    private void OnRcFill(RcFill fill)
+    {
+        if (string.IsNullOrWhiteSpace(_security.MakeModel) && fill.MakeModel is { } make)
+        {
+            _security.MakeModel = make;
+        }
+
+        if (string.IsNullOrWhiteSpace(_security.MfgYear) && fill.MfgYear is { } year)
+        {
+            _security.MfgYear = year;
+        }
+    }
     private List<ReferenceForm> _references = new();
     private Viability _viability = new();
 

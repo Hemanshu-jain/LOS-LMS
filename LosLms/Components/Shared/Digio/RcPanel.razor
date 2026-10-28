@@ -1,0 +1,86 @@
+@using System.Text.Json
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject DigioAsset Asset
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject TenantContext Tenant
+
+@* Vehicle RC check on Loan & Security: Verify RC, then the checks as ok / look / problem rows. The rows are worked out from Digio's last
+   answer and the CURRENT entries, so changing the chassis or insurer re-checks at once with no second call. Renders nothing when
+   the company has RC verification switched off. *@
+@if (_enabled)
+{
+    <div class="dg-panel">
+        <VerifyButton Label="Verify RC" DisabledReason="@Blocked" OnClick="VerifyAsync" />
+        @if (_notice is not null)
+        {
+            <span class="@(_verdict == "Verified" ? "dg-muted" : "inline-error")" role="status">@_notice</span>
+        }
+        @if (Checks is { Count: > 0 } rows)
+        {
+            <ul class="dg-rc">
+                @foreach (var c in rows)
+                {
+                    <li class="dg-rc-@c.State"><strong>@Mark(c.State) @c.Label</strong> <span>@c.Detail</span></li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+    [Parameter] public string? RegNo { get; set; }
+    [Parameter] public string? Chassis { get; set; }
+    [Parameter] public string? Engine { get; set; }
+    [Parameter] public string? InsuranceProvider { get; set; }
+
+    /// <summary>Blank make/model and registration year from a verified RC; the page fills only fields that are still empty.</summary>
+    [Parameter] public EventCallback<RcFill> OnFill { get; set; }
+
+    private bool _enabled;
+    private string? _notice, _verdict, _applicant, _lender;
+    private JsonElement? _response;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _enabled = await Asset.RcEnabledAsync(CompanyId);
+        if (!_enabled)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _applicant = await db.Parties.AsNoTracking().Where(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant").Select(p => p.FullName).FirstOrDefaultAsync();
+        _lender = await db.Companies.AsNoTracking().Where(c => c.Id == CompanyId).Select(c => c.Name).FirstOrDefaultAsync();
+        _response = await Asset.LatestRcResponseAsync(CompanyId, ApplicationId);
+    }
+
+    private RcInputs Inputs => new(RegNo, Chassis, Engine, InsuranceProvider, _applicant, _lender, DateOnly.FromDateTime(DateTime.Today));
+
+    private List<RcCheck>? Checks => _response is { } r && r.TryGetProperty("vehicle_details", out _) ? RcChecks.Evaluate(r, Inputs) : null;
+
+    private string? Blocked => string.IsNullOrWhiteSpace(RegNo) ? "Enter the registration number first." : null;
+
+    private async Task VerifyAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        var r = await Asset.VerifyRcAsync(CompanyId, ApplicationId, Inputs, Tenant.UserId);
+        _verdict = r.Outcome.Verdict;
+        _notice = r.Outcome.Message;
+        if (r.Response is not null)
+        {
+            _response = r.Response;
+        }
+
+        if (r.Fill is { } fill)
+        {
+            await OnFill.InvokeAsync(fill);
+        }
+    }
+
+    private static string Mark(string state) => state switch { "ok" => "✓", "warn" => "!", _ => "✕" };
+}

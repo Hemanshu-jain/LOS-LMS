@@ -1,6 +1,7 @@
 @page "/applications/{ApplicationId}/approvals"
 @using System.Globalization
 @using LosLms.Components.Shared
+@using LosLms.Components.Shared.Digio
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
@@ -10,6 +11,7 @@
 @inject NavigationManager Navigation
 @inject TenantContext Tenant
 @inject AdminRequestNotifier Notifier
+@inject DigioAsset Kyb
 
 <PageTitle>Approvals · @ApplicationId</PageTitle>
 
@@ -141,6 +143,10 @@ else
                                         <input id="ap-gstin" class="field-input" maxlength="15" @bind="_business.Gstin" @bind:event="oninput" />
                                     </FormField>
 
+                                    <FormField Label="CIN (companies / LLPs)" For="ap-cin">
+                                        <input id="ap-cin" class="field-input" maxlength="25" @bind="_business.Cin" @bind:event="oninput" />
+                                    </FormField>
+
                                     <FormField Label="Business vintage" For="ap-vintage">
                                         <select id="ap-vintage" class="field-input" @bind="_business.Vintage">
                                             <option value="">@BlankOption</option>
@@ -152,12 +158,10 @@ else
                                 @* Company / ROC verification (#12). Honest stub until Digio Business KYC is
                                    onboarded — checks the firm's GSTIN/CIN against the Registrar of Companies. *@
                                 <div class="roc-row">
-                                    <button type="button" class="verify-button" @onclick="VerifyRocAsync">
-                                        Verify company (ROC)
-                                    </button>
-                                    @if (_rocNotice is not null)
+                                    <VerifyButton Label="Verify company (GSTIN / CIN)" OnClick="VerifyRocAsync" />
+                                    @foreach (var line in _rocNotices)
                                     {
-                                        <span class="inline-error" role="alert">@_rocNotice</span>
+                                        <span class="@(line.Verdict == "Verified" ? "inline-notice" : "inline-error")" role="status">@line.Message</span>
                                     }
                                 </div>
 
@@ -583,7 +587,7 @@ else
     private string _activeTab = BusinessTab;
 
     private Business _business = new();
-    private string? _rocNotice;
+    private List<KycOutcome> _rocNotices = new();
     private Tvr _tvr = new();
     private ApprovalDecision _decision = new();
     private List<Partner> _partners = new();
@@ -833,27 +837,23 @@ else
     }
 
     /// <summary>
-    /// Company / ROC verification (#12). Honest stub: with no Business-KYC provider wired it reports
-    /// "not configured" and never fabricates a result; on a real success it fills blank firm fields.
-    /// When Digio Business KYC is onboarded, this call verifies GSTIN/CIN against the Registrar of
-    /// Companies — see <see cref="BusinessKycService"/>.
+    /// Verify company: GSTIN and CIN against Digio's registers (DigioAsset). Never Verified without an Active status; on a
+    /// success it fills blank firm fields only.
     /// </summary>
     private async Task VerifyRocAsync()
     {
-        _rocNotice = null;
-
-        if (string.IsNullOrWhiteSpace(_business.Gstin))
+        _rocNotices = new();
+        if (_application is null)
         {
-            _rocNotice = "Enter the firm's GSTIN first.";
             return;
         }
 
-        var result = await BusinessKycService.VerifyAsync(_business.Gstin);
-        BusinessKycService.Apply(_business, result);
+        await Tenant.EnsureLoadedAsync();
+        var result = await Kyb.VerifyBusinessAsync(_application.CompanyId, ApplicationId, _business.Gstin, _business.Cin, _business.FirmName, Tenant.UserId);
+        _rocNotices = result.Results.ToList();
 
-        _rocNotice = result.IsConfigured
-            ? "Company verified against the Registrar of Companies."
-            : "Company/ROC verification unavailable — provider not configured. Enter details manually.";
+        // Blanks only: a manual entry (or the Company-profile pre-fill) is never overwritten.
+        BusinessKycService.Apply(_business, new BusinessKycResult(result.Data is not null, result.Data));
     }
 
     // ---------------------------------------------------------------------
@@ -1153,6 +1153,7 @@ else
         business.FirmName = _business.FirmName;
         business.Constitution = _business.Constitution;
         business.Gstin = _business.Gstin;
+        business.Cin = _business.Cin;
         business.Vintage = _business.Vintage;
         business.IncorpDate = _business.IncorpDate;
         business.Turnover = _business.Turnover;

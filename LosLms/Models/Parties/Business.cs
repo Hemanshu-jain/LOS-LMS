@@ -28,6 +28,10 @@ public class Business
     [MaxLength(20)]
     public string Gstin { get; set; } = string.Empty;
 
+    /// <summary>Corporate Identification Number (companies / LLPs), checked against the register by Digio KYB.</summary>
+    [MaxLength(25)]
+    public string Cin { get; set; } = string.Empty;
+
     [MaxLength(30)]
     public string Vintage { get; set; } = string.Empty;
 
