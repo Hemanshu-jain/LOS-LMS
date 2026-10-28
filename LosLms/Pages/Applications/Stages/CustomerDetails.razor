@@ -2,6 +2,7 @@
 @using System.Globalization
 @using System.Text.RegularExpressions
 @using LosLms.Components.Shared
+@using LosLms.Components.Shared.Digio
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
@@ -14,6 +15,8 @@
 @inject LosLms.Services.IFileStore Files
 @inject IHttpClientFactory HttpClientFactory
 @inject IJSRuntime JS
+@inject DigioKyc DigioKycService
+@inject DigioClient DigioApi
 
 <PageTitle>Customer Details · @ApplicationId</PageTitle>
 
@@ -51,6 +54,9 @@ else
                disables it through StageSubHeader's own gate, and CompleteStageAsync re-guards server-side. *@
             <StageSubHeader ApplicationId="@_application.Id"
                             CompleteBlocked="false"
+                            ExtraGate="_kycGate"
+                            GateSubjectKey="@_kycKey"
+                            OnGateChanged="RefreshKycGateAsync"
                             OnSaveDraft="SaveDraftAsync"
                             OnCompleteStage="CompleteStageAsync" />
 
@@ -232,6 +238,11 @@ else
                                 {
                                     <p class="inline-error" role="alert">@aadhaarNotice</p>
                                 }
+
+                                <PartyKycPanel CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" PartyId="party.Id"
+                                               FullName="@party.FullName" Pan="@party.Pan" Dob="party.DateOfBirth" Mobile="@party.Mobile"
+                                               Individual="@(party.CustomerCategory is null || !party.CustomerCategory.Contains("Company", StringComparison.OrdinalIgnoreCase))"
+                                               @bind-Consent="_digioConsent" OnChanged="SyncFromDigioAsync" />
 
                                 @* ---------- Bureau check ---------- *@
                                 @* Offered only once both identifiers exist — a bureau pull keyed on
@@ -598,6 +609,44 @@ else
 
     private PartyForm ActiveParty => _parties[_activeTab];
 
+    // ---- Digio KYC (Stage 1 evidence gate) ----
+
+    private GateResult _kycGate = GateResult.Clear;
+    private string? _kycKey;
+    private bool _digioConsent;
+
+    private async Task RefreshKycGateAsync()
+    {
+        if (_application is null) { return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var production = DigioApi.Credentials(_application.CompanyId)?.Production == true;
+        _kycGate = await KycEvidenceCheck.GateAsync(db, ApplicationId, production);
+        _kycKey = _kycGate.CanAdvance ? null : KycEvidenceCheck.SubjectKeyFor(await KycEvidenceCheck.GapsAsync(db, ApplicationId, production));
+    }
+
+    /// <summary>A Digio check just wrote to the database. Take its flags and BLANK-fill the forms, so the next autosave cannot undo them.</summary>
+    private async Task SyncFromDigioAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        foreach (var row in await db.Parties.AsNoTracking().Where(p => p.ApplicationId == ApplicationId).ToListAsync())
+        {
+            if (!_parties.TryGetValue(row.PartyType, out var f)) { continue; }
+            f.PanVerified = row.PanVerified;
+            f.AadhaarVerified = row.AadhaarVerified;
+            f.AadhaarGeneratedOn = row.AadhaarGeneratedOn ?? f.AadhaarGeneratedOn;
+            f.FullName = Blank(f.FullName) ?? row.FullName;
+            f.DateOfBirth ??= row.DateOfBirth;
+            f.Gender = Blank(f.Gender) ?? row.Gender;
+            f.FatherSpouseName = Blank(f.FatherSpouseName) ?? row.FatherSpouseName;
+            f.Address1 = Blank(f.Address1) ?? row.Address1;
+            f.City = Blank(f.City) ?? row.City;
+            f.State = Blank(f.State) ?? row.State;
+            f.PinCode = Blank(f.PinCode) ?? row.PinCode;
+        }
+
+        await RefreshKycGateAsync();
+    }
+
     private SectionState ActiveSections => _sections[_activeTab];
 
     // ---------------------------------------------------------------------
@@ -642,6 +691,7 @@ else
 
         if (_application is not null)
         {
+            await RefreshKycGateAsync();
             await RefreshDedupeAsync();
             _autoSave.Start(() => InvokeAsync(() => PersistAsync(completeStage: false)), TimeSpan.FromSeconds(8));
         }
@@ -1097,6 +1147,27 @@ else
             return null;
         }
 
+        if (kind == UploadKind.AadhaarScan && await DigioKycService.MaskingOnAsync(_application.CompanyId))
+        {
+            // Only the masked file is ever stored: if Digio can't mask it, the upload is refused.
+            if (party.Id == 0)
+            {
+                _uploadError = "Save the draft first, then upload the Aadhaar so it can be masked.";
+                return null;
+            }
+
+            var (masked, message) = await DigioKycService.MaskAadhaarAsync(_application.CompanyId, _application.Id, party.Id, bytes,
+                extension.ToLowerInvariant() switch { ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".pdf" => "application/pdf", _ => "" },
+                $"aadhaar{extension}", _digioConsent, null);
+            if (masked is null)
+            {
+                _uploadError = message;
+                return null;
+            }
+
+            bytes = masked;
+        }
+
         var fileName = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
         var savedPath = await Files.SaveUploadAsync(_application.Id, party.PartyType, fileName, bytes);
 
@@ -1320,6 +1391,12 @@ else
         await using (var gateDb = await DbFactory.CreateDbContextAsync())
         {
             if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
+            {
+                return;
+            }
+
+            var production = DigioApi.Credentials(_application!.CompanyId)?.Production == true;
+            if (!(await KycEvidenceCheck.GateAsync(gateDb, ApplicationId, production)).CanAdvance)
             {
                 return;
             }

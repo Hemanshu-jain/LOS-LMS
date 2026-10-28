@@ -11,9 +11,13 @@ namespace LosLms.Services;
 /// </summary>
 public static class KycEvidenceCheck
 {
-    public static string Fingerprint(Party p) => DigioKyc.Fingerprint(p.Pan?.Trim().ToUpperInvariant(), p.FullName?.Trim().ToUpperInvariant(), p.DateOfBirth?.ToString("yyyy-MM-dd"));
+    public static string FingerprintOf(string? pan, string? name, DateOnly? dob) => DigioKyc.Fingerprint(pan?.Trim().ToUpperInvariant(), name?.Trim().ToUpperInvariant(), dob?.ToString("yyyy-MM-dd"));
 
-    public static string AmlFingerprint(Party p) => DigioKyc.Fingerprint(p.FullName?.Trim().ToUpperInvariant(), p.Pan?.Trim().ToUpperInvariant());
+    public static string AmlFingerprintOf(string? name, string? pan) => DigioKyc.Fingerprint(name?.Trim().ToUpperInvariant(), pan?.Trim().ToUpperInvariant());
+
+    public static string Fingerprint(Party p) => FingerprintOf(p.Pan, p.FullName, p.DateOfBirth);
+
+    public static string AmlFingerprint(Party p) => AmlFingerprintOf(p.FullName, p.Pan);
 
     /// <param name="production">The company's Digio keys are production keys: sandbox evidence then does not count.</param>
     public static async Task<GateResult> GateAsync(LosDbContext db, string applicationId, bool production)

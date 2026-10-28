@@ -25,6 +25,8 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
     public const string ConsentVersion = "v1";
     private const int MaxMaskBytes = 1_000_000; // Digio: "not more than 1 MB"
 
+    public Task<bool> MaskingOnAsync(int companyId) => EnabledAsync(companyId, s => s.AadhaarMask);
+
     // ---- PAN ----
 
     /// <summary>Verifies a PAN against the name (and DOB when known). Same inputs as a verdict already on file: no second call, no second charge.</summary>

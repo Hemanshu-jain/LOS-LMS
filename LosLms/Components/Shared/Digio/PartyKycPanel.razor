@@ -1,0 +1,185 @@
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject DigioKyc Kyc
+@inject DigioClient Digio
+@inject TenantContext Tenant
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@* One party's Digio checks: PAN, Aadhaar via DigiLocker, AML. Each row is a badge plus the action; every wording comes from DigioUi/DigioKyc.
+   A switched-off product shows nothing. Consent is captured once here and also used for Aadhaar masking on upload. *@
+@if (_loaded && _settings is not null && (_settings.PanVerify || _settings.DigiLocker || _settings.Aml))
+{
+    <div class="dg-panel">
+        <div class="dg-panel-head"><strong>Digio checks</strong></div>
+
+        @if (PartyId == 0)
+        {
+            <p class="dg-muted">Save the draft first, then run the checks.</p>
+        }
+        else
+        {
+            @if (_settings.DigiLocker || _settings.Aml || _settings.AadhaarMask)
+            {
+                <ConsentCheckbox Text="@DigioKyc.ConsentText" Version="@DigioKyc.ConsentVersion" Checked="Consent" CheckedChanged="OnConsentChanged" />
+            }
+
+            @if (_settings.PanVerify)
+            {
+                <div class="identity-row">
+                    <span>PAN</span>
+                    <VerifyBadge Info="@BadgeFor(null, "PAN", KycEvidenceCheck.FingerprintOf(Pan, FullName, Dob))" />
+                    <VerifyButton Label="Verify PAN" DisabledReason="@PanReason" OnClick="VerifyPanAsync" />
+                </div>
+            }
+
+            @if (_settings.DigiLocker)
+            {
+                <div class="identity-row">
+                    <span>Aadhaar</span>
+                    <VerifyBadge Info="@BadgeFor(_dl, "AADHAAR", null)" />
+                    <VerifyButton Label="Send DigiLocker link" DisabledReason="@DigiLockerReason" OnClick="() => StartDigiLockerAsync(false)" />
+                    <VerifyButton Label="Open on this device" DisabledReason="@DigiLockerReason" OnClick="() => StartDigiLockerAsync(true)" />
+                </div>
+                @if (_dl is { Status: "WaitingForCustomer" })
+                {
+                    <CustomerActionPanel Request="_dl" OnRefresh="RefreshDigiLockerAsync" OnCancel="CancelDigiLockerAsync"
+                                         OnResend="() => StartDigiLockerAsync(false)" OnOpenOnDevice="() => StartDigiLockerAsync(true)" />
+                }
+            }
+
+            @if (_settings.Aml)
+            {
+                <div class="identity-row">
+                    <span>AML</span>
+                    <VerifyBadge Info="@BadgeFor(null, "AML", KycEvidenceCheck.AmlFingerprintOf(FullName, Pan))" />
+                    <VerifyButton Label="Screen now" DisabledReason="@AmlReason" OnClick="ScreenAmlAsync" />
+                </div>
+                @if (Latest("AML") is { Verdict: "Mismatch" } && (Tenant.IsAdmin || Tenant.IsSuperAdmin))
+                {
+                    <div class="identity-row">
+                        <input class="field-input" placeholder="Why these are false positives" @bind="_amlNote" @bind:event="oninput" maxlength="300" />
+                        <button type="button" class="verify-button" @onclick="AcceptAmlAsync">Accept as false positive</button>
+                    </div>
+                }
+            }
+
+            @if (_message is not null)
+            {
+                <p class="@(_messageIsError ? "inline-error" : "dg-muted")" role="status">@_message</p>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+    [Parameter] public int PartyId { get; set; }
+    [Parameter] public string? FullName { get; set; }
+    [Parameter] public string? Pan { get; set; }
+    [Parameter] public DateOnly? Dob { get; set; }
+    [Parameter] public string? Mobile { get; set; }
+    [Parameter] public bool Individual { get; set; } = true;
+    [Parameter] public bool Consent { get; set; }
+    [Parameter] public EventCallback<bool> ConsentChanged { get; set; }
+
+    /// <summary>Raised after any check changes what is on file (the page refreshes its gate and flags).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private DigioSettings? _settings;
+    private List<VerificationEvidence> _evidence = new();
+    private DigioRequest? _dl;
+    private bool _production;
+    private bool _loaded;
+    private string? _message;
+    private bool _messageIsError;
+    private string _amlNote = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _settings = await db.DigioSettings.AsNoTracking().FirstOrDefaultAsync(s => s.CompanyId == CompanyId);
+        _production = Digio.Credentials(CompanyId)?.Production == true;
+        if (PartyId > 0)
+        {
+            _evidence = await db.VerificationEvidence.AsNoTracking().Where(e => e.PartyId == PartyId).ToListAsync();
+            _dl = await db.DigioRequests.AsNoTracking().Where(r => r.PartyId == PartyId && r.Operation == "DIGILOCKER_AADHAAR_PAN")
+                .OrderByDescending(r => r.RequestedAt).FirstOrDefaultAsync();
+        }
+
+        _loaded = true;
+    }
+
+    private VerificationEvidence? Latest(string subject) => _evidence.Where(e => e.Subject == subject).OrderByDescending(e => e.Id).FirstOrDefault();
+
+    private BadgeInfo BadgeFor(DigioRequest? request, string subject, string? fingerprint) =>
+        DigioUi.Badge(true, false, _production, request is { Status: "WaitingForCustomer" } ? request : null, Latest(subject), fingerprint);
+
+    private string? NeedsSaved => PartyId == 0 ? "Save the draft first." : null;
+    private string? PanReason => !System.Text.RegularExpressions.Regex.IsMatch(Pan ?? "", "^[A-Z]{5}[0-9]{4}[A-Z]$") ? "Enter a valid PAN." : string.IsNullOrWhiteSpace(FullName) ? "Enter the full name." : null;
+    private string? AmlReason => string.IsNullOrWhiteSpace(FullName) ? "Enter the full name." : !Consent ? "Tick the customer's consent." : null;
+    private string? DigiLockerReason => !Consent ? "Tick the customer's consent." : string.IsNullOrWhiteSpace(FullName) ? "Enter the full name." : !System.Text.RegularExpressions.Regex.IsMatch(Mobile ?? "", "^[6-9][0-9]{9}$") ? "Enter the customer's mobile." : null;
+
+    private Task OnConsentChanged(bool value) => ConsentChanged.InvokeAsync(value);
+
+    private async Task Done(KycOutcome o)
+    {
+        _message = o.Message;
+        _messageIsError = o.Verdict is null or "Failed";
+        await OnParametersSetAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task VerifyPanAsync() =>
+        await Done(await Kyc.VerifyPanAsync(CompanyId, ApplicationId, PartyId, Pan, FullName, Dob, Individual, Tenant.UserId));
+
+    private async Task ScreenAmlAsync() =>
+        await Done(await Kyc.ScreenAmlAsync(CompanyId, ApplicationId, PartyId, FullName, Pan, Consent, Tenant.UserId));
+
+    private async Task AcceptAmlAsync()
+    {
+        var ok = await Kyc.AcceptAmlAlertsAsync(CompanyId, ApplicationId, PartyId, _amlNote, Tenant.UserId ?? "");
+        await Done(new(ok ? "AcceptedMismatch" : null, ok ? "Alerts accepted as false positive." : "Add a reason first."));
+    }
+
+    private async Task StartDigiLockerAsync(bool onDevice)
+    {
+        if (_dl is { Status: "WaitingForCustomer" })
+        {
+            await CancelDigiLockerAsync(); // a new link replaces the old one: never two live requests for one person
+        }
+
+        var o = await Kyc.StartDigiLockerAsync(CompanyId, ApplicationId, PartyId, FullName, Mobile, onDevice, Consent, Navigation.BaseUri, Tenant.UserId);
+        if (o.Url is not null)
+        {
+            await JS.InvokeVoidAsync("open", o.Url, "_blank");
+        }
+
+        await Done(o);
+    }
+
+    private async Task RefreshDigiLockerAsync()
+    {
+        if (_dl is not null)
+        {
+            await Done(await Kyc.CompleteDigiLockerAsync(CompanyId, _dl.Id));
+        }
+    }
+
+    private async Task CancelDigiLockerAsync()
+    {
+        if (_dl is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.DigioRequests.Where(r => r.Id == _dl.Id && r.Status == "WaitingForCustomer").ExecuteUpdateAsync(u => u.SetProperty(r => r.Status, "Cancelled"));
+        await Done(new(null, "Request cancelled."));
+    }
+}
