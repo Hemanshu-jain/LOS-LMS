@@ -326,7 +326,8 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             return new(req.Status == "Succeeded" ? "Verified" : null, $"Request is {req.Status.ToLowerInvariant()}.", RequestId: requestId);
         }
 
-        var r = await digio.GetAsync(companyId, null, $"/client/kyc/v2/{Uri.EscapeDataString(req.DigioId)}/response?detail_response=true", req.ApplicationId);
+        // POST, not GET: Digio answers "Method not allowed" to a GET here (the Phase 0 harness used POST and got 200).
+        var r = await digio.PostAsync(companyId, null, $"/client/kyc/v2/{Uri.EscapeDataString(req.DigioId)}/response?detail_response=true", new { }, req.ApplicationId);
         if (Failure(r) is { } fail)
         {
             return fail with { RequestId = requestId };

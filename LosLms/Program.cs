@@ -495,6 +495,7 @@ app.UsePartnerOAuth();
 // auth/maintenance/antiforgery, and short-circuits. Trust comes from the HMAC (X-Digio-Checksum, per-company secret). It
 // ALWAYS answers 200 (Digio's queue is head-of-line; non-200s stall it and get webhooks disabled): see DigioWebhookEndpoint.
 app.UseDigioWebhook();
+app.MapDigioMaskedView();
 #if DEBUG
 app.MapDigioHarness(); // Phase 0 throwaway: Development + SuperAdmin only; absent from Release builds.
 #endif

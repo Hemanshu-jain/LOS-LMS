@@ -301,10 +301,10 @@ public sealed class DigioKycTests : IDisposable
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested","access_token":{"id":"GWT1"}}""");
         var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
 
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, Requested);
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Requested) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
         Assert.Contains("Waiting", (await Kyc().CompleteDigiLockerAsync(1, start.RequestId!)).Message);
 
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, Done);
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
         Assert.Equal("Verified", (await Kyc().CompleteDigiLockerAsync(1, start.RequestId!)).Verdict);
         await Kyc().CompleteDigiLockerAsync(1, start.RequestId!); // replay: a no-op
 
@@ -323,7 +323,7 @@ public sealed class DigioKycTests : IDisposable
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
         var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
 
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"expired"}""");
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, """{"id":"KID1","status":"expired"}""") : (HttpStatusCode.MethodNotAllowed, "{}");
         await Kyc().CompleteDigiLockerAsync(1, start.RequestId!);
 
         using var db = Anonymous();
@@ -336,7 +336,7 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
         var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
-        _digio.On = (_, _, _) => (HttpStatusCode.OK, Done);
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
 
         var reconciler = _provider.CreateScope().ServiceProvider.GetRequiredService<DigioReconciler>();
         Assert.Equal(1, await reconciler.ReconcileAsync(DateTime.UtcNow));
