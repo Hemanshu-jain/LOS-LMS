@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -66,6 +66,8 @@ public sealed class DigioWebhookTests : IDisposable
         services.AddScoped<DigioReconciler>();
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
+        services.AddScoped<DigioEsignService>();
+        services.AddScoped<DigioNachService>();
         services.AddScoped<DigioWebhookService>();
         _provider = services.BuildServiceProvider();
 

@@ -1,0 +1,220 @@
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject DigioNachService Nach
+@inject IJSRuntime Js
+
+@* The Digio part of the mandate flow (06-NACH.md sections 4 and 8): route, channel, create, then the live state. The bank steps above
+   it (IFSC, account twice, officer confirmation) stay in MandateFlow. Status comes only from Digio; nothing here can set Registered. *@
+<div class="dg-panel">
+    @if (Live)
+    {
+        <div class="dg-panel-head">
+            <strong>@Mandate.AuthMode mandate</strong>
+            <span class="dg-chip dg-@ChipFor(Mandate.DigioState)">@Mandate.DigioState</span>
+        </div>
+        <ol class="dg-steps">
+            @foreach (var (label, reached) in Steps)
+            {
+                <li class="@(reached ? "dg-step-on" : null)">@label</li>
+            }
+        </ol>
+        @if (Mandate.DigioState == "Registered" && Mandate.Umrn is { Length: > 0 } umrn)
+        {
+            <p class="dg-muted">UMRN ••••@(umrn.Length > 4 ? umrn[^4..] : umrn). Registered@(Mandate.RegisteredAt is { } at ? " " + at.ToLocalTime().ToString("d MMM HH:mm") : "").</p>
+        }
+        else
+        {
+            <p class="dg-muted">@Expected</p>
+        }
+
+        @if (Mandate.RejectReason is { Length: > 0 } why && Mandate.DigioState is "Rejected" or "AuthFailed")
+        {
+            <p class="inline-error" role="alert">@why</p>
+        }
+        <div class="dg-actions">
+            <button type="button" class="verify-button" @onclick="RefreshAsync">Refresh status</button>
+            @if (Mandate.AuthMode != "PHYSICAL" && Mandate.DigioState == "Requested")
+            {
+                <button type="button" class="verify-button" @onclick="OpenAsync">Open on this device</button>
+            }
+            @if (Mandate.AuthMode == "PHYSICAL" && Mandate.DigioState == "Requested")
+            {
+                <button type="button" class="verify-button" @onclick="FormAsync">@(Mandate.SignedFormPath is null ? "Get the form to print" : "Refresh the form")</button>
+                @if (Mandate.SignedFormPath is { } form)
+                {
+                    <a class="file-link" href="@($"/files/{ApplicationId}/nach/{Path.GetFileName(form)}")" target="_blank">✓ Mandate form (PDF)</a>
+                }
+                <label class="verify-button">Upload the signed scan
+                    <InputFile OnChange="ScanAsync" accept=".pdf,.jpg,.jpeg,.png" style="display:none" />
+                </label>
+            }
+        </div>
+    }
+
+    @if (!Live || Mandate.DigioState is "Rejected" or "AuthFailed" or "Expired" or "Cancelled")
+    {
+        @if (_banks is null)
+        {
+            <p class="dg-muted">@(_bankError ?? "Loading the live bank list…")</p>
+        }
+        else
+        {
+            var bank = DigioNachService.BankFor(_banks, Mandate.Ifsc);
+            <p class="dg-muted">@(bank is null ? (string.IsNullOrWhiteSpace(Mandate.Ifsc) ? "Enter the IFSC to see what this bank supports." : "This bank is not live for e-NACH.") : bank.Name + ": " + bank.Modes)</p>
+            <fieldset class="mandate-modes">
+                <legend class="mandate-step-label">Authentication</legend>
+                @foreach (var r in DigioNachService.Routes.Where(r => bank?.Supports(r) == true))
+                {
+                    <label class="mandate-mode">
+                        <input type="radio" name="@($"dgroute-{Tab}")" checked="@(_route == r)" @onchange="() => _route = r" />
+                        <span>@RouteLabel(r)</span>
+                    </label>
+                }
+            </fieldset>
+            @if (_route != "PHYSICAL")
+            {
+                <label class="mandate-mode"><input type="radio" name="@($"dgchan-{Tab}")" checked="@(!_onDevice)" @onchange="() => _onDevice = false" /> <span>Send the link to the customer</span></label>
+                <label class="mandate-mode"><input type="radio" name="@($"dgchan-{Tab}")" checked="@_onDevice" @onchange="() => _onDevice = true" /> <span>Open on this device</span></label>
+            }
+            <div class="mandate-submit-row">
+                <VerifyButton Label="@(Live ? "Try again (new request)" : "Create mandate request")" DisabledReason="@CreateBlocked" OnClick="CreateAsync" />
+            </div>
+        }
+    }
+
+    @if (_notice is not null)
+    {
+        <p class="inline-error" role="alert">@_notice</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public INachMandate Mandate { get; set; } = default!;
+    [Parameter, EditorRequired] public string Tab { get; set; } = DigioNachService.EnachTab;
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+    [Parameter] public string? UserId { get; set; }
+    [Parameter] public NachTerms? Terms { get; set; }
+    [Parameter] public string? CustomerName { get; set; }
+    [Parameter] public string? Mobile { get; set; }
+    [Parameter] public string? Email { get; set; }
+
+    /// <summary>Saves the mandate rows (bank details, confirmation) so the server sees what the officer typed.</summary>
+    [Parameter] public EventCallback OnBeforeCreate { get; set; }
+
+    /// <summary>The mandate changed on the server: the page re-reads it.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<NachBank>? _banks;
+    private string? _bankError, _notice;
+    private string _route = "API";
+    private bool _onDevice;
+
+    private bool Live => Mandate.DigioMandateId is not null && NachLifecycle.IsLive(Mandate.DigioState) && Mandate.DigioState != "AuthFailed";
+
+    protected override async Task OnInitializedAsync() => (_banks, _bankError) = await Nach.BanksAsync(CompanyId, "API");
+
+    private string? CreateBlocked =>
+        Terms is null ? "The EMI and first EMI date are not set yet (Disbursement tab)."
+        : string.IsNullOrWhiteSpace(CustomerName) ? "The account holder name is missing."
+        : string.IsNullOrWhiteSpace(Mobile) && string.IsNullOrWhiteSpace(Email) ? "The customer has no mobile or email on Customer Details."
+        : !Mandate.ConfirmationAccepted ? "Tick the confirmation first."
+        : _banks is not null && DigioNachService.BankFor(_banks, Mandate.Ifsc)?.Supports(_route) != true ? "Choose an authentication route this bank supports."
+        : null;
+
+    private async Task CreateAsync()
+    {
+        _notice = null;
+        await OnBeforeCreate.InvokeAsync();
+        var r = await Nach.CreateAsync(CompanyId, ApplicationId, Tab, UserId, _route, _onDevice || _route == "PHYSICAL",
+            Terms!, CustomerName!, Mobile, Email);
+        if (!r.Ok)
+        {
+            _notice = r.Error;
+            return;
+        }
+
+        await OnChanged.InvokeAsync();
+        if (r.Existing)
+        {
+            _notice = "A request is already open for this mandate; it was not created again.";
+        }
+        else if (_onDevice && r.AuthUrl is { } url)
+        {
+            await Js.InvokeVoidAsync("open", url, "_blank");
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _notice = Mandate.DigioMandateId is { } id && !await Nach.ConfirmAsync(CompanyId, id) ? "Digio did not answer. Try again shortly." : null;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task OpenAsync()
+    {
+        _notice = null;
+        if (await Nach.AuthUrlAsync(CompanyId, ApplicationId, Tab) is { } url)
+        {
+            await Js.InvokeVoidAsync("open", url, "_blank");
+        }
+        else
+        {
+            _notice = "No authentication link is available for this request.";
+        }
+    }
+
+    private async Task FormAsync()
+    {
+        var r = await Nach.GenerateFormAsync(CompanyId, ApplicationId, Tab);
+        _notice = r.Ok ? null : r.Error;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task ScanAsync(InputFileChangeEventArgs e)
+    {
+        const int Max = 5 * 1024 * 1024;
+        _notice = null;
+        var ext = Path.GetExtension(e.File.Name);
+        await using var stream = e.File.OpenReadStream(Max);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        var bytes = buffer.ToArray();
+        if (!FileSignature.Matches(ext, bytes))
+        {
+            _notice = "That file is not a PDF, JPG or PNG.";
+            return;
+        }
+
+        var r = await Nach.SubmitSignedAsync(CompanyId, ApplicationId, Tab, bytes);
+        _notice = r.Ok ? "Scan sent to Digio. The status updates when the bank has processed it." : r.Error;
+    }
+
+    private IEnumerable<(string Label, bool Reached)> Steps
+    {
+        get
+        {
+            var s = Mandate.DigioState;
+            return
+            [
+                ("Requested", true),
+                ("Authenticated", s is "AuthSuccess" or "InBankProcessing" or "Registered"),
+                ("With the bank / NPCI", s is "InBankProcessing" or "Registered"),
+                ("Registered", s == "Registered"),
+            ];
+        }
+    }
+
+    private string Expected => Mandate.AuthMode switch
+    {
+        "API" => "Usually registered by the next working day after the customer authenticates.",
+        "ESIGN" => "eSign mandates take 3 to 7 days to register.",
+        "PHYSICAL" => "Physical mandates take about 7 working days after the scan is sent.",
+        _ => "",
+    };
+
+    private static string ChipFor(string? s) => s switch { "Registered" => "ok", "Rejected" or "AuthFailed" or "Cancelled" => "bad", "Expired" => "warn", _ => "info" };
+
+    private static string RouteLabel(string r) => r switch { "API" => "Net banking / debit card / Aadhaar (e-mandate)", "ESIGN" => "Aadhaar eSign (e-NACH)", _ => "Physical NACH form", };
+}

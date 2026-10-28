@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using LosLms.Data;
+using LosLms.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace LosLms.Services;
@@ -46,7 +47,8 @@ public sealed class DigioBackgroundTasks
 /// </summary>
 public sealed class DigioWebhookService(
     IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, ApiBillingService billing, IFileStore files,
-    IServiceScopeFactory scopes, DigioBackgroundTasks background, DigioStatusNotifier notifier, ILogger<DigioWebhookService> log)
+    IServiceScopeFactory scopes, DigioBackgroundTasks background, DigioStatusNotifier notifier, DigioEsignService esign,
+    DigioNachService nach, ILogger<DigioWebhookService> log)
 {
     private const string Signed = "Signed";
 
@@ -56,6 +58,17 @@ public sealed class DigioWebhookService(
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
         var evt = Str(root, "event")?.ToLowerInvariant();
+        if (DigioNachService.IsMandateEvent(evt))
+        {
+            // Never trust the webhook's own word for a mandate state: the confirming GET decides. A failed GET throws, so the inbox retries it.
+            if (DigioNachService.MandateIdIn(root) is not { } mandateId)
+            {
+                return false;
+            }
+
+            return await nach.ConfirmAsync(companyId, mandateId) ? true : throw new InvalidOperationException("Digio mandate lookup failed");
+        }
+
         if (!root.TryGetProperty("payload", out var payload) || !payload.TryGetProperty("document", out var document)
             || Str(document, "id") is not { Length: > 0 } docId)
         {
@@ -70,19 +83,21 @@ public sealed class DigioWebhookService(
                     case "completed":
                         await CompleteAsync(companyId, docId);
                         break;
-                    case null:
-                        // Not stated: ask Digio, but not inside the webhook (it must answer fast); the document stays 'Sent' meanwhile.
+                    default:
+                        // Not stated, or another signer is still to sign: ask Digio (not inside the webhook, it must answer fast) so the
+                        // per-signer rows stay current; the document stays 'Sent' until every party has signed.
                         ConfirmInBackground(companyId, docId);
                         break;
-                    // anything else (e.g. 'requested'): another signer is still to sign, nothing to record yet.
                 }
 
                 break;
             case "doc.sign.failed":
                 await FailAsync(companyId, docId, "Failed", Reason(document));
+                ConfirmInBackground(companyId, docId);
                 break;
             case "doc.sign.rejected":
                 await FailAsync(companyId, docId, "Rejected", Reason(document));
+                ConfirmInBackground(companyId, docId);
                 break;
             default:
                 return false;
@@ -95,9 +110,19 @@ public sealed class DigioWebhookService(
     public async Task ConfirmAsync(int companyId, string docId)
     {
         var result = await digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null);
-        if (result.Status == DigioStatus.Ok && result.Str("agreement_status") == "completed")
+        if (result.Status != DigioStatus.Ok)
+        {
+            return;
+        }
+
+        await esign.RefreshSignersAsync(companyId, docId, result.Data);
+        if (result.Str("agreement_status") == "completed")
         {
             await CompleteAsync(companyId, docId);
+        }
+        else if (await ApplicationOfAsync(companyId, docId) is { } app)
+        {
+            await notifier.NotifyAsync(app);
         }
     }
 
@@ -137,8 +162,30 @@ public sealed class DigioWebhookService(
 
         // The e-Sign credit is consumed on signing, so that is when it is metered.
         await billing.RecordAsync(companyId, DigioRates.ESignAadhaar, success: true, applicationId: row.ApplicationId, providerRef: docId);
+        await RecordEvidenceAsync(db, companyId, row.ApplicationId, docId);
         await SaveSignedCopyAsync(companyId, row.Id, row.ApplicationId, docId);
         await notifier.NotifyAsync(row.ApplicationId);
+    }
+
+    private async Task<string?> ApplicationOfAsync(int companyId, string docId)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return await db.Disbursements.IgnoreQueryFilters()
+            .Where(d => d.EsignDocumentId == docId && d.Application!.CompanyId == companyId).Select(d => d.ApplicationId).FirstOrDefaultAsync();
+    }
+
+    // AGREEMENT_SIGNED evidence (02 section 8.1): sandbox evidence is tagged so a production company's gate ignores it.
+    private static async Task RecordEvidenceAsync(LosDbContext db, int companyId, string applicationId, string docId)
+    {
+        var request = await db.DigioRequests.IgnoreQueryFilters().Where(r => r.CompanyId == companyId && r.DigioId == docId)
+            .Select(r => new { r.Id, r.Environment, r.InputFingerprint }).FirstOrDefaultAsync();
+        db.VerificationEvidence.Add(new VerificationEvidence
+        {
+            CompanyId = companyId, ApplicationId = applicationId, Subject = "AGREEMENT_SIGNED", Verdict = "Verified",
+            Summary = "All parties signed the loan agreement.", DigioRequestId = request?.Id, Environment = request?.Environment ?? "Sandbox",
+            InputFingerprint = request?.InputFingerprint, CreatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
     }
 
     private async Task FailAsync(int companyId, string docId, string status, string? reason)
