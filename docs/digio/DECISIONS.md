@@ -8,13 +8,13 @@ Write "TBD — owner: <name>" rather than leaving a line blank.
 | # | Decision | Answer | Decided by / date |
 |---|---|---|---|
 | 1 | Products enabled on our Digio account (sandbox / production) + DigiStudio template names | | |
-| 2 | Default customer channel (link via SMS / WhatsApp / email, or on the officer's device) | | |
+| 2 | Default customer channel (link via SMS / WhatsApp / email, or on the officer's device) | Offer all: SMS / WhatsApp / email link and 'open on this device'; the officer picks per request. Default = SMS link. | Owner via head, 2026-10-28 |
 | 3 | Minimum KYC evidence per party to complete Customer Details (per product) | | |
-| 4 | Aadhaar at rest: keep last 4 + keyed hash + masked image only (plan R3)? Compliance sign-off | | |
-| 5 | Loan agreement signers (applicant / co-applicants / guarantors / lender signatory: name and email), sequential or parallel | | |
+| 4 | Aadhaar at rest: keep last 4 + keyed hash + masked image only (plan R3)? Compliance sign-off | No. Full Aadhaar stays stored unmasked; plan R3 (last 4 + keyed hash migration) dropped. | Owner via head, 2026-10-28 |
+| 5 | Loan agreement signers (applicant / co-applicants / guarantors / lender signatory: name and email), sequential or parallel | Borrowers (applicant, co-applicants, guarantors) sign IN ORDER (sequential). The lender side is signed by the company owner: the signature image is configured in the system and applied by us, not a Digio signer. To confirm with Digio that this is acceptable. | Owner via head, 2026-10-28 |
 | 6 | e-Stamp: states, denominations, inventory owner | | |
-| 7 | NACH: e-NACH vs physical default; frequency (Adhoc / Monthly); max amount = EMI × ?; category codes (EMI, security); corporate_config_id(s); corporate account no. (record only "sandbox id received on <date>", never the value; see 06-NACH.md §1) | | |
-| 8 | Release-funds gate: agreement Signed? mandate Registered? Admin bypass allowed? | | |
+| 7 | NACH: e-NACH vs physical default; frequency (Adhoc / Monthly); max amount = EMI × ?; category codes (EMI, security); corporate_config_id(s); corporate account no. (record only "sandbox id received on <date>", never the value; see 06-NACH.md §1) | TBD, defaults set by head (owner unsure): per-company configurable; e-NACH default with physical fallback; frequency Adhoc; max amount = EMI x 2; corporate_config_id from Digio (owner to fetch). | Owner via head, 2026-10-28 |
+| 8 | Release-funds gate: agreement Signed? mandate Registered? Admin bypass allowed? | Release funds requires agreement Signed AND mandate Registered. Admin bypass allowed, and it is logged. | Owner via head, 2026-10-28 |
 | 9 | Collections: auto-present EMIs? bounce charge; re-presentation attempts / gap; receipt policy | | |
 | 10 | Compliance owner for CKYC, sanctions screening, V-CIP, retention period | | |
 
