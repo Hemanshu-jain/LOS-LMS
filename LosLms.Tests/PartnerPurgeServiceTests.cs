@@ -55,15 +55,8 @@ public sealed class PartnerPurgeServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task BackgroundPurge_DeletesTheExpiredCode_WhereTheTenantFactoryThrows()
+    public async Task BackgroundPurge_DeletesTheExpiredCode_WithoutACircuit()
     {
-        // The old path: the tenant factory cannot be used from a background scope.
-        await using (var scope = _services.CreateAsyncScope())
-        {
-            await Assert.ThrowsAsync<InvalidOperationException>(
-                () => scope.ServiceProvider.GetRequiredService<PartnerOAuthService>().PurgeAsync(Now));
-        }
-
         // The real hosted service, started the way the host starts it.
         var purge = new PartnerOAuthPurgeService(
             _services.GetRequiredService<IServiceScopeFactory>(), _services.GetRequiredService<ILogger<PartnerOAuthPurgeService>>());
