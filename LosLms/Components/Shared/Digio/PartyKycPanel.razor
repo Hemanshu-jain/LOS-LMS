@@ -46,7 +46,7 @@
                 </div>
                 @if (_dl is { Status: "WaitingForCustomer" })
                 {
-                    <CustomerActionPanel Request="_dl" OnRefresh="RefreshDigiLockerAsync" OnCancel="CancelDigiLockerAsync"
+                    <CustomerActionPanel Request="_dl" ShowId="Tenant.IsSuperAdmin" OnRefresh="RefreshDigiLockerAsync" OnCancel="CancelDigiLockerAsync"
                                          OnResend="() => StartDigiLockerAsync(false)" OnOpenOnDevice="() => StartDigiLockerAsync(true)" />
                 }
             }

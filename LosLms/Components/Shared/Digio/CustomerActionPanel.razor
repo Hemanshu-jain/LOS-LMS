@@ -8,6 +8,7 @@
         <strong>@Request.Operation.Replace('_', ' ')</strong>
         <span class="dg-chip dg-@(Final ? "off" : "info")">@Request.Status</span>
     </div>
+    @if (ShowId) { <p class="dg-muted">Request id: @Request.Id</p> }
     <p class="dg-muted">
         @(Request.CustomerChannel is "Link" ? "Link sent" : Request.CustomerChannel is "OnDevice" ? "Opened on this device" : "Started")
         @if (!string.IsNullOrWhiteSpace(Request.NotifiedTo)) { <text> to @Request.NotifiedTo</text> }
@@ -33,6 +34,9 @@
 </div>
 
 @code {
+    /// <summary>SuperAdmin only: shows our request id (it builds the /system/digio/masked-response/{id} URL).</summary>
+    [Parameter] public bool ShowId { get; set; }
+
     [Parameter, EditorRequired] public DigioRequest Request { get; set; } = default!;
 
     /// <summary>Mini timeline, oldest first (events the processor recorded for this request).</summary>
