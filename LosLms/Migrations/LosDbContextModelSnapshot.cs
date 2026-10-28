@@ -966,6 +966,11 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("Cin")
+                        .IsRequired()
+                        .HasMaxLength(25)
+                        .HasColumnType("varchar(25)");
+
                     b.Property<string>("Constitution")
                         .IsRequired()
                         .HasMaxLength(60)

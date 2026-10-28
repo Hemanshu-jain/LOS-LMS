@@ -153,6 +153,7 @@ builder.Services.AddScoped<DigioKyc>();
 builder.Services.AddScoped<DigioWebhookService>();
 builder.Services.AddScoped<DigioEsignService>();
 builder.Services.AddScoped<DigioNachService>();
+builder.Services.AddScoped<DigioAsset>();
 builder.Services.AddSingleton<DigioWebhookHealth>();
 builder.Services.AddSingleton<DigioBackgroundTasks>();
 builder.Services.AddSingleton<DigioStatusNotifier>();
