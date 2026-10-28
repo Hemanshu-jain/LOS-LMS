@@ -850,7 +850,7 @@ else
 
         await Tenant.EnsureLoadedAsync();
         var result = await Kyb.VerifyBusinessAsync(_application.CompanyId, ApplicationId, _business.Gstin, _business.Cin, _business.FirmName, Tenant.UserId);
-        _rocNotices = result.Results.ToList();
+        _rocNotices = result.Results.DistinctBy(r => r.Message).ToList();
 
         // Blanks only: a manual entry (or the Company-profile pre-fill) is never overwritten.
         BusinessKycService.Apply(_business, new BusinessKycResult(result.Data is not null, result.Data));

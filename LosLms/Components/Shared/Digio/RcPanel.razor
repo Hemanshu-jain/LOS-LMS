@@ -12,7 +12,7 @@
    the company has RC verification switched off. *@
 @if (_enabled)
 {
-    <div class="dg-panel">
+    <div class="dg-rc-box">
         <VerifyButton Label="Verify RC" DisabledReason="@Blocked" OnClick="VerifyAsync" />
         @if (_notice is not null)
         {

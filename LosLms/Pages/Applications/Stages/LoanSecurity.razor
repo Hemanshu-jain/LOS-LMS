@@ -378,9 +378,6 @@ else
 
                                             <FormField Label="Registration no." For="sec-reg">
                                                 <input id="sec-reg" type="text" class="field-input" @bind="_security.RegNo" />
-                                                <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
-                                                         Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
-                                                         InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
                                             </FormField>
 
                                             <FormField Label="Chassis no." For="sec-chassis">
@@ -390,6 +387,12 @@ else
                                             <FormField Label="Engine no." For="sec-engine">
                                                 <input id="sec-engine" type="text" class="field-input" @bind="_security.EngineNo" />
                                             </FormField>
+
+                                            <div style="grid-column: 1 / -1;">
+                                                <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
+                                                         Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
+                                                         InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
+                                            </div>
 
                                             <FormField Label="Invoice no." For="sec-invno">
                                                 <input id="sec-invno" type="text" class="field-input" @bind="_security.InvoiceNo" />
