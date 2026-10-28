@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace LosLms.Models;
 
@@ -75,6 +75,10 @@ public class DigioRequest
 
     [MaxLength(300)]
     public string? ErrorMessage { get; set; }
+
+    /// <summary>The consent wording and version the customer agreed to before this request (Aadhaar, AML, DigiLocker).</summary>
+    [MaxLength(300)]
+    public string? Consent { get; set; }
 
     /// <summary>Minimised result, AES-GCM encrypted with the vault key (see PasswordVault.Seal). Never plain.</summary>
     public string? ResultJson { get; set; }

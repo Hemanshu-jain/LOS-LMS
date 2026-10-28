@@ -149,6 +149,7 @@ builder.Services.AddScoped<CompanyProvisioningService>();
 builder.Services.Configure<ApiBillingOptions>(builder.Configuration.GetSection(ApiBillingOptions.Section));
 builder.Services.AddScoped<ApiBillingService>();
 builder.Services.AddScoped<DigioClient>();
+builder.Services.AddScoped<DigioKyc>();
 builder.Services.AddScoped<DigioWebhookService>();
 builder.Services.AddSingleton<DigioWebhookHealth>();
 builder.Services.AddSingleton<DigioBackgroundTasks>();

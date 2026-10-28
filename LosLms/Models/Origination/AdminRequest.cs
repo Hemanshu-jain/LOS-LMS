@@ -65,6 +65,9 @@ public class AdminRequest
     /// <summary>Unblocks the CIBIL gate for the whole application.</summary>
     public const string CibilBypass = "CibilBypass";
 
+    /// <summary>Unblocks Customer Details when Digio KYC checks are missing; scoped to the exact set of gaps (the subject key).</summary>
+    public const string KycBypass = "KycBypass";
+
     /// <summary>Unblocks Loan &amp; Security when the vehicle is over cap or absent from the catalog.</summary>
     public const string MakeModelCapBypass = "MakeModelCapBypass";
 
@@ -94,6 +97,7 @@ public class AdminRequest
     public static string LabelFor(string requestType) => requestType switch
     {
         CibilBypass => "CIBIL bypass",
+        KycBypass => "KYC bypass",
         MakeModelCapBypass => "Vehicle cap bypass",
         MakeModelCapChange => "Vehicle cap change",
         Reject => "Reject application",

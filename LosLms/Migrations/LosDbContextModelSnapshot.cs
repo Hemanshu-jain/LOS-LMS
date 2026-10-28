@@ -1411,6 +1411,10 @@ namespace LosLms.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Consent")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
                     b.Property<string>("CustomerChannel")
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
