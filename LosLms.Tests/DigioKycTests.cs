@@ -318,6 +318,17 @@ public sealed class DigioKycTests : IDisposable
     }
 
     [Fact]
+    public async Task DigiLocker_IfDigioAnswers405ToPost_TheStatusIsReadWithGet()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
+
+        _digio.On = (m, _, _) => m == HttpMethod.Get ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, """{"message":"Method not allowed"}""");
+
+        Assert.Equal("Verified", (await Kyc().CompleteDigiLockerAsync(1, start.RequestId!)).Verdict);
+    }
+
+    [Fact]
     public async Task DigiLocker_Expired_ClosesTheRequest_WithoutEvidence()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");

@@ -45,7 +45,7 @@ public static partial class DigioMasker
 
     /// <summary>GET /system/digio/masked-response/{requestId}: SuperAdmin only. Asks Digio for a DigiLocker request's result and returns it MASKED.</summary>
     public static void MapDigioMaskedView(this WebApplication app) =>
-        app.MapGet("/system/digio/masked-response/{requestId}", async (string requestId, DigioClient digio, IDbContextFactory<LosDbContext> dbFactory) =>
+        app.MapGet("/system/digio/masked-response/{requestId}", async (string requestId, DigioKyc kyc, IDbContextFactory<LosDbContext> dbFactory) =>
         {
             await using var db = await dbFactory.CreateDbContextAsync();
             var req = await db.DigioRequests.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId && r.DigioId != null);
@@ -54,7 +54,7 @@ public static partial class DigioMasker
                 return Results.NotFound();
             }
 
-            var r = await digio.PostAsync(req.CompanyId, null, $"/client/kyc/v2/{Uri.EscapeDataString(req.DigioId!)}/response?detail_response=true", new { }, null);
+            var r = await kyc.FetchDigiLockerAsync(req.CompanyId, req.DigioId!, null);
             return r.Data is { } d
                 ? Results.Json(new JsonObject { ["http"] = r.HttpStatus, ["response"] = Mask(JsonNode.Parse(d.GetRawText())) })
                 : Results.Json(new { http = r.HttpStatus, error = r.Error });

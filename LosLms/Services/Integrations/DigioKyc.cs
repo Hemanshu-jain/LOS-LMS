@@ -326,8 +326,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             return new(req.Status == "Succeeded" ? "Verified" : null, $"Request is {req.Status.ToLowerInvariant()}.", RequestId: requestId);
         }
 
-        // POST, not GET: Digio answers "Method not allowed" to a GET here (the Phase 0 harness used POST and got 200).
-        var r = await digio.PostAsync(companyId, null, $"/client/kyc/v2/{Uri.EscapeDataString(req.DigioId)}/response?detail_response=true", new { }, req.ApplicationId);
+        var r = await FetchDigiLockerAsync(companyId, req.DigioId, req.ApplicationId);
         if (Failure(r) is { } fail)
         {
             return fail with { RequestId = requestId };
@@ -382,6 +381,14 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         });
         await db.SaveChangesAsync();
         return new("Verified", "Aadhaar fetched from DigiLocker.", RequestId: requestId);
+    }
+
+    /// <summary>A DigiLocker request's current result. The spec says POST (the harness got 200 with it); if Digio answers 405 anyway, GET is tried once.</summary>
+    public async Task<DigioResult> FetchDigiLockerAsync(int companyId, string kid, string? applicationId)
+    {
+        var path = $"/client/kyc/v2/{Uri.EscapeDataString(kid)}/response?detail_response=true";
+        var r = await digio.PostAsync(companyId, null, path, new { }, applicationId);
+        return r.HttpStatus == 405 ? await digio.GetAsync(companyId, null, path, applicationId) : r;
     }
 
     private static JsonElement? DigiLockerAction(JsonElement? root)
@@ -483,7 +490,8 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         }
 
         var notEnabled = r.HttpStatus is 403 or 404;
-        return new(null, notEnabled ? "Not enabled on your Digio account. Ask Digio to switch it on." : r.Error ?? "Digio could not complete this.", NotEnabled: notEnabled, RequestId: r.RequestId);
+        var detail = r.HttpStatus > 0 ? $" (HTTP {r.HttpStatus})" : "";
+        return new(null, notEnabled ? "Not enabled on your Digio account. Ask Digio to switch it on." : (r.Error ?? "Digio could not complete this.") + detail, NotEnabled: notEnabled, RequestId: r.RequestId);
     }
 
     public static string Fingerprint(params string?[] parts) =>
