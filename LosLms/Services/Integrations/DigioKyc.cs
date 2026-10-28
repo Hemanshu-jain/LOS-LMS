@@ -467,6 +467,11 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             return null;
         }
 
+        if (r.Status == DigioStatus.NotConfigured)
+        {
+            return new(null, "Digio keys are not saved for this company yet. Ask the system administrator.", RequestId: r.RequestId);
+        }
+
         var notEnabled = r.HttpStatus is 403 or 404;
         return new(null, notEnabled ? "Not enabled on your Digio account. Ask Digio to switch it on." : r.Error ?? "Digio could not complete this.", NotEnabled: notEnabled, RequestId: r.RequestId);
     }

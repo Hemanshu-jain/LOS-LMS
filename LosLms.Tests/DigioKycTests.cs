@@ -51,6 +51,8 @@ public sealed class DigioKycTests : IDisposable
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
         services.AddScoped<DigioKyc>();
+        services.AddScoped<DigioEsignService>();
+        services.AddScoped<DigioNachService>();
         services.AddScoped<DigioWebhookService>();
         services.AddSingleton<DigioWebhookHealth>();
         services.AddSingleton<DigioBackgroundTasks>();

@@ -29,7 +29,7 @@
 
             @if (_settings.PanVerify)
             {
-                <div class="identity-row">
+                <div class="dg-row">
                     <span>PAN</span>
                     <VerifyBadge Info="@BadgeFor(null, "PAN", KycEvidenceCheck.FingerprintOf(Pan, FullName, Dob))" />
                     <VerifyButton Label="Verify PAN" DisabledReason="@PanReason" OnClick="VerifyPanAsync" />
@@ -38,7 +38,7 @@
 
             @if (_settings.DigiLocker)
             {
-                <div class="identity-row">
+                <div class="dg-row">
                     <span>Aadhaar</span>
                     <VerifyBadge Info="@BadgeFor(_dl, "AADHAAR", null)" />
                     <VerifyButton Label="Send DigiLocker link" DisabledReason="@DigiLockerReason" OnClick="() => StartDigiLockerAsync(false)" />
@@ -53,14 +53,14 @@
 
             @if (_settings.Aml)
             {
-                <div class="identity-row">
+                <div class="dg-row">
                     <span>AML</span>
                     <VerifyBadge Info="@BadgeFor(null, "AML", KycEvidenceCheck.AmlFingerprintOf(FullName, Pan))" />
                     <VerifyButton Label="Screen now" DisabledReason="@AmlReason" OnClick="ScreenAmlAsync" />
                 </div>
                 @if (Latest("AML") is { Verdict: "Mismatch" } && (Tenant.IsAdmin || Tenant.IsSuperAdmin))
                 {
-                    <div class="identity-row">
+                    <div class="dg-row">
                         <input class="field-input" placeholder="Why these are false positives" @bind="_amlNote" @bind:event="oninput" maxlength="300" />
                         <button type="button" class="verify-button" @onclick="AcceptAmlAsync">Accept as false positive</button>
                     </div>

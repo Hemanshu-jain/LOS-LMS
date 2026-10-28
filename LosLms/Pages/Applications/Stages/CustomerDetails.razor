@@ -214,11 +214,15 @@ else
                                                @oninput="e => party.Pan = Upper(e.Value)"
                                                @onblur='() => Validate("pan")' />
                                     </FormField>
-                                    <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "pan-ocr", PanOcrUnavailable)'>Verify OCR</button>
+                                    @* The Digio panel below replaces this button when PAN verification is switched on for the company. *@
+                                    @if (!_digioPan)
+                                    {
+                                        <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "pan-ocr", PanOcrUnavailable)'>Verify OCR</button>
+                                    }
                                 </div>
-                                @if (_notices.TryGetValue("pan-ocr", out var panNotice))
+                                @if (!_digioPan && _notices.TryGetValue("pan-ocr", out var panNotice))
                                 {
-                                    <p class="inline-error" role="alert">@panNotice</p>
+                                    <p class="field-caption" role="status">@panNotice</p>
                                 }
 
                                 <div class="identity-row">
@@ -232,11 +236,14 @@ else
                                                @onblur='() => { _aadhaarFocused = false; Validate("aadhaar"); }' />
                                     </FormField>
                                     <button type="button" class="verify-button" @onclick="() => _aadhaarShown = !_aadhaarShown">@(_aadhaarShown ? "Hide" : "Show")</button>
-                                    <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "aadhaar-ocr", AadhaarOcrUnavailable)'>Verify OCR</button>
+                                    @if (!_digioAadhaar)
+                                    {
+                                        <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "aadhaar-ocr", AadhaarOcrUnavailable)'>Verify OCR</button>
+                                    }
                                 </div>
-                                @if (_notices.TryGetValue("aadhaar-ocr", out var aadhaarNotice))
+                                @if (!_digioAadhaar && _notices.TryGetValue("aadhaar-ocr", out var aadhaarNotice))
                                 {
-                                    <p class="inline-error" role="alert">@aadhaarNotice</p>
+                                    <p class="field-caption" role="status">@aadhaarNotice</p>
                                 }
 
                                 <PartyKycPanel CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" PartyId="party.Id"
@@ -536,8 +543,8 @@ else
 
     // No provider is configured for any of these. Each attempt reports that honestly and never
     // sets a *Verified flag — a fake success here would be a compliance problem, not a shortcut.
-    private const string PanOcrUnavailable = "PAN verification unavailable — API key not configured. Enter and save manually.";
-    private const string AadhaarOcrUnavailable = "Aadhaar verification unavailable — API key not configured. Enter and save manually.";
+    private const string PanOcrUnavailable = "Digio PAN verification is not switched on for this company. Enter and save manually.";
+    private const string AadhaarOcrUnavailable = "Digio Aadhaar verification is not switched on for this company. Enter and save manually.";
     private const string MobileVerifyUnavailable = "Mobile verification unavailable — SMS provider not configured.";
 
     private const long MaxUploadBytes = 5 * 1024 * 1024;
@@ -614,6 +621,8 @@ else
     private GateResult _kycGate = GateResult.Clear;
     private string? _kycKey;
     private bool _digioConsent;
+    private bool _digioPan;
+    private bool _digioAadhaar;
 
     private async Task RefreshKycGateAsync()
     {
@@ -673,6 +682,9 @@ else
 
         if (_application is not null)
         {
+            var digio = await db.DigioSettings.AsNoTracking().FirstOrDefaultAsync(d => d.CompanyId == _application.CompanyId);
+            _digioPan = digio?.PanVerify == true;
+            _digioAadhaar = digio?.DigiLocker == true;
             var existing = await db.Parties
                 .AsNoTracking()
                 .Where(p => p.ApplicationId == ApplicationId)
