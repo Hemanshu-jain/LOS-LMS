@@ -24,7 +24,8 @@ public static class LoanAgreementPdf
         ApprovalDecision decision,
         decimal emi,
         IReadOnlyList<Party> parties,
-        SecurityDetail? security)
+        SecurityDetail? security,
+        byte[]? lenderSignature = null)
     {
         var lender = string.IsNullOrWhiteSpace(companyName) ? "the Lender" : companyName.Trim();
 
@@ -143,7 +144,17 @@ public static class LoanAgreementPdf
                     {
                         row.RelativeItem().Column(col =>
                         {
-                            col.Item().Text("_______________________");
+                            // The lender's signature is an image we stamp here (it is not a Digio signer).
+                            if (lenderSignature is { Length: > 0 })
+                            {
+                                col.Item().Height(44).AlignLeft().Image(lenderSignature).FitArea();
+                                col.Item().Text("_______________________");
+                            }
+                            else
+                            {
+                                col.Item().Text("_______________________");
+                            }
+
                             col.Item().Text("For the Lender").FontSize(9).FontColor("#5b6472");
                         });
                         row.RelativeItem().Column(col =>

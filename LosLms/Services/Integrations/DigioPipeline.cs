@@ -261,8 +261,20 @@ public sealed class DigioReconciler(IServiceScopeFactory scopes, ILogger<DigioRe
             asked++;
         }
 
-        // Forget documents that are no longer 'Sent' or waiting.
-        var live = sent.Select(d => d.DocId).Concat(waiting.Select(r => r.Id)).ToHashSet();
+
+        // Mandates not yet final (physical / eSign ones take days): same backoff, the confirming GET moves them forward.
+        var nach = scope.ServiceProvider.GetRequiredService<DigioNachService>();
+        var open = await nach.OpenMandatesAsync();
+        foreach (var m in open.Where(m => !_state.TryGetValue(m.MandateId, out var s) || s.Next <= now).Take(Math.Max(0, PerRun - asked)))
+        {
+            var polls = _state.TryGetValue(m.MandateId, out var prev) ? prev.Polls : 0;
+            _state[m.MandateId] = (polls + 1, now + Backoff[Math.Min(polls, Backoff.Length - 1)]);
+            await nach.ConfirmAsync(m.CompanyId, m.MandateId);
+            asked++;
+        }
+
+        // Forget documents, DigiLocker requests and mandates that are no longer open.
+        var live = sent.Select(d => d.DocId).Concat(waiting.Select(r => r.Id)).Concat(open.Select(m => m.MandateId)).ToHashSet();
         foreach (var key in _state.Keys.Where(k => !live.Contains(k)))
         {
             _state.TryRemove(key, out _);

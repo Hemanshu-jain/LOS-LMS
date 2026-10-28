@@ -65,6 +65,33 @@ public class EnachMandate : INachMandate
     /// <summary>NetBanking / DebitCard. Only meaningful for a Digital mandate.</summary>
     [MaxLength(20)] public string? DigitalMode { get; set; }
 
+    // ---- Digio DigiCollect (06-NACH.md section 2). Status above stays Pending/Registered/Rejected; the detail lives here. ----
+
+    /// <summary>Digio's mandate id (ENA...).</summary>
+    [MaxLength(40)] public string? DigioMandateId { get; set; }
+
+    /// <summary>API / ESIGN / PHYSICAL.</summary>
+    [MaxLength(20)] public string? AuthMode { get; set; }
+
+    [MaxLength(40)] public string? DestinationBankId { get; set; }
+
+    /// <summary>Our forward-only state: Requested, AuthSuccess, InBankProcessing, Registered, AuthFailed, Rejected, Expired, Cancelled.</summary>
+    [MaxLength(30)] public string? DigioState { get; set; }
+
+    /// <summary>Digio's raw bank_details.state.</summary>
+    [MaxLength(30)] public string? BankState { get; set; }
+
+    [MaxLength(300)] public string? RejectReason { get; set; }
+
+    [MaxLength(32)] public string? DigioRequestId { get; set; }
+
+    public decimal? CollectionAmount { get; set; }
+    public decimal? MaximumAmount { get; set; }
+    public DateTime? RegisteredAt { get; set; }
+
+    /// <summary>IFileStore key of the Digio-generated physical form.</summary>
+    [MaxLength(400)] public string? SignedFormPath { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

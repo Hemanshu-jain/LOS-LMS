@@ -2,6 +2,7 @@
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Roles = TenantContext.SuperAdminRole)]
 @inject IDbContextFactory<LosDbContext> DbFactory
@@ -9,6 +10,7 @@
 @inject DigioWebhookHealth WebhookHealth
 @inject NavigationManager Nav
 @inject IConfiguration Config
+@inject IFileStore Files
 
 <PageTitle>Digio keys · LOS/LMS</PageTitle>
 
@@ -62,6 +64,18 @@
                         {
                             <label class="dk-check"><input type="checkbox" checked="@r.Products[name]" @onchange="e => r.Products[name] = (bool)(e.Value ?? false)" /> @Label(name)</label>
                         }
+                    </fieldset>
+
+                    <fieldset class="dk-products">
+                        <legend>e-NACH and agreement signature</legend>
+                        <label>NACH config id (@(r.Production ? "production" : "sandbox"))
+                            <input class="field-input" @bind="r.ConfigId" autocomplete="off" placeholder="@(r.ConfigMask ?? "")" /></label>
+                        <label>Mandate category<input class="field-input" maxlength="10" @bind="r.Category" /></label>
+                        <label>Max amount = EMI ×<input class="field-input" type="number" step="0.1" min="1" @bind="r.Multiplier" /></label>
+                        <label>e-Stamp inventory tag (blank = none)<input class="field-input" maxlength="80" @bind="r.EstampTag" /></label>
+                        <label>Lender signature image (PNG or JPG)
+                            <InputFile OnChange="e => UploadSignatureAsync(r, e)" accept=".png,.jpg,.jpeg" /></label>
+                        @if (r.HasSignature) { <span class="dk-msg">Signature on file. It is stamped on each new agreement.</span> }
                     </fieldset>
 
                     <p class="dk-muted">Webhook URL for the Digio dashboard (Profile → Webhooks):
@@ -125,6 +139,7 @@
         public DateTime? LastReceived, LastProblemAt; public string? Problem;
         public string ConfirmCode = ""; public bool Testing; public string? TestResult;
         public Dictionary<string, bool> Products = new();
+        public string ConfigId = "", Category = "L001", EstampTag = ""; public string? ConfigMask; public decimal Multiplier = 2m; public bool HasSignature;
     }
 
     // The DigioSettings product switches, by property name (the form and the table stay in step through this one list).
@@ -169,6 +184,9 @@
             return new Row
             {
                 WasProduction = saved?.Production ?? false,
+                Category = row?.NachCategory ?? "L001", Multiplier = row?.NachMaxMultiplier ?? 2m, EstampTag = row?.EstampTag ?? "",
+                ConfigMask = Mask(saved?.Production == true ? row?.EnachConfigIdProduction : row?.EnachConfigIdSandbox),
+                HasSignature = !string.IsNullOrEmpty(row?.LenderSignaturePath),
                 Products = ProductNames.ToDictionary(n => n, n => row is not null && (bool)typeof(DigioSettings).GetProperty(n)!.GetValue(row)!),
                 Id = c.Id, Name = c.Name, Code = c.Code,
                 Configured = saved is not null,
@@ -227,8 +245,60 @@
             typeof(DigioSettings).GetProperty(name)!.SetValue(row, on);
         }
 
+        // A blank config id keeps the saved one. It goes to the slot of the environment being saved, so a sandbox id can't reach production.
+        if (!string.IsNullOrWhiteSpace(r.ConfigId))
+        {
+            if (r.Production) { row.EnachConfigIdProduction = r.ConfigId.Trim(); } else { row.EnachConfigIdSandbox = r.ConfigId.Trim(); }
+            r.ConfigMask = Mask(r.ConfigId.Trim());
+            r.ConfigId = "";
+        }
+
+        row.NachCategory = string.IsNullOrWhiteSpace(r.Category) ? "L001" : r.Category.Trim().ToUpperInvariant();
+        row.NachMaxMultiplier = r.Multiplier < 1m ? 1m : r.Multiplier;
+        row.EstampTag = string.IsNullOrWhiteSpace(r.EstampTag) ? null : r.EstampTag.Trim();
         row.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
+    }
+
+    private static string? Mask(string? id) => string.IsNullOrEmpty(id) ? null : "••••" + (id.Length > 4 ? id[^4..] : id) + " (saved)";
+
+    /// <summary>The lender's signature image, kept in the file store and stamped on each new loan agreement (the lender is not a Digio signer).</summary>
+    private async Task UploadSignatureAsync(Row r, InputFileChangeEventArgs e)
+    {
+        const int Max = 1024 * 1024;
+        try
+        {
+            var ext = Path.GetExtension(e.File.Name).ToLowerInvariant();
+            await using var stream = e.File.OpenReadStream(Max);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var bytes = buffer.ToArray();
+            if (ext is not (".png" or ".jpg" or ".jpeg") || !FileSignature.Matches(ext, bytes))
+            {
+                r.Message = "That is not a PNG or JPG image.";
+                return;
+            }
+
+            var key = $"App_Data/lender-signature/{r.Id}{(ext == ".png" ? ".png" : ".jpg")}";
+            await Files.SaveAsync(key, bytes);
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var row = await db.DigioSettings.FirstOrDefaultAsync(x => x.CompanyId == r.Id);
+            if (row is null)
+            {
+                row = new DigioSettings { CompanyId = r.Id };
+                db.DigioSettings.Add(row);
+            }
+
+            row.LenderSignaturePath = key;
+            row.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            r.HasSignature = true;
+            r.Message = "Signature saved.";
+        }
+        catch (IOException)
+        {
+            r.Message = "The image is over 1 MB.";
+        }
     }
 
     /// <summary>A harmless authenticated call (the DigiCollect bank list). OK means the keys work; 403 means they work but the product is off.</summary>

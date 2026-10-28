@@ -137,6 +137,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
     public DbSet<DigioSettings> DigioSettings => Set<DigioSettings>();
 
+    public DbSet<EsignSigner> EsignSigners => Set<EsignSigner>();
+
     /// <summary>Encrypted admin-set passwords (PasswordVault). Not tenant-filtered.</summary>
     public DbSet<CredentialVaultEntry> CredentialVault => Set<CredentialVaultEntry>();
 
@@ -1053,9 +1055,17 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
             entity.HasQueryFilter(e => _isSuperAdmin || e.CompanyId == _companyId);
         });
 
+        modelBuilder.Entity<EsignSigner>(entity =>
+        {
+            entity.ToTable("EsignSigner");
+            entity.HasIndex(s => new { s.CompanyId, s.ApplicationId, s.DocumentId });
+            entity.HasQueryFilter(s => _isSuperAdmin || s.CompanyId == _companyId);
+        });
+
         modelBuilder.Entity<DigioSettings>(entity =>
         {
             entity.ToTable("DigioSettings");
+            entity.Property(s => s.NachMaxMultiplier).HasPrecision(4, 2);
             entity.HasIndex(s => s.CompanyId).IsUnique();
             entity.HasQueryFilter(s => _isSuperAdmin || s.CompanyId == _companyId);
         });

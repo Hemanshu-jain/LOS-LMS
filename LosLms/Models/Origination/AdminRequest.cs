@@ -87,6 +87,9 @@ public class AdminRequest
     /// </summary>
     public const string SanctionApproval = "SanctionApproval";
 
+    /// <summary>Lets funds be released although the Digio agreement-signed / mandate-registered gate is not met.</summary>
+    public const string DigioReleaseBypass = "DigioReleaseBypass";
+
     // ---- Statuses ----
 
     public const string Pending = "Pending";
@@ -102,6 +105,7 @@ public class AdminRequest
         MakeModelCapChange => "Vehicle cap change",
         Reject => "Reject application",
         SanctionApproval => "Sanction approval",
+        DigioReleaseBypass => "Release without signed agreement / mandate",
         _ => requestType,
     };
 }

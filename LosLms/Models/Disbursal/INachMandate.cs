@@ -37,4 +37,16 @@ public interface INachMandate
 
     /// <summary>NetBanking / DebitCard.</summary>
     string? DigitalMode { get; set; }
+
+    string? DigioMandateId { get; set; }
+    string? AuthMode { get; set; }
+    string? DestinationBankId { get; set; }
+    string? DigioState { get; set; }
+    string? BankState { get; set; }
+    string? RejectReason { get; set; }
+    string? DigioRequestId { get; set; }
+    decimal? CollectionAmount { get; set; }
+    decimal? MaximumAmount { get; set; }
+    DateTime? RegisteredAt { get; set; }
+    string? SignedFormPath { get; set; }
 }
