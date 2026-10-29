@@ -18,6 +18,9 @@ public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory
     /// <summary>What Digio's registration_cancel reason codes mean is not known yet (ask Digio); the Admin picks one.</summary>
     public static readonly string[] ReasonCodes = ["C001", "C002", "C003", "C004"];
 
+    private static string Why(DigioResult r) =>
+        r.Status == DigioStatus.NotConfigured ? "Digio keys are not saved for this company." : (r.Error ?? "Digio gave no reason.").TrimEnd('.') + ".";
+
     public async Task<ClosureResult> CloseAsync(int loanAccountId, bool foreclosure, string reasonCode, string adminUserId)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
@@ -57,7 +60,7 @@ public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory
                 if (r.Status != DigioStatus.Ok)
                 {
                     await db.SaveChangesAsync(); // keep the ones already cancelled
-                    return new(false, "A pending debit could not be cancelled at Digio: " + (r.Error ?? "no reason given") + " Nothing was closed. Try again.");
+                    return new(false, "A pending debit could not be cancelled at Digio: " + Why(r) + " Nothing was closed. Try again.");
                 }
             }
 
@@ -75,7 +78,7 @@ public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory
             if (r.Status != DigioStatus.Ok)
             {
                 await db.SaveChangesAsync();
-                return new(false, "The mandate could not be cancelled at Digio: " + (r.Error ?? "no reason given") + " The loan was NOT closed. Try again.");
+                return new(false, "The mandate could not be cancelled at Digio: " + Why(r) + " The loan was NOT closed. Try again.");
             }
         }
 
