@@ -242,6 +242,11 @@ public class DigioSettings
     /// <summary>Days to wait after a bounce before presenting again (Digio refuses a new debit within 3 days of a failure, DG103).</summary>
     public int RepresentAfterDays { get; set; } = 3;
 
+    /// <summary>Charge for each bounced debit (before GST), and the GST % on it. An Admin can waive a charge.</summary>
+    public decimal BounceChargeAmount { get; set; } = 500m;
+
+    public decimal BounceChargeGstPct { get; set; } = 18m;
+
     /// <summary>The NBFC's collection account at the sponsor bank, per environment (a sandbox account must never receive production debits).</summary>
     [MaxLength(30)]
     public string? CorporateAccountSandbox { get; set; }

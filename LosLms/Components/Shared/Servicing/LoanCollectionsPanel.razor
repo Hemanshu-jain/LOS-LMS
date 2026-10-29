@@ -1,0 +1,99 @@
+@using System.Globalization
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject BounceService Bounces
+@inject LoanClosureService Closure
+@inject TenantContext Tenant
+
+@* For the loan page (/loans/{id}): bounce charges (an Admin can waive) and closing the loan (Admin only). Drop it in with <LoanCollectionsPanel LoanAccountId="..." />. *@
+@if (_loaded)
+{
+    <h2 class="loan-h">Charges</h2>
+    @if (_charges.Count == 0) { <p class="dg-muted">No charges.</p> }
+    else
+    {
+        <table class="dg-signers">
+            <thead><tr><th>Charge</th><th>Amount</th><th>GST</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var c in _charges)
+            {
+                <tr>
+                    <td>@c.Kind · @c.Note</td>
+                    <td>@c.Amount.ToString("0.00", CultureInfo.InvariantCulture)</td>
+                    <td>@c.Gst.ToString("0.00", CultureInfo.InvariantCulture)</td>
+                    <td><span class="dg-chip dg-@(c.Status == "Open" ? "warn" : "off")">@c.Status</span></td>
+                    <td>
+                        @if (_admin && c.Status == "Open")
+                        {
+                            <input class="field-input" placeholder="Why waive" maxlength="150" @bind="_waiveNote[c.Id]" @bind:event="oninput" />
+                            <button type="button" class="verify-button" @onclick="() => WaiveAsync(c.Id)">Waive</button>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+
+    @if (_admin && _active)
+    {
+        <h2 class="loan-h">Close this loan</h2>
+        <p class="dg-muted">Cancels every debit not yet taken, cancels the mandate at Digio, then closes the loan.</p>
+        <div class="dg-row">
+            <select class="field-input" @bind="_reason" style="max-width:260px">
+                <option value="">Cancellation reason…</option>
+                @foreach (var rc in LoanClosureService.ReasonCodes) { <option value="@rc">@rc (meaning TBD from Digio)</option> }
+            </select>
+            <label><input type="checkbox" @bind="_foreclose" /> Foreclosure (instalments are still unpaid)</label>
+            <label><input type="checkbox" @bind="_confirm" /> I confirm</label>
+            <button type="button" class="verify-button" disabled="@(!_confirm || _reason == "" || _busy)" @onclick="CloseAsync">Close loan</button>
+        </div>
+        @if (_message is not null) { <p class="dg-muted" role="status">@_message</p> }
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public int LoanAccountId { get; set; }
+
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<LoanCharge> _charges = new();
+    private readonly Dictionary<int, string> _waiveNote = new();
+    private bool _loaded, _admin, _active, _foreclose, _confirm, _busy;
+    private string _reason = "";
+    private string? _message;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        _admin = Tenant.IsAdmin || Tenant.IsSuperAdmin;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _charges = await db.LoanCharges.AsNoTracking().Where(c => c.LoanAccountId == LoanAccountId).OrderBy(c => c.Id).ToListAsync();
+        foreach (var c in _charges) { _waiveNote.TryAdd(c.Id, ""); }
+        _active = await db.LoanAccounts.AsNoTracking().AnyAsync(a => a.Id == LoanAccountId && a.Status == "Active");
+        _loaded = true;
+    }
+
+    private async Task WaiveAsync(int id)
+    {
+        _message = await Bounces.WaiveChargeAsync(id, _waiveNote.GetValueOrDefault(id, ""), Tenant.UserId ?? "") ? "Charge waived." : "Add a reason to waive.";
+        await OnParametersSetAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task CloseAsync()
+    {
+        _busy = true;
+        try
+        {
+            var r = await Closure.CloseAsync(LoanAccountId, _foreclose, _reason, Tenant.UserId ?? "");
+            _message = r.Message;
+            await OnParametersSetAsync();
+            await OnChanged.InvokeAsync();
+        }
+        finally { _busy = false; }
+    }
+}

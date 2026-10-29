@@ -1251,6 +1251,70 @@ namespace LosLms.Migrations
                     b.ToTable("Classification", (string)null);
                 });
 
+            modelBuilder.Entity("LosLms.Models.CollectionTask", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("AssignedOfficerId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("InstalmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int>("LoanAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ResolvedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "Status");
+
+                    b.HasIndex("InstalmentId", "Kind", "Status");
+
+                    b.ToTable("CollectionTask", (string)null);
+                });
+
             modelBuilder.Entity("LosLms.Models.Company", b =>
                 {
                     b.Property<int>("Id")
@@ -1515,6 +1579,14 @@ namespace LosLms.Migrations
 
                     b.Property<bool>("Aml")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal>("BounceChargeAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("BounceChargeGstPct")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<string>("BrandLogoUrl")
                         .HasMaxLength(300)
@@ -3805,6 +3877,50 @@ namespace LosLms.Migrations
                     b.HasIndex("ApplicationId");
 
                     b.ToTable("SendBackLog", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.SettlementCheck", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CheckedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Cid")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<decimal>("DigioTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("MismatchCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("OurTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("TxnCount")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "Cid");
+
+                    b.ToTable("SettlementCheck", (string)null);
                 });
 
             modelBuilder.Entity("LosLms.Models.Tvr", b =>

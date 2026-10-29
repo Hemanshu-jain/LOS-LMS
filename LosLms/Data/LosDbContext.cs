@@ -149,6 +149,10 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
     public DbSet<LoanCharge> LoanCharges => Set<LoanCharge>();
 
+    public DbSet<CollectionTask> CollectionTasks => Set<CollectionTask>();
+
+    public DbSet<SettlementCheck> SettlementChecks => Set<SettlementCheck>();
+
     /// <summary>Encrypted admin-set passwords (PasswordVault). Not tenant-filtered.</summary>
     public DbSet<CredentialVaultEntry> CredentialVault => Set<CredentialVaultEntry>();
 
@@ -1110,6 +1114,23 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
             entity.HasQueryFilter(r => _isSuperAdmin || r.CompanyId == _companyId);
         });
 
+        modelBuilder.Entity<CollectionTask>(entity =>
+        {
+            entity.ToTable("CollectionTask");
+            entity.HasIndex(t => new { t.InstalmentId, t.Kind, t.Status });
+            entity.HasIndex(t => new { t.CompanyId, t.Status });
+            entity.HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<SettlementCheck>(entity =>
+        {
+            entity.ToTable("SettlementCheck");
+            entity.HasIndex(c => new { c.CompanyId, c.Cid });
+            entity.Property(c => c.DigioTotal).HasPrecision(18, 2);
+            entity.Property(c => c.OurTotal).HasPrecision(18, 2);
+            entity.HasQueryFilter(c => _isSuperAdmin || c.CompanyId == _companyId);
+        });
+
         modelBuilder.Entity<LoanCharge>(entity =>
         {
             entity.ToTable("LoanCharge");
@@ -1129,6 +1150,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
         {
             entity.ToTable("DigioSettings");
             entity.Property(s => s.NachMaxMultiplier).HasPrecision(4, 2);
+            entity.Property(s => s.BounceChargeAmount).HasPrecision(18, 2);
+            entity.Property(s => s.BounceChargeGstPct).HasPrecision(5, 2);
             entity.HasIndex(s => s.CompanyId).IsUnique();
             entity.HasQueryFilter(s => _isSuperAdmin || s.CompanyId == _companyId);
         });
