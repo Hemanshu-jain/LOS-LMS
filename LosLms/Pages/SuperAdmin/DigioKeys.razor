@@ -73,6 +73,11 @@
                         <label>Mandate category<input class="field-input" maxlength="10" @bind="r.Category" /></label>
                         <label>Max amount = EMI ×<input class="field-input" type="number" step="0.1" min="1" @bind="r.Multiplier" /></label>
                         <label>e-Stamp inventory tag (blank = none)<input class="field-input" maxlength="80" @bind="r.EstampTag" /></label>
+                        <label>Collection account no. (@(r.Production ? "production" : "sandbox"))
+                            <input class="field-input" maxlength="30" @bind="r.CorpAccount" autocomplete="off" placeholder="@(r.CorpMask ?? "")" /></label>
+                        <label>Debit lead days<input class="field-input" type="number" min="1" max="7" @bind="r.LeadDays" /></label>
+                        <label>Debit attempts per EMI<input class="field-input" type="number" min="1" max="5" @bind="r.MaxAttempts" /></label>
+                        <label>Days before presenting again<input class="field-input" type="number" min="3" max="30" @bind="r.RepresentDays" /></label>
                         <label>Lender signature image (PNG or JPG)
                             <InputFile OnChange="e => UploadSignatureAsync(r, e)" accept=".png,.jpg,.jpeg" /></label>
                         @if (r.HasSignature) { <span class="dk-msg">Signature on file. It is stamped on each new agreement.</span> }
@@ -139,7 +144,7 @@
         public DateTime? LastReceived, LastProblemAt; public string? Problem;
         public string ConfirmCode = ""; public bool Testing; public string? TestResult;
         public Dictionary<string, bool> Products = new();
-        public string ConfigId = "", Category = "L001", EstampTag = ""; public string? ConfigMask; public decimal Multiplier = 2m; public bool HasSignature;
+        public string ConfigId = "", CorpAccount = "", Category = "L001", EstampTag = ""; public string? CorpMask; public int LeadDays = 2, MaxAttempts = 2, RepresentDays = 3; public string? ConfigMask; public decimal Multiplier = 2m; public bool HasSignature;
     }
 
     // The DigioSettings product switches, by property name (the form and the table stay in step through this one list).
@@ -186,6 +191,8 @@
                 WasProduction = saved?.Production ?? false,
                 Category = row?.NachCategory ?? "L001", Multiplier = row?.NachMaxMultiplier ?? 2m, EstampTag = row?.EstampTag ?? "",
                 ConfigMask = Mask(saved?.Production == true ? row?.EnachConfigIdProduction : row?.EnachConfigIdSandbox),
+                CorpMask = Mask(saved?.Production == true ? row?.CorporateAccountProduction : row?.CorporateAccountSandbox),
+                LeadDays = row?.DebitLeadDays ?? 2, MaxAttempts = row?.MaxAttempts ?? 2, RepresentDays = row?.RepresentAfterDays ?? 3,
                 HasSignature = !string.IsNullOrEmpty(row?.LenderSignaturePath),
                 Products = ProductNames.ToDictionary(n => n, n => row is not null && (bool)typeof(DigioSettings).GetProperty(n)!.GetValue(row)!),
                 Id = c.Id, Name = c.Name, Code = c.Code,
@@ -253,6 +260,18 @@
             r.ConfigId = "";
         }
 
+        // Like the config id: a blank keeps the saved account, and it goes to the slot of the environment being saved.
+        if (!string.IsNullOrWhiteSpace(r.CorpAccount))
+        {
+            if (r.Production) { row.CorporateAccountProduction = r.CorpAccount.Trim(); } else { row.CorporateAccountSandbox = r.CorpAccount.Trim(); }
+            r.CorpMask = Mask(r.CorpAccount.Trim());
+            r.CorpAccount = "";
+        }
+
+        // Debit timing. Digio needs the request by T-1 and refuses a new debit within 3 days of a failure (DG103).
+        row.DebitLeadDays = Math.Clamp(r.LeadDays, 1, 7);
+        row.MaxAttempts = Math.Clamp(r.MaxAttempts, 1, 5);
+        row.RepresentAfterDays = Math.Clamp(r.RepresentDays, 3, 30);
         row.NachCategory = string.IsNullOrWhiteSpace(r.Category) ? "L001" : r.Category.Trim().ToUpperInvariant();
         row.NachMaxMultiplier = r.Multiplier < 1m ? 1m : r.Multiplier;
         row.EstampTag = string.IsNullOrWhiteSpace(r.EstampTag) ? null : r.EstampTag.Trim();

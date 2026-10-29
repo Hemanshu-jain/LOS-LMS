@@ -105,7 +105,7 @@ public class Presentation
     [MaxLength(80)]
     public string? DigioTxnId { get; set; }
 
-    /// <summary>Created, Sent, InProgress, Succeeded, Failed or Cancelled.</summary>
+    /// <summary>Created, Sent, InProgress, Succeeded, Failed, NotPresented (never reached the bank: fix and present again) or Cancelled.</summary>
     [MaxLength(12)]
     public string Status { get; set; } = "Created";
 
