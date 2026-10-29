@@ -394,6 +394,10 @@ else
                                                          InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
                                             </div>
 
+                                            <div style="grid-column: 1 / -1;">
+                                                <TgPortalPanel ApplicationId="@ApplicationId" />
+                                            </div>
+
                                             <FormField Label="Invoice no." For="sec-invno">
                                                 <input id="sec-invno" type="text" class="field-input" @bind="_security.InvoiceNo" />
                                             </FormField>
