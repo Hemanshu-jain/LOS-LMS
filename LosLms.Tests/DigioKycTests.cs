@@ -85,6 +85,7 @@ public sealed class DigioKycTests : IDisposable
         using var db = Anonymous();
         Assert.True(db.Parties.IgnoreQueryFilters().Single().PanVerified);
         Assert.Equal("Verified", db.VerificationEvidence.IgnoreQueryFilters().Single().Verdict);
+        Assert.Contains("text v2", db.DigioRequests.IgnoreQueryFilters().Single().Consent); // consent is recorded on every request, nothing is ticked
     }
 
     [Fact]
@@ -177,7 +178,7 @@ public sealed class DigioKycTests : IDisposable
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"risk_level":"LOW","found":true,"total_alerts":2,"high_severity_alerts":0,"top_match_score":88.5}""");
         var id = PartyId();
 
-        var o = await Kyc().ScreenAmlAsync(1, "A1", id, "Raj Kumar", "ABCPE1234F", true, null);
+        var o = await Kyc().ScreenAmlAsync(1, "A1", id, "Raj Kumar", "ABCPE1234F", null);
 
         Assert.Equal("Mismatch", o.Verdict);
         Assert.False(await Kyc().AcceptAmlAlertsAsync(1, "A1", id, " ", "admin"));
@@ -191,7 +192,7 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"risk_level":"LOW","found":false,"total_alerts":0}""");
 
-        Assert.Equal("Verified", (await Kyc().ScreenAmlAsync(1, "A1", PartyId(), "Raj Kumar", null, true, null)).Verdict);
+        Assert.Equal("Verified", (await Kyc().ScreenAmlAsync(1, "A1", PartyId(), "Raj Kumar", null, null)).Verdict);
     }
 
     [Fact]
@@ -199,7 +200,7 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"risk_level":"LOW"}""");
 
-        Assert.Equal("Unavailable", (await Kyc().ScreenAmlAsync(1, "A1", PartyId(), "Raj Kumar", null, true, null)).Verdict);
+        Assert.Equal("Unavailable", (await Kyc().ScreenAmlAsync(1, "A1", PartyId(), "Raj Kumar", null, null)).Verdict);
     }
 
     [Fact]
@@ -207,19 +208,12 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.NotFound, """{"code":1024,"message":"Requested resource not found"}""");
 
-        var o = await Kyc().ScreenAmlAsync(1, "A1", PartyId(), "Raj Kumar", null, true, null);
+        var o = await Kyc().ScreenAmlAsync(1, "A1", PartyId(), "Raj Kumar", null, null);
 
         Assert.True(o.NotEnabled);
         Assert.Contains("Not enabled", o.Message);
         using var db = Anonymous();
         Assert.Empty(db.VerificationEvidence.IgnoreQueryFilters());
-    }
-
-    [Fact]
-    public async Task Aml_WithoutConsent_CallsNothing()
-    {
-        Assert.Contains("consent", (await Kyc().ScreenAmlAsync(1, "A1", PartyId(), "Raj Kumar", null, false, null)).Message);
-        Assert.Empty(_digio.Calls);
     }
 
     // ---- masking ----
@@ -234,7 +228,7 @@ public sealed class DigioKycTests : IDisposable
             return (HttpStatusCode.OK, """{"masked_output":"TUFTS0VE","details":{"masking_done_count":1,"already_masked_count":0}}""");
         };
 
-        var (masked, _) = await Kyc().MaskAadhaarAsync(1, "A1", PartyId(), [1, 2, 3], "image/png", "a.png", true, null);
+        var (masked, _) = await Kyc().MaskAadhaarAsync(1, "A1", PartyId(), [1, 2, 3], "image/png", "a.png", null);
 
         Assert.Equal(Convert.FromBase64String("TUFTS0VE"), masked);
         Assert.Contains("\"data_content_type\":\"PNG\"", sent);
@@ -245,7 +239,7 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"error_message":"No ID card detected in the image","details":{"already_masked_count":0,"masking_done_count":0}}""");
 
-        var (masked, message) = await Kyc().MaskAadhaarAsync(1, "A1", PartyId(), [1], "image/png", "a.png", true, null);
+        var (masked, message) = await Kyc().MaskAadhaarAsync(1, "A1", PartyId(), [1], "image/png", "a.png", null);
 
         Assert.Null(masked);
         Assert.Contains("No Aadhaar number found", message);
@@ -256,19 +250,18 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.InternalServerError, "{}");
 
-        var (masked, message) = await Kyc().MaskAadhaarAsync(1, "A1", PartyId(), [1], "image/png", "a.png", true, null);
+        var (masked, message) = await Kyc().MaskAadhaarAsync(1, "A1", PartyId(), [1], "image/png", "a.png", null);
 
         Assert.Null(masked);
         Assert.Contains("not saved", message);
     }
 
     [Fact]
-    public async Task Mask_RejectsOversizeWrongTypeAndNoConsent_WithoutCalling()
+    public async Task Mask_RejectsOversizeAndWrongType_WithoutCalling()
     {
         var id = PartyId();
-        Assert.Null((await Kyc().MaskAadhaarAsync(1, "A1", id, new byte[1_000_001], "image/png", "a.png", true, null)).Masked);
-        Assert.Null((await Kyc().MaskAadhaarAsync(1, "A1", id, [1], "image/gif", "a.gif", true, null)).Masked);
-        Assert.Null((await Kyc().MaskAadhaarAsync(1, "A1", id, [1], "image/png", "a.png", false, null)).Masked);
+        Assert.Null((await Kyc().MaskAadhaarAsync(1, "A1", id, new byte[1_000_001], "image/png", "a.png", null)).Masked);
+        Assert.Null((await Kyc().MaskAadhaarAsync(1, "A1", id, [1], "image/gif", "a.gif", null)).Masked);
         Assert.Empty(_digio.Calls);
     }
 
@@ -282,7 +275,7 @@ public sealed class DigioKycTests : IDisposable
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested","access_token":{"id":"GWT1"}}""");
 
-        var o = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", true, true, "https://x.test", "u1");
+        var o = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", true, "https://x.test", "u1");
 
         Assert.Equal("Sent", o.Verdict);
         Assert.Contains("/KID1/", o.Url);
@@ -292,14 +285,15 @@ public sealed class DigioKycTests : IDisposable
         Assert.Equal("WaitingForCustomer", row.Status);
         Assert.Equal("OnDevice", row.CustomerChannel);
         Assert.Equal("XXXXXX3210", row.NotifiedTo);
-        Assert.Contains("text v1", row.Consent);
+        Assert.Contains("text v2", row.Consent);
+        Assert.Contains("DigiLocker in-journey consent", row.Consent);
     }
 
     [Fact]
     public async Task DigiLocker_StillRequested_Waits_ThenCompletesOnce_FillsBlanksOnly_AndMetersOnce()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested","access_token":{"id":"GWT1"}}""");
-        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, "https://x.test", null);
 
         _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Requested) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
         Assert.Contains("Waiting", (await Kyc().CompleteDigiLockerAsync(1, start.RequestId!)).Message);
@@ -321,7 +315,7 @@ public sealed class DigioKycTests : IDisposable
     public async Task DigiLocker_IfDigioAnswers405ToPost_TheStatusIsReadWithGet()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
-        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, "https://x.test", null);
 
         _digio.On = (m, _, _) => m == HttpMethod.Get ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, """{"message":"Method not allowed"}""");
 
@@ -332,7 +326,7 @@ public sealed class DigioKycTests : IDisposable
     public async Task DigiLocker_Expired_ClosesTheRequest_WithoutEvidence()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
-        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, "https://x.test", null);
 
         _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, """{"id":"KID1","status":"expired"}""") : (HttpStatusCode.MethodNotAllowed, "{}");
         await Kyc().CompleteDigiLockerAsync(1, start.RequestId!);
@@ -346,7 +340,7 @@ public sealed class DigioKycTests : IDisposable
     public async Task DigiLocker_ReturnHint_AndTheReconciler_CompleteItWithoutTheOfficerRefreshing()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
-        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, true, "https://x.test", null);
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, "https://x.test", null);
         _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, "{}"); // the real endpoint is POST-only
 
         var reconciler = _provider.CreateScope().ServiceProvider.GetRequiredService<DigioReconciler>();

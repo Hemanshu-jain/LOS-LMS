@@ -249,7 +249,7 @@ else
                                 <PartyKycPanel CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" PartyId="party.Id"
                                                FullName="@party.FullName" Pan="@party.Pan" Dob="party.DateOfBirth" Mobile="@party.Mobile"
                                                Individual="@(party.CustomerCategory is null || !party.CustomerCategory.Contains("Company", StringComparison.OrdinalIgnoreCase))"
-                                               @bind-Consent="_digioConsent" OnChanged="SyncFromDigioAsync" />
+                                               OnChanged="SyncFromDigioAsync" />
 
                                 @* ---------- Bureau check ---------- *@
                                 @* Offered only once both identifiers exist — a bureau pull keyed on
@@ -620,7 +620,6 @@ else
 
     private GateResult _kycGate = GateResult.Clear;
     private string? _kycKey;
-    private bool _digioConsent;
     private bool _digioPan;
     private bool _digioAadhaar;
 
@@ -1170,7 +1169,7 @@ else
 
             var (masked, message) = await DigioKycService.MaskAadhaarAsync(_application.CompanyId, _application.Id, party.Id, bytes,
                 extension.ToLowerInvariant() switch { ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".pdf" => "application/pdf", _ => "" },
-                $"aadhaar{extension}", _digioConsent, null);
+                $"aadhaar{extension}", null);
             if (masked is null)
             {
                 _uploadError = message;
