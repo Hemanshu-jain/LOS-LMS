@@ -43,20 +43,38 @@ public static partial class DigioMasker
     [GeneratedRegex("[0-9]{8,}")]
     private static partial Regex DigitRun();
 
-    /// <summary>GET /system/digio/masked-response/{requestId}: SuperAdmin only. Asks Digio for a DigiLocker request's result and returns it MASKED.</summary>
-    public static void MapDigioMaskedView(this WebApplication app) =>
-        app.MapGet("/system/digio/masked-response/{requestId}", async (string requestId, DigioKyc kyc, IDbContextFactory<LosDbContext> dbFactory) =>
+    /// <summary>
+    /// SuperAdmin only. GET /system/digio/masked-response/{requestId} or /system/digio/masked-response/app/{applicationId} (the application's latest
+    /// DigiLocker request, whatever its state). Asks Digio for the result and returns it MASKED.
+    /// </summary>
+    public static void MapDigioMaskedView(this WebApplication app)
+    {
+        static async Task<IResult> Show(DigioRequest? req, DigioKyc kyc)
         {
-            await using var db = await dbFactory.CreateDbContextAsync();
-            var req = await db.DigioRequests.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId && r.DigioId != null);
-            if (req is null)
+            if (req?.DigioId is null)
             {
                 return Results.NotFound();
             }
 
-            var r = await kyc.FetchDigiLockerAsync(req.CompanyId, req.DigioId!, null);
+            var r = await kyc.FetchDigiLockerAsync(req.CompanyId, req.DigioId, null);
             return r.Data is { } d
-                ? Results.Json(new JsonObject { ["http"] = r.HttpStatus, ["response"] = Mask(JsonNode.Parse(d.GetRawText())) })
-                : Results.Json(new { http = r.HttpStatus, error = r.Error });
-        }).RequireAuthorization(new AuthorizeAttribute { Roles = TenantContext.SuperAdminRole });
+                ? Results.Json(new JsonObject { ["request"] = req.Id, ["http"] = r.HttpStatus, ["response"] = Mask(JsonNode.Parse(d.GetRawText())) })
+                : Results.Json(new { request = req.Id, http = r.HttpStatus, error = r.Error });
+        }
+
+        var superAdmin = new AuthorizeAttribute { Roles = TenantContext.SuperAdminRole };
+        app.MapGet("/system/digio/masked-response/{requestId}", async (string requestId, DigioKyc kyc, IDbContextFactory<LosDbContext> dbFactory) =>
+        {
+            await using var db = await dbFactory.CreateDbContextAsync();
+            return await Show(await db.DigioRequests.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId), kyc);
+        }).RequireAuthorization(superAdmin);
+
+        app.MapGet("/system/digio/masked-response/app/{applicationId}", async (string applicationId, DigioKyc kyc, IDbContextFactory<LosDbContext> dbFactory) =>
+        {
+            await using var db = await dbFactory.CreateDbContextAsync();
+            return await Show(await db.DigioRequests.IgnoreQueryFilters().AsNoTracking()
+                .Where(r => r.ApplicationId == applicationId && r.Operation == "DIGILOCKER_AADHAAR_PAN" && r.DigioId != null)
+                .OrderByDescending(r => r.RequestedAt).FirstOrDefaultAsync(), kyc);
+        }).RequireAuthorization(superAdmin);
+    }
 }
