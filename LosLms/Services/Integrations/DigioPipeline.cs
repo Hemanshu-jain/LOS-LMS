@@ -273,8 +273,19 @@ public sealed class DigioReconciler(IServiceScopeFactory scopes, ILogger<DigioRe
             asked++;
         }
 
-        // Forget documents, DigiLocker requests and mandates that are no longer open.
-        var live = sent.Select(d => d.DocId).Concat(waiting.Select(r => r.Id)).Concat(open.Select(m => m.MandateId)).ToHashSet();
+        // Debits Digio has not finished with: the same backoff; the confirming GET records the result and the receipt.
+        var collect = scope.ServiceProvider.GetRequiredService<DigioCollect>();
+        var debits = await collect.OpenAsync();
+        foreach (var d in debits.Where(d => !_state.TryGetValue(d.PresentationId, out var s) || s.Next <= now).Take(PerRun))
+        {
+            var polls = _state.TryGetValue(d.PresentationId, out var prev) ? prev.Polls : 0;
+            _state[d.PresentationId] = (polls + 1, now + Backoff[Math.Min(polls, Backoff.Length - 1)]);
+            await collect.ConfirmAsync(d.CompanyId, d.PresentationId);
+            asked++;
+        }
+
+        // Forget documents, DigiLocker requests, mandates and debits that are no longer open.
+        var live = sent.Select(d => d.DocId).Concat(waiting.Select(r => r.Id)).Concat(open.Select(m => m.MandateId)).Concat(debits.Select(d => d.PresentationId)).ToHashSet();
         foreach (var key in _state.Keys.Where(k => !live.Contains(k)))
         {
             _state.TryRemove(key, out _);

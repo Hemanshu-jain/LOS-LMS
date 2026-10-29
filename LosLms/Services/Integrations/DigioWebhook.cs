@@ -48,7 +48,7 @@ public sealed class DigioBackgroundTasks
 public sealed class DigioWebhookService(
     IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, ApiBillingService billing, IFileStore files,
     IServiceScopeFactory scopes, DigioBackgroundTasks background, DigioStatusNotifier notifier, DigioEsignService esign,
-    DigioNachService nach, ILogger<DigioWebhookService> log)
+    DigioNachService nach, DigioCollect collect, ILogger<DigioWebhookService> log)
 {
     private const string Signed = "Signed";
 
@@ -67,6 +67,11 @@ public sealed class DigioWebhookService(
             }
 
             return await nach.ConfirmAsync(companyId, mandateId) ? true : throw new InvalidOperationException("Digio mandate lookup failed");
+        }
+
+        if (DigioCollect.IsDebitEvent(evt))
+        {
+            return await collect.HandleEventAsync(companyId, root); // confirming GET decides; throws when Digio does not answer
         }
 
         if (!root.TryGetProperty("payload", out var payload) || !payload.TryGetProperty("document", out var document)

@@ -7,6 +7,11 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Nav
+@inject IFileStore Files
+@inject IJSRuntime Js
+@inject TenantContext Tenant
+@inject DigioStatusNotifier DigioNotifier
+@implements IDisposable
 
 <PageTitle>Loan account · LOS/LMS</PageTitle>
 
@@ -62,6 +67,31 @@ else
                 </tbody>
             </table>
 
+            <h2 class="loan-h">Debits (e-NACH presentations)</h2>
+            @if (_presentations.Count == 0)
+            {
+                <p class="dg-muted">No debit has been presented yet. EMIs are presented automatically a couple of days before they fall due, once the mandate is registered.</p>
+            }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>EMI</th><th>Attempt</th><th>Amount</th><th>Debit date</th><th>Status</th><th>Detail</th></tr></thead>
+                    <tbody>
+                    @foreach (var p in _presentations)
+                    {
+                        <tr>
+                            <td>@(_account.Instalments.FirstOrDefault(i => i.Id == p.InstalmentId)?.No)</td>
+                            <td>@p.Attempt</td>
+                            <td>@Money(p.Amount)</td>
+                            <td>@p.SettlementDate.ToString("d MMM yyyy", CultureInfo.InvariantCulture)</td>
+                            <td><span class="dg-chip dg-@(p.Status == "Succeeded" ? "ok" : p.Status is "Failed" ? "bad" : p.Status is "NotPresented" or "Cancelled" ? "warn" : "info")">@p.Status</span></td>
+                            <td>@(p.Status == "Succeeded" ? (p.Utr is { Length: > 0 } utr ? "UTR " + utr : "") : p.FailureReason ?? p.FailureCode)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
             <h2 class="loan-h">Receipts</h2>
             @if (_receipts.Count == 0)
             {
@@ -70,7 +100,7 @@ else
             else
             {
                 <table class="dg-signers">
-                    <thead><tr><th>Receipt</th><th>Date</th><th>Source</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Receipt</th><th>Date</th><th>Source</th><th>Amount</th><th>Reference</th><th>Status</th><th></th></tr></thead>
                     <tbody>
                     @foreach (var r in _receipts)
                     {
@@ -80,11 +110,45 @@ else
                             <td>@r.Source</td>
                             <td>@Money(r.Amount)</td>
                             <td>@(r.Reference ?? "—")</td>
-                            <td><span class="dg-chip dg-@(r.Status == "Approved" ? "ok" : "warn")">@r.Status</span></td>
+                            <td><span class="dg-chip dg-@(r.Status == "Approved" ? "ok" : "warn")">@(r.Status == "Pending" ? "Waiting for an Admin" : r.Status)</span></td>
+                            <td>
+                                @if (r.Status == "Approved")
+                                {
+                                    <button type="button" class="doc-action" @onclick="() => PdfAsync(r)">Receipt PDF</button>
+                                }
+                                else if (r.Status == "Pending" && _isAdmin)
+                                {
+                                    <button type="button" class="doc-action" @onclick="() => ApproveAsync(r)">Approve</button>
+                                }
+                            </td>
                         </tr>
                     }
                     </tbody>
                 </table>
+            }
+
+            @if (_account.Status == "Active")
+            {
+                <h2 class="loan-h">Record a cash / cheque receipt <span class="dg-muted">(an Admin approves it before it counts)</span></h2>
+                <div class="loan-form">
+                    <select class="field-input" aria-label="Mode" @bind="_mSource"><option>Cash</option><option>Cheque</option><option>Manual</option></select>
+                    <select class="field-input" aria-label="Against EMI" @bind="_mInstalment">
+                        <option value="0">On account</option>
+                        @foreach (var i in _account.Instalments.Where(i => i.Status is not ("Paid" or "Waived")).OrderBy(i => i.No))
+                        {
+                            <option value="@i.Id">EMI @i.No · @Money(i.Emi - i.PaidAmount) due @i.DueDate.ToString("d MMM", CultureInfo.InvariantCulture)</option>
+                        }
+                    </select>
+                    <input class="field-input" type="number" step="0.01" min="0" placeholder="Amount" aria-label="Amount" @bind="_mAmount" />
+                    <input class="field-input" type="date" aria-label="Received on" @bind="_mDate" />
+                    <input class="field-input" placeholder="Cheque no. / reference" aria-label="Reference" @bind="_mRef" />
+                    <button type="button" class="verify-button" @onclick="RecordAsync">Record receipt</button>
+                </div>
+            }
+
+            @if (_notice is not null)
+            {
+                <p class="inline-notice" role="status">@_notice</p>
             }
         </div>
     </div>
@@ -102,11 +166,39 @@ else
     private List<Receipt> _receipts = new();
     private LoanStanding _standing = LoanStanding.Compute([], DateOnly.MinValue);
     private DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    private List<Presentation> _presentations = new();
+    private bool _isAdmin;
+    private string? _notice, _mSource = "Cash", _mRef;
+    private int _mInstalment;
+    private decimal _mAmount;
+    private DateOnly _mDate = DateOnly.FromDateTime(DateTime.Today);
+    private bool _subscribed;
 
     protected override async Task OnParametersSetAsync()
     {
         _loading = true;
+        if (!_subscribed)
+        {
+            _subscribed = true;
+            DigioNotifier.Changed += OnDigioChangedAsync;
+        }
+
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task OnDigioChangedAsync(string applicationId)
+    {
+        if (_account?.ApplicationId == applicationId)
+        {
+            await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+        }
+    }
+
+    private async Task LoadAsync()
+    {
         await using var db = await DbFactory.CreateDbContextAsync();
+        _isAdmin = db.IsElevatedUser;
         _account = ApplicationId is { Length: > 0 }
             ? await db.LoanAccounts.AsNoTracking().Include(a => a.Instalments).FirstOrDefaultAsync(a => a.ApplicationId == ApplicationId)
             : await db.LoanAccounts.AsNoTracking().Include(a => a.Instalments).FirstOrDefaultAsync(a => a.Id == Id);
@@ -115,10 +207,50 @@ else
             _mandate = await db.EnachMandates.AsNoTracking().FirstOrDefaultAsync(m => m.Id == _account.MandateId);
             _receipts = await db.Receipts.AsNoTracking().Where(r => r.LoanAccountId == _account.Id).OrderByDescending(r => r.ReceivedOn).ThenByDescending(r => r.Id).ToListAsync();
             _standing = LoanStanding.Compute(_account.Instalments, _today);
+            var ids = _account.Instalments.Select(i => i.Id).ToList();
+            _presentations = await db.Presentations.AsNoTracking().Where(p => ids.Contains(p.InstalmentId)).OrderBy(p => p.SettlementDate).ThenBy(p => p.Attempt).ToListAsync();
+        }
+    }
+
+    private async Task RecordAsync()
+    {
+        _notice = null;
+        if (_account is null || _mAmount <= 0)
+        {
+            _notice = "Enter the amount received.";
+            return;
         }
 
-        _loading = false;
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var account = await db.LoanAccounts.FirstAsync(a => a.Id == _account.Id);
+        await ReceiptService.RecordManualAsync(db, account, _mInstalment == 0 ? null : _mInstalment, _mSource ?? "Cash", _mAmount, _mDate, _mRef, Tenant.UserId);
+        await db.SaveChangesAsync();
+        _mAmount = 0;
+        _mRef = null;
+        _notice = "Recorded. It counts once an Admin approves it.";
+        await LoadAsync();
     }
+
+    private async Task ApproveAsync(Receipt r)
+    {
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _notice = await ReceiptService.ApproveManualAsync(db, r.Id, Tenant.UserId ?? "", db.IsElevatedUser) ?? "Approved.";
+        await LoadAsync();
+    }
+
+    private async Task PdfAsync(Receipt r)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var key = await ReceiptService.EnsurePdfAsync(db, Files, r.Id);
+        if (key is not null && _account is not null)
+        {
+            await Js.InvokeVoidAsync("open", $"/files/{_account.ApplicationId}/receipts/{Path.GetFileName(key)}", "_blank");
+        }
+    }
+
+    public void Dispose() => DigioNotifier.Changed -= OnDigioChangedAsync;
 
     private static string Money(decimal v) => "₹" + v.ToString("N2", Indian);
 

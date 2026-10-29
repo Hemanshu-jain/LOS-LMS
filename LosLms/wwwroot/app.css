@@ -1213,3 +1213,5 @@ a.auth-submit {
 .loan-label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #6b7686; font-weight: 600; }
 .loan-h { font-size: 13px; margin: 18px 0 6px; color: #1d2733; }
 .loan-overdue td { background: #fbeeee; }
+.loan-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.loan-form .field-input { max-width: 190px; }
