@@ -21,8 +21,10 @@ public sealed record KycOutcome(string? Verdict, string Message, bool NotEnabled
 /// </summary>
 public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbContextFactory<LosDbContext> dbFactory)
 {
-    public const string ConsentText = "The customer agrees that their identity details may be fetched and verified through Digio.";
-    public const string ConsentVersion = "v1";
+    /// <summary>Consent is part of the customer's signed application and of Digio's own DigiLocker journey, so nothing is gated on a tick; the wording is stored on every request.</summary>
+    public const string ConsentText = "Customer's signed application / DigiLocker in-journey consent";
+    public const string ConsentVersion = "v2";
+    private static readonly string ConsentStamp = $"Consent: {ConsentText} (text {ConsentVersion})";
     private const int MaxMaskBytes = 1_000_000; // Digio: "not more than 1 MB"
 
     public Task<bool> MaskingOnAsync(int companyId) => EnabledAsync(companyId, s => s.AadhaarMask);
@@ -53,6 +55,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v3/client/kyc/fetch_id_data/PAN",
             new { id_no = pan, name = name.Trim(), dob = dob?.ToString("yyyy-MM-dd"), unique_request_id = requestId },
             DigioRates.IdVerify, "KYC_ID", "PAN_VERIFY", applicationId, partyId, requestId, fingerprint, userId));
+        await StampConsentAsync(requestId);
         if (Failure(r) is { } fail)
         {
             return fail;
@@ -139,16 +142,11 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
     // ---- AML ----
 
     /// <summary>Screens a person against Digio's lists. 403/404 means DigiShield is not on the account: reported as such, nothing recorded.</summary>
-    public async Task<KycOutcome> ScreenAmlAsync(int companyId, string applicationId, int partyId, string? name, string? pan, bool consent, string? userId)
+    public async Task<KycOutcome> ScreenAmlAsync(int companyId, string applicationId, int partyId, string? name, string? pan, string? userId)
     {
         if (!await EnabledAsync(companyId, s => s.Aml))
         {
             return KycOutcome.Off("AML screening");
-        }
-
-        if (!consent)
-        {
-            return new(null, "Record the customer's consent first.");
         }
 
         if (string.IsNullOrWhiteSpace(name))
@@ -170,6 +168,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             // A stable id with no PII in it. The DOB is left out: its format was never captured (AML is not enabled on our sandbox).
             user_details = new { client_id = $"{companyId}-{partyId}", name = Cut(name.Trim(), 50), pan = string.IsNullOrWhiteSpace(pan) ? null : pan.Trim().ToUpperInvariant() },
         }, null, "AML", "AML_SCREEN", applicationId, partyId, requestId, fingerprint, userId));
+        await StampConsentAsync(requestId);
         if (Failure(r) is { } fail)
         {
             return fail;
@@ -209,16 +208,11 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
     // ---- Aadhaar masking ----
 
     /// <summary>The masked file, or null with the reason. A failure means the upload is refused: an unmasked original must never be stored.</summary>
-    public async Task<(byte[]? Masked, string Message)> MaskAadhaarAsync(int companyId, string applicationId, int partyId, byte[] file, string contentType, string fileName, bool consent, string? userId)
+    public async Task<(byte[]? Masked, string Message)> MaskAadhaarAsync(int companyId, string applicationId, int partyId, byte[] file, string contentType, string fileName, string? userId)
     {
         if (!await EnabledAsync(companyId, s => s.AadhaarMask))
         {
             return (null, "Aadhaar masking is switched off for this company.");
-        }
-
-        if (!consent)
-        {
-            return (null, "Record the customer's consent first.");
         }
 
         var type = contentType.ToLowerInvariant() switch { "image/png" => "PNG", "image/jpeg" => "JPEG", "image/jpg" => "JPG", "application/pdf" => "PDF", _ => null };
@@ -236,6 +230,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v4/client/kyc/aadhaar/mask",
             new { data = Convert.ToBase64String(file), data_content_type = type, file_name = Cut(fileName, 100), consent = "yes", mask_qr = true, is_validate = true, unique_request_id = requestId },
             DigioRates.AadhaarMasking, "KYC_ID", "AADHAAR_MASK", applicationId, partyId, requestId, null, userId));
+        await StampConsentAsync(requestId);
         if (Failure(r) is { } fail)
         {
             return (null, fail.NotEnabled ? fail.Message : fail.Message + " The upload was not saved.");
@@ -263,16 +258,11 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
     // ---- DigiLocker ----
 
     /// <summary>Starts a DigiLocker request. "Link": Digio notifies the customer. "OnDevice": no notification; <see cref="KycOutcome.Url"/> opens the flow here.</summary>
-    public async Task<KycOutcome> StartDigiLockerAsync(int companyId, string applicationId, int partyId, string? name, string? mobile, bool onDevice, bool consent, string returnBaseUrl, string? userId)
+    public async Task<KycOutcome> StartDigiLockerAsync(int companyId, string applicationId, int partyId, string? name, string? mobile, bool onDevice, string returnBaseUrl, string? userId)
     {
         if (!await EnabledAsync(companyId, s => s.DigiLocker))
         {
             return KycOutcome.Off("DigiLocker");
-        }
-
-        if (!consent)
-        {
-            return new(null, "Record the customer's consent first.");
         }
 
         if (mobile is null || !System.Text.RegularExpressions.Regex.IsMatch(mobile, "^[6-9][0-9]{9}$") || string.IsNullOrWhiteSpace(name))
@@ -300,7 +290,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             .SetProperty(x => x.CustomerChannel, onDevice ? "OnDevice" : "Link")
             .SetProperty(x => x.NotifiedTo, notifiedTo)
             .SetProperty(x => x.ExpiresAt, expires)
-            .SetProperty(x => x.Consent, $"{ConsentText} (text {ConsentVersion})"));
+            .SetProperty(x => x.Consent, ConsentStamp));
 
         var url = onDevice && kid is not null && r.Data is { } d && d.TryGetProperty("access_token", out var tok) && tok.TryGetProperty("id", out _)
             ? $"{DigioEndpoints.Gateway(digio.Credentials(companyId)?.Production == true)}{kid}/{requestId}/{mobile}?redirect_url={Uri.EscapeDataString($"{returnBaseUrl.TrimEnd('/')}/digio/return?r={requestId}")}"
@@ -438,6 +428,12 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, status).SetProperty(x => x.CompletedAt, DateTime.UtcNow).SetProperty(x => x.ProviderStatus, provider));
 
     // ---- shared ----
+
+    private async Task StampConsentAsync(string requestId)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        await db.DigioRequests.IgnoreQueryFilters().Where(x => x.Id == requestId).ExecuteUpdateAsync(u => u.SetProperty(x => x.Consent, ConsentStamp));
+    }
 
     private async Task<bool> EnabledAsync(int companyId, Func<DigioSettings, bool> toggle)
     {
