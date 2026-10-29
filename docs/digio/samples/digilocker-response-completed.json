@@ -1,9 +1,9 @@
-{
+﻿{
   "_captured": "2026-10-29, production host with sandbox keys, POST /client/kyc/v2/{id}/response?detail_response=true, http 200 (first real completed DigiLocker journey; masked by DigioMasker, locality/city redacted by hand)",
   "response": {
     "id": "KIDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
     "status": "approved",
-    "customer_identifier": "XXXXXX1117",
+    "customer_identifier": "XXXXXX0000",
     "actions": [
       {
         "id": "KIAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
@@ -12,7 +12,7 @@
         "execution_request_id": "RIDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
         "details": {
           "aadhaar": {
-            "id_number": "XXXXXXXX9813",
+            "id_number": "XXXXXXXX0000",
             "document_type": "aadhaar",
             "id_proof_type": "ID_AND_ADDRESS_PROOF",
             "gender": "M",
@@ -39,7 +39,7 @@
             }
           },
           "pan": {
-            "id_number": "XXXXX2474X",
+            "id_number": "XXXXX0000X",
             "document_type": "pan",
             "id_proof_type": "ID_PROOF",
             "gender": "M",
