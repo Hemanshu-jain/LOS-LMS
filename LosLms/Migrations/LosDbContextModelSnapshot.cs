@@ -3308,6 +3308,24 @@ namespace LosLms.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("varchar(80)");
 
+                    b.Property<string>("TgPortalScreenshotPath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<bool>("TgPortalVerified")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime?>("TgPortalVerifiedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("TgPortalVerifiedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("TgPortalVerifiedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 

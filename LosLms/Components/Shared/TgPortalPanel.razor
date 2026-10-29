@@ -1,0 +1,83 @@
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject IFileStore Files
+@inject TenantContext Tenant
+
+@* The TG Transport vehicle search has a CAPTCHA, so the app does not touch it: the officer opens it in a new tab, checks the vehicle,
+   then ticks it here. The record (tick, date, who, optional screenshot) is the officer's statement, not an automated check. *@
+<div class="tg-box">
+    <a class="verify-button tg-link" href="@TgPortalService.Url" target="_blank" rel="noopener noreferrer">Verify on TG Transport ↗</a>
+
+    <label class="tg-check">
+        <input type="checkbox" checked="@_verified" @onchange="ToggleAsync" />
+        <span>Verified on the TG portal</span>
+    </label>
+
+    @if (_verified)
+    {
+        <span class="dg-muted">@(_at is { } at ? at.ToLocalTime().ToString("d MMM yyyy, HH:mm") : "") @(string.IsNullOrWhiteSpace(_by) ? "" : "by " + _by)</span>
+    }
+
+    <label class="verify-button tg-upload">Upload screenshot
+        <InputFile OnChange="UploadAsync" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" />
+    </label>
+    @if (_shot is { } shot)
+    {
+        <a class="file-link" href="@($"/files/{ApplicationId}/rcportal/{Path.GetFileName(shot)}")" target="_blank" rel="noopener">✓ Screenshot</a>
+    }
+
+    @if (_notice is not null)
+    {
+        <span class="inline-error" role="alert">@_notice</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+
+    private bool _verified;
+    private DateTime? _at;
+    private string? _by, _shot, _notice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.SecurityDetails.AsNoTracking().FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
+        (_verified, _at, _by, _shot) = row is null ? (false, null, null, null) : (row.TgPortalVerified, row.TgPortalVerifiedAt, row.TgPortalVerifiedBy, row.TgPortalScreenshotPath);
+    }
+
+    private async Task ToggleAsync(ChangeEventArgs e)
+    {
+        _notice = null;
+        var on = e.Value is true;
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var name = await db.Users.AsNoTracking().Where(u => u.Id == Tenant.UserId).Select(u => u.DisplayName).FirstOrDefaultAsync();
+        await TgPortalService.MarkAsync(db, ApplicationId, on, Tenant.UserId, name ?? Tenant.DisplayName);
+        await OnInitializedAsync();
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        _notice = null;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(5 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var (_, error) = await TgPortalService.AttachAsync(db, Files, ApplicationId, e.File.Name, buffer.ToArray());
+            _notice = error;
+        }
+        catch (IOException)
+        {
+            _notice = "The file must be under 5 MB.";
+        }
+
+        await OnInitializedAsync();
+    }
+}

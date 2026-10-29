@@ -1203,3 +1203,8 @@ a.auth-submit {
 .dg-rc-bad strong { color: #8a1f1f; }
 .dg-rc-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 4px 0 2px; }
 .dg-rc-box .dg-rc { flex-basis: 100%; }
+
+/* TG Transport portal record (Loan & Security) */
+.tg-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 4px 0 2px; }
+.tg-link { text-decoration: none; display: inline-block; }
+.tg-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }

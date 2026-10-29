@@ -53,6 +53,13 @@ public class SecurityDetail
     [MaxLength(400)] public string? InvoiceFilePath { get; set; }
     [MaxLength(400)] public string? InsuranceFilePath { get; set; }
 
+    // ---- Officer's record of checking the vehicle on the TG Transport portal (it has a CAPTCHA: link + record only, no automation) ----
+    public bool TgPortalVerified { get; set; }
+    public DateTime? TgPortalVerifiedAt { get; set; }
+    [MaxLength(450)] public string? TgPortalVerifiedByUserId { get; set; }
+    [MaxLength(100)] public string? TgPortalVerifiedBy { get; set; }
+    [MaxLength(400)] public string? TgPortalScreenshotPath { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
