@@ -120,7 +120,8 @@ public sealed class BounceService(IDbContextFactory<LosDbContext> dbFactory) : I
         }
 
         charge.Status = "Waived";
-        charge.Note = Cut($"{charge.Note} | Waived by {adminUserId}: {note.Trim()}", 200);
+        // The note column holds 200 characters and the bounce marker must survive, so: short admin id, reason cut first.
+        charge.Note = Cut($"{charge.Note} | Waived by {Cut(adminUserId, 8)}: {Cut(note.Trim(), 100)}", 200);
         await db.SaveChangesAsync();
         return true;
     }

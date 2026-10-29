@@ -1,6 +1,7 @@
 @page "/loans/{Id:int}"
 @page "/loans/for/{ApplicationId}"
 @using System.Globalization
+@using LosLms.Components.Shared.Servicing
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
@@ -150,6 +151,8 @@ else
             {
                 <p class="inline-notice" role="status">@_notice</p>
             }
+
+            <LoanCollectionsPanel LoanAccountId="_account.Id" OnChanged="LoadAsync" />
         </div>
     </div>
 }
