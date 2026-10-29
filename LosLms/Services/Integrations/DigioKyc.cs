@@ -19,7 +19,7 @@ public sealed record KycOutcome(string? Verdict, string Message, bool NotEnabled
 /// Each writes <see cref="VerificationEvidence"/> (what the gate reads) and never invents a result: a missing field is "Unavailable".
 /// Field names come from the saved sandbox samples (docs/digio/samples) and Digio's spec.
 /// </summary>
-public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbContextFactory<LosDbContext> dbFactory)
+public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbContextFactory<LosDbContext> dbFactory, IFileStore files)
 {
     /// <summary>Consent is part of the customer's signed application and of Digio's own DigiLocker journey, so nothing is gated on a tick; the wording is stored on every request.</summary>
     public const string ConsentText = "Customer's signed application / DigiLocker in-journey consent";
@@ -347,30 +347,52 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         }
 
         await billing.RecordAsync(companyId, DigioRates.DigiLockerFetch, true, req.ApplicationId, req.DigioId);
-        var data = action is { } act ? ReadIdentity(act) : null;
+        var details = action is { } act && act.TryGetProperty("details", out var dt) && dt.ValueKind == JsonValueKind.Object ? dt : default;
+        var aadhaar = Sub(details, "aadhaar");
+        var panDoc = Sub(details, "pan");
         var party = await db.Parties.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == req.PartyId && p.ApplicationId == req.ApplicationId);
-        var summary = "Aadhaar fetched from DigiLocker";
+        var aadhaarSummary = "Aadhaar fetched from DigiLocker";
+        var evidence = new List<VerificationEvidence>();
         if (party is not null)
         {
-            if (data is not null)
+            if (ReadIdentity(aadhaar) is { } identity)
             {
-                FillBlanks(party, data);
-                var panName = party.FullName;
-                summary += data.FullName is null || panName is null ? "" : $"; name match {NameScore(data.FullName, panName)}";
+                FillBlanks(party, identity);
+                if (identity.FullName is not null && party.FullName is not null) { aadhaarSummary += $"; name match {NameScore(identity.FullName, party.FullName)}"; }
             }
+
+            if (await SavePhotoAsync(party, Str(aadhaar, "image")) is not null) { aadhaarSummary += "; photo saved"; }
 
             party.AadhaarVerified = true;
             party.AadhaarGeneratedOn = DateOnly.FromDateTime(DateTime.UtcNow);
+
+            // The PAN comes from the same DigiLocker answer (a government-issued document), so no PAN verification call or charge.
+            if (Str(panDoc, "id_number")?.Trim().ToUpperInvariant() is { Length: > 0 } panNo)
+            {
+                party.Pan = string.IsNullOrWhiteSpace(party.Pan) ? panNo : party.Pan;
+                var same = string.Equals(party.Pan!.Trim(), panNo, StringComparison.OrdinalIgnoreCase);
+                var (panVerdict, panSummary) = same
+                    ? ("Verified", $"PAN from DigiLocker; name match {NameScore(Str(panDoc, "name"), party.FullName)}")
+                    : ("Mismatch", "PAN on file differs from the PAN in DigiLocker");
+                party.PanVerified = same;
+                evidence.Add(new VerificationEvidence
+                {
+                    CompanyId = companyId, ApplicationId = req.ApplicationId, PartyId = req.PartyId, Subject = "PAN", Verdict = panVerdict, Summary = Cut(panSummary, 300),
+                    DigioRequestId = requestId, Environment = req.Environment, InputFingerprint = KycEvidenceCheck.Fingerprint(party), CreatedAt = DateTime.UtcNow,
+                });
+            }
+
             await db.SaveChangesAsync();
         }
 
-        db.VerificationEvidence.Add(new VerificationEvidence
+        evidence.Add(new VerificationEvidence
         {
-            CompanyId = companyId, ApplicationId = req.ApplicationId, PartyId = req.PartyId, Subject = "AADHAAR", Verdict = "Verified", Summary = Cut(summary, 300),
+            CompanyId = companyId, ApplicationId = req.ApplicationId, PartyId = req.PartyId, Subject = "AADHAAR", Verdict = "Verified", Summary = Cut(aadhaarSummary, 300),
             DigioRequestId = requestId, Environment = req.Environment, CreatedAt = DateTime.UtcNow,
         });
+        db.VerificationEvidence.AddRange(evidence);
         await db.SaveChangesAsync();
-        return new("Verified", "Aadhaar fetched from DigiLocker.", RequestId: requestId);
+        return new("Verified", evidence.Count > 1 ? "Aadhaar and PAN fetched from DigiLocker." : "Aadhaar fetched from DigiLocker.", RequestId: requestId);
     }
 
     /// <summary>A DigiLocker request's current result. The spec says POST (the harness got 200 with it); if Digio answers 405 anyway, GET is tried once.</summary>
@@ -397,18 +419,51 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         return null;
     }
 
-    // ponytail: where the filled identity sits was NOT captured in Phase 0 (no customer finished a sandbox journey). The spec puts it in
-    // `id_card_data_response`; the keys below are read only if present. Re-check against a real completed sample (DECISIONS B).
-    private static DigiKycData? ReadIdentity(JsonElement action)
+    // Shape from the first real completed reply (docs/digio/samples/digilocker-response-completed.json): actions[type=digilocker].details.aadhaar
+    // = { name, dob, gender (M/F/T), father_name, image (base64 photo), current_address_details { address, locality_or_post_office,
+    // district_or_city, state, pincode }, permanent_address_details, id_number (masked) } and .pan = { id_number, name, dob, gender }.
+    // The Aadhaar number comes back MASKED (xxxxxxxx9813): the full 12 digits are never available from DigiLocker.
+    private static JsonElement Sub(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Object ? v : default;
+
+    private static string? Str(JsonElement e, string name) =>
+        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString() : null;
+
+    private static readonly string[] DobFormats = ["yyyy-MM-dd", "dd-MM-yyyy", "dd/MM/yyyy", "yyyy/MM/dd", "d-M-yyyy", "d/M/yyyy"];
+
+    private static DigiKycData? ReadIdentity(JsonElement a)
     {
-        if (!action.TryGetProperty("id_card_data_response", out var c) || c.ValueKind != JsonValueKind.Object)
+        if (a.ValueKind != JsonValueKind.Object)
         {
             return null;
         }
 
-        string? Get(params string[] keys) => keys.Select(k => c.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
-        DateOnly? dob = DateOnly.TryParse(Get("dob", "date_of_birth"), out var d) ? d : null;
-        return new DigiKycData(Get("name"), dob, Get("gender"), Get("fathers_name", "father_name"), Get("address"), Get("city"), Get("state"), Get("pincode", "pin_code"));
+        var addr = Sub(a, "current_address_details").ValueKind == JsonValueKind.Object ? Sub(a, "current_address_details") : Sub(a, "permanent_address_details");
+        DateOnly? dob = DateOnly.TryParseExact(Str(a, "dob"), DobFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d : null;
+        var gender = Str(a, "gender")?.Trim().ToUpperInvariant() switch { "M" or "MALE" => "Male", "F" or "FEMALE" => "Female", { Length: > 0 } => "Other", _ => null };
+        return new DigiKycData(Str(a, "name"), dob, gender, Str(a, "father_name"), Str(addr, "address") ?? Str(a, "current_address"),
+            Str(addr, "district_or_city"), Str(addr, "state"), Str(addr, "pincode"), Str(addr, "locality_or_post_office"));
+    }
+
+    /// <summary>The Aadhaar photo is inline base64. Saved as the party's photo only when there is none; anything that is not a real JPEG/PNG is dropped.</summary>
+    private async Task<string?> SavePhotoAsync(Party party, string? base64)
+    {
+        if (!string.IsNullOrWhiteSpace(party.PhotoPath) || string.IsNullOrWhiteSpace(base64))
+        {
+            return null;
+        }
+
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(base64); }
+        catch (FormatException) { return null; }
+
+        var ext = FileSignature.Matches(".jpg", bytes) ? ".jpg" : FileSignature.Matches(".png", bytes) ? ".png" : null;
+        if (ext is null)
+        {
+            return null;
+        }
+
+        return party.PhotoPath = await files.SaveUploadAsync(party.ApplicationId, party.PartyType, $"photo-{Guid.NewGuid():N}{ext}", bytes);
     }
 
     private static void FillBlanks(Party p, DigiKycData d)
@@ -421,6 +476,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         p.City = string.IsNullOrWhiteSpace(p.City) ? d.City : p.City;
         p.State = string.IsNullOrWhiteSpace(p.State) ? d.State : p.State;
         p.PinCode = string.IsNullOrWhiteSpace(p.PinCode) ? d.PinCode : p.PinCode;
+        p.Address2 = string.IsNullOrWhiteSpace(p.Address2) ? d.Locality : p.Address2;
     }
 
     private static Task SetStatusAsync(LosDbContext db, string requestId, string status, string? provider) =>
