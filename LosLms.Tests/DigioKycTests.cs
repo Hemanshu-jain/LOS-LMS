@@ -54,6 +54,7 @@ public sealed class DigioKycTests : IDisposable
         services.AddScoped<DigioEsignService>();
         services.AddScoped<DigioNachService>();
         services.AddScoped<DigioCollect>();
+        services.AddScoped<IBounceHandler, BounceService>();
         services.AddScoped<DigioWebhookService>();
         services.AddSingleton<DigioWebhookHealth>();
         services.AddSingleton<DigioBackgroundTasks>();

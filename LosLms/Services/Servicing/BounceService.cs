@@ -10,16 +10,11 @@ public interface IBounceHandler
     Task OnFailedAsync(string presentationId);
 }
 
-/// <summary>Starts the next debit attempt for an instalment (slice 2's presentation code implements it). Until it does, nothing is re-presented automatically.</summary>
+/// <summary>Starts the next debit attempt for an instalment; DigioCollect implements it.</summary>
 public interface IPresentationStarter
 {
     /// <returns>True when a new presentation was created.</returns>
     Task<bool> StartAsync(int instalmentId, int attempt);
-}
-
-public sealed class NoopPresentationStarter : IPresentationStarter
-{
-    public Task<bool> StartAsync(int instalmentId, int attempt) => Task.FromResult(false);
 }
 
 /// <summary>A bounced instalment waiting to be presented again.</summary>

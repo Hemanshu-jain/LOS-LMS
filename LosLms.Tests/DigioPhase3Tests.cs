@@ -71,6 +71,7 @@ public sealed class DigioPhase3Tests : IDisposable
         services.AddScoped<DigioEsignService>();
         services.AddScoped<DigioNachService>();
         services.AddScoped<DigioCollect>();
+        services.AddScoped<IBounceHandler, BounceService>();
         services.AddScoped<DigioWebhookService>();
         _provider = services.BuildServiceProvider();
         _provider.GetRequiredService<DigioClient>().SaveCredentials(1, new DigioCredentials("cid", "csecret", "wh", false));

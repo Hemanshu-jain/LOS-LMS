@@ -66,6 +66,7 @@ public sealed class DigioCollectTests : IDisposable
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
         services.AddScoped<DigioCollect>();
+        services.AddScoped<IBounceHandler, BounceService>();
         _provider = services.BuildServiceProvider();
         _provider.CreateScope().ServiceProvider.GetRequiredService<DigioClient>().SaveCredentials(1, new DigioCredentials("cid", "csecret", "wh", false));
         _digio.On("POST", "/v3/client/nach_debit/scheduled/register", _ => """{"id":"NSP1","status":"scheduled","upcoming_transaction":{"state":"SCHEDULED"}}""");
@@ -206,6 +207,26 @@ public sealed class DigioCollectTests : IDisposable
         Assert.Equal(("Failed", "51", "Insufficient funds"), (p.Status, p.FailureCode, p.FailureReason));
         Assert.Equal("Bounced", read.Instalments.IgnoreQueryFilters().Single(i => i.No == 1).Status);
         Assert.Empty(read.Receipts.IgnoreQueryFilters());
+        Assert.Equal("Bounce", Assert.Single(read.LoanCharges.IgnoreQueryFilters()).Kind); // the bounce hook ran (slice 3)
+    }
+
+    [Fact]
+    public async Task ABouncedInstalment_CanBePresentedAgain_AsAttemptTwo()
+    {
+        await Collect().PresentDueAsync(_now);
+        var id = PresentationId();
+        _digio.On("GET", $"/v3/client/nach_debit/scheduled/by_reference_id/{id}", _ => Plan("PAYMENT_FAILED", code: "04"));
+        await Collect().ConfirmAsync(1, id);
+        int instalmentId;
+        using (var db = Anonymous()) { instalmentId = db.Instalments.IgnoreQueryFilters().Single(i => i.No == 1).Id; }
+        _digio.On("POST", "/v3/client/nach_debit/scheduled/register", _ => """{"id":"NSP2","status":"scheduled"}""");
+
+        Assert.True(await Collect().StartAsync(instalmentId, 2));
+        Assert.False(await Collect().StartAsync(instalmentId, 2)); // not Bounced any more: nothing doubled
+
+        using var read = Anonymous();
+        Assert.Equal(new[] { 1, 2 }, read.Presentations.IgnoreQueryFilters().OrderBy(x => x.Attempt).Select(x => x.Attempt).ToArray());
+        Assert.Equal("Presented", read.Instalments.IgnoreQueryFilters().Single(i => i.No == 1).Status);
     }
 
     [Fact]

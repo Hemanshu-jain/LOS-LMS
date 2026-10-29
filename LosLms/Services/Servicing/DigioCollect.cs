@@ -36,7 +36,7 @@ public static class CollectLifecycle
 
 /// <summary>DigiCollect e-NACH debits: register one one-time presentation per instalment, confirm it, record the outcome.</summary>
 public sealed class DigioCollect(
-    IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, DigioStatusNotifier notifier)
+    IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, DigioStatusNotifier notifier, IBounceHandler bounces) : IPresentationStarter
 {
     private static DateOnly TodayIst(DateTime? nowUtc = null) => DateOnly.FromDateTime((nowUtc ?? DateTime.UtcNow).AddHours(5.5));
 
@@ -113,6 +113,42 @@ public sealed class DigioCollect(
         return created;
     }
 
+    /// <summary>Re-presentation (slice 3): the next attempt for a bounced instalment, due no earlier than tomorrow (the cut-off is T-1). True when it was created.</summary>
+    public async Task<bool> StartAsync(int instalmentId, int attempt)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var i = await db.Instalments.IgnoreQueryFilters().Include(x => x.LoanAccount).FirstOrDefaultAsync(x => x.Id == instalmentId);
+        if (i is not { Status: "Bounced", LoanAccount: { Status: "Active", MandateId: not null } account } || digio.Credentials(i.CompanyId) is not { } creds)
+        {
+            return false;
+        }
+
+        var mandate = await db.EnachMandates.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(m => m.Id == account.MandateId);
+        if (mandate is not { DigioState: NachLifecycle.Registered, Umrn: { Length: > 0 } umrn })
+        {
+            return false;
+        }
+
+        var p = new Presentation
+        {
+            Id = Guid.NewGuid().ToString("N"), CompanyId = i.CompanyId, InstalmentId = i.Id, Attempt = attempt, Umrn = umrn, Amount = i.Emi - i.PaidAmount,
+            SettlementDate = TodayIst().AddDays(1), Status = CollectLifecycle.Created, Environment = DigioEndpoints.Environment(creds.Production),
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+        };
+        db.Presentations.Add(p);
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            return false; // a parallel run already made this attempt
+        }
+
+        await RegisterAsync(i.CompanyId, p.Id);
+        return true;
+    }
+
     /// <summary>
     /// POST /v3/client/nach_debit/scheduled/register with unique_key = our presentation id. Marks the instalment Presented on acceptance.
     /// </summary>
@@ -162,7 +198,7 @@ public sealed class DigioCollect(
         p.Status = CollectLifecycle.Sent;
         p.FailureReason = null;
         p.UpdatedAt = DateTime.UtcNow;
-        if (instalment.Status == "Due")
+        if (instalment.Status is "Due" or "Bounced")
         {
             instalment.Status = "Presented";
         }
@@ -206,6 +242,10 @@ public sealed class DigioCollect(
             if (application is not null)
             {
                 await notifier.NotifyAsync(application);
+                if (p.Status == CollectLifecycle.Failed)
+                {
+                    await bounces.OnFailedAsync(p.Id); // bounce charge, then re-present later or hand to an officer (slice 3)
+                }
             }
 
             return true;
