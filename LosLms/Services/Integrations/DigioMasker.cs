@@ -31,6 +31,8 @@ public static partial class DigioMasker
         if ((k.Contains("dob") || k.Contains("birth")) && s.Length > 0) { return Regex.Replace(s, "[0-9]", "0"); }
         if (k is "city" or "state" or "district" or "locality" or "house" or "street" or "landmark" or "co" or "vtc" or "po" or "subdist" && s.Length > 0) { return "TEST"; }
         if (k.Contains("pin") && s.Length > 0) { return "000000"; }
+        if ((k.Contains("locality") || k.Contains("city") || k.Contains("district")) && s.Length > 0) { return "TEST"; }
+        if (k.EndsWith("id_number") && s.Length > 4) { return new string('X', s.Length - 4) + s[^4..]; }
         if (s.Contains('@')) { return "test@example.com"; }
         if (s.StartsWith("http", StringComparison.OrdinalIgnoreCase) && s.Contains('?')) { return s[..s.IndexOf('?')] + "?<omitted>"; }
 

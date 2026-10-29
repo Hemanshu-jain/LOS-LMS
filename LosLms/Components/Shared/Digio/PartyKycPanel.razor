@@ -27,7 +27,7 @@
                 <div class="dg-row">
                     <span>PAN</span>
                     <VerifyBadge Info="@BadgeFor(null, "PAN", KycEvidenceCheck.FingerprintOf(Pan, FullName, Dob))" />
-                    <VerifyButton Label="Verify PAN" DisabledReason="@PanReason" OnClick="VerifyPanAsync" />
+                    <VerifyButton Label="Verify PAN only" DisabledReason="@PanReason" OnClick="VerifyPanAsync" />
                 </div>
             }
 
@@ -36,8 +36,13 @@
                 <div class="dg-row">
                     <span>Aadhaar</span>
                     <VerifyBadge Info="@BadgeFor(_dl, "AADHAAR", null)" />
-                    <VerifyButton Label="Open on this device" DisabledReason="@DigiLockerReason" OnClick="() => StartDigiLockerAsync(true)" />
-                    <VerifyButton Label="Send DigiLocker link" DisabledReason="@DigiLockerReason" OnClick="() => StartDigiLockerAsync(false)" />
+                    @if (!_settings.PanVerify)
+                    {
+                        <span>PAN</span>
+                        <VerifyBadge Info="@BadgeFor(null, "PAN", KycEvidenceCheck.FingerprintOf(Pan, FullName, Dob))" />
+                    }
+                    <VerifyButton Label="Verify Aadhaar + PAN (DigiLocker)" DisabledReason="@DigiLockerReason" OnClick="() => StartDigiLockerAsync(true)" />
+                    <VerifyButton Label="Send link to customer" DisabledReason="@DigiLockerReason" OnClick="() => StartDigiLockerAsync(false)" />
                 </div>
                 @if (_dl is { Status: "WaitingForCustomer" })
                 {

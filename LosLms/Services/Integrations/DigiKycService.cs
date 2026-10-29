@@ -11,7 +11,8 @@ public sealed record DigiKycData(
     string? Address1,
     string? City,
     string? State,
-    string? PinCode);
+    string? PinCode,
+    string? Locality = null);
 
 /// <summary>Outcome of a KYC verification attempt.</summary>
 /// <param name="IsConfigured">False whenever no provider is wired — the only state reachable here.</param>

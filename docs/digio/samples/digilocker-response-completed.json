@@ -1,0 +1,63 @@
+{
+  "_captured": "2026-10-29, production host with sandbox keys, POST /client/kyc/v2/{id}/response?detail_response=true, http 200 (first real completed DigiLocker journey; masked by DigioMasker, locality/city redacted by hand)",
+  "response": {
+    "id": "KIDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "status": "approved",
+    "customer_identifier": "XXXXXX1117",
+    "actions": [
+      {
+        "id": "KIAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "type": "digilocker",
+        "status": "approved",
+        "execution_request_id": "RIDXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "details": {
+          "aadhaar": {
+            "id_number": "XXXXXXXX9813",
+            "document_type": "aadhaar",
+            "id_proof_type": "ID_AND_ADDRESS_PROOF",
+            "gender": "M",
+            "image": "<base64 omitted>",
+            "name": "TEST NAME",
+            "last_refresh_date": "2026-10-28 13:00:59",
+            "dob": "0000-00-00",
+            "current_address": "TEST ADDRESS, CITY, STATE 000000",
+            "permanent_address": "TEST ADDRESS, CITY, STATE 000000",
+            "father_name": "TEST NAME",
+            "current_address_details": {
+              "address": "TEST ADDRESS, CITY, STATE 000000",
+              "locality_or_post_office": "TEST",
+              "district_or_city": "TEST",
+              "state": "TEST",
+              "pincode": "000000"
+            },
+            "permanent_address_details": {
+              "address": "TEST ADDRESS, CITY, STATE 000000",
+              "locality_or_post_office": "TEST",
+              "district_or_city": "TEST",
+              "state": "TEST",
+              "pincode": "000000"
+            }
+          },
+          "pan": {
+            "id_number": "XXXXX2474X",
+            "document_type": "pan",
+            "id_proof_type": "ID_PROOF",
+            "gender": "M",
+            "name": "TEST NAME",
+            "dob": "0000-00-00"
+          }
+        },
+        "validation_result": {},
+        "face_match_obj_type": "none",
+        "face_match_status": "na",
+        "processing_done": true,
+        "retry_count": 1
+      }
+    ],
+    "transaction_id": "KIS-2026-000010",
+    "customer_name": "TEST NAME",
+    "auto_approved": true,
+    "template_id": "KTPXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+    "is_terminated": false
+  }
+}

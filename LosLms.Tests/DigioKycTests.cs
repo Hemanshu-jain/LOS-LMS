@@ -25,6 +25,7 @@ public sealed class DigioKycTests : IDisposable
     private readonly DbContextOptions<LosDbContext> _options;
     private readonly ServiceProvider _provider;
     private readonly FakeDigio _digio = new();
+    private readonly MemoryFiles _files = new();
 
     public DigioKycTests()
     {
@@ -59,7 +60,7 @@ public sealed class DigioKycTests : IDisposable
         services.AddSingleton<DigioWebhookHealth>();
         services.AddSingleton<DigioBackgroundTasks>();
         services.AddSingleton<DigioStatusNotifier>();
-        services.AddSingleton<IFileStore, NoFiles>();
+        services.AddSingleton<IFileStore>(_files);
         services.AddSingleton<DigioReconcileTrigger>();
         services.AddScoped<DigioReconciler>();
         _provider = services.BuildServiceProvider();
@@ -270,7 +271,9 @@ public sealed class DigioKycTests : IDisposable
     // ---- DigiLocker ----
 
     private const string Requested = """{"id":"KID1","status":"requested","actions":[{"type":"digilocker","status":"requested"}]}""";
-    private const string Done = """{"id":"KID1","status":"approved","actions":[{"type":"digilocker","status":"success","id_card_data_response":{"name":"RAJ KUMAR","dob":"1990-01-01","gender":"M","address":"1 Main Road","pincode":"400001"}}]}""";
+    private const string Png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    private static string DoneWith(string pan) => """{"id":"KID1","status":"approved","actions":[{"type":"digilocker","status":"approved","details":{"aadhaar":{"id_number":"xxxxxxxx9813","name":"RAJ KUMAR","dob":"1990-01-01","gender":"M","father_name":"SURESH KUMAR","image":"__PNG__","current_address_details":{"address":"1 Main Road","locality_or_post_office":"Sadar","district_or_city":"Pune","state":"Maharashtra","pincode":"400001"}},"pan":{"id_number":"__PAN__","name":"RAJ KUMAR"}}}]}""".Replace("__PNG__", Png).Replace("__PAN__", pan);
+    private static readonly string Done = DoneWith("ABCPE1234F");
 
     [Fact]
     public async Task DigiLocker_Start_RecordsTheRequestWithConsentChannelAndMaskedMobile()
@@ -309,6 +312,13 @@ public sealed class DigioKycTests : IDisposable
         Assert.True(party.AadhaarVerified);
         Assert.Equal("Raj Kumar", party.FullName);   // the officer's value is kept
         Assert.Equal("1 Main Road", party.Address1); // a blank is filled
+        Assert.Equal(("Sadar", "Pune", "Maharashtra", "400001"), (party.Address2, party.City, party.State, party.PinCode));
+        Assert.Equal(("Male", "SURESH KUMAR"), (party.Gender, party.FatherSpouseName));
+        Assert.EndsWith(".png", party.PhotoPath);
+        Assert.Single(_files.Saved);
+        Assert.True(party.PanVerified);
+        Assert.Equal("Verified", db.VerificationEvidence.IgnoreQueryFilters().Single(e => e.Subject == "PAN").Verdict); // from the same DigiLocker answer
+        Assert.DoesNotContain(_digio.Calls, c => c.Contains("fetch_id_data"));                                        // no separate PAN call or charge
         Assert.Equal(1, db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.DigiLockerFetch && l.IsSuccess));
         Assert.Equal(1, db.VerificationEvidence.IgnoreQueryFilters().Count(e => e.Subject == "AADHAAR"));
     }
@@ -322,6 +332,28 @@ public sealed class DigioKycTests : IDisposable
         _digio.On = (m, _, _) => m == HttpMethod.Get ? (HttpStatusCode.OK, Done) : (HttpStatusCode.MethodNotAllowed, """{"message":"Method not allowed"}""");
 
         Assert.Equal("Verified", (await Kyc().CompleteDigiLockerAsync(1, start.RequestId!)).Verdict);
+    }
+
+    [Fact]
+    public async Task DigiLocker_PanInTheReplyThatDiffersFromTheOneOnFile_IsMismatch_AndAnExistingPhotoIsKept()
+    {
+        using (var db = Anonymous())
+        {
+            db.Parties.IgnoreQueryFilters().Single().PhotoPath = "App_Data/uploads/A1/Applicant/live.jpg";
+            db.SaveChanges();
+        }
+
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, "https://x.test", null);
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, DoneWith("ZZZPE9999Z")) : (HttpStatusCode.MethodNotAllowed, "{}");
+
+        await Kyc().CompleteDigiLockerAsync(1, start.RequestId!);
+
+        using var read = Anonymous();
+        Assert.Equal("Mismatch", read.VerificationEvidence.IgnoreQueryFilters().Single(e => e.Subject == "PAN").Verdict);
+        Assert.False(read.Parties.IgnoreQueryFilters().Single().PanVerified);
+        Assert.Equal("App_Data/uploads/A1/Applicant/live.jpg", read.Parties.IgnoreQueryFilters().Single().PhotoPath);
+        Assert.Empty(_files.Saved);
     }
 
     [Fact]
@@ -452,9 +484,16 @@ public sealed class DigioKycTests : IDisposable
         public LosDbContext CreateDbContext() => owner.Anonymous();
     }
 
-    private sealed class NoFiles : IFileStore
+    private sealed class MemoryFiles : IFileStore
     {
-        public Task SaveAsync(string key, byte[] bytes) => Task.CompletedTask;
+        public Dictionary<string, byte[]> Saved { get; } = [];
+
+        public Task SaveAsync(string key, byte[] bytes)
+        {
+            Saved[key] = bytes;
+            return Task.CompletedTask;
+        }
+
         public Task<Stream?> OpenReadAsync(string key) => Task.FromResult<Stream?>(null);
     }
 
