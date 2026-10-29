@@ -1215,3 +1215,6 @@ a.auth-submit {
 .loan-overdue td { background: #fbeeee; }
 .loan-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .loan-form .field-input { max-width: 190px; }
+.loan-page { min-height: 100vh; padding: 20px 24px 40px; background: #eef1f5; color: #1d2733; }
+.loan-sheet { max-width: 1040px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+.loan-page .file-link { color: #1d4f91; }
