@@ -69,6 +69,8 @@ public sealed class DigioWebhookTests : IDisposable
         services.AddScoped<DigioClient>();
         services.AddScoped<DigioEsignService>();
         services.AddScoped<DigioNachService>();
+        services.AddScoped<DigioCollect>();
+        services.AddScoped<IBounceHandler, BounceService>();
         services.AddScoped<DigioWebhookService>();
         _provider = services.BuildServiceProvider();
 

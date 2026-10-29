@@ -150,10 +150,19 @@ builder.Services.Configure<ApiBillingOptions>(builder.Configuration.GetSection(A
 builder.Services.AddScoped<ApiBillingService>();
 builder.Services.AddScoped<DigioClient>();
 builder.Services.AddScoped<DigioKyc>();
+// Collections (slice 3+4): bounce handling, re-presentation, loan closure, settlement check.
+builder.Services.AddScoped<BounceService>();
+builder.Services.AddScoped<IBounceHandler>(sp => sp.GetRequiredService<BounceService>());
+builder.Services.AddHostedService<RepresentationJob>();
+builder.Services.AddScoped<LoanClosureService>();
+builder.Services.AddScoped<SettlementReconciler>();
 builder.Services.AddScoped<DigioWebhookService>();
 builder.Services.AddScoped<DigioEsignService>();
 builder.Services.AddScoped<DigioNachService>();
 builder.Services.AddScoped<DigioAsset>();
+builder.Services.AddScoped<DigioCollect>();
+builder.Services.AddScoped<IPresentationStarter>(sp => sp.GetRequiredService<DigioCollect>()); // re-presentation after a bounce (slice 3)
+builder.Services.AddHostedService<CollectionScheduler>();
 builder.Services.AddSingleton<DigioWebhookHealth>();
 builder.Services.AddSingleton<DigioBackgroundTasks>();
 builder.Services.AddSingleton<DigioStatusNotifier>();

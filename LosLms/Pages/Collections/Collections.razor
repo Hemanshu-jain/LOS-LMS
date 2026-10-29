@@ -1,0 +1,231 @@
+@page "/collections"
+@using System.Globalization
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize]
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject BounceService Bounces
+@inject SettlementReconciler Settlements
+@inject TenantContext Tenant
+
+<PageTitle>Collections · LOS/LMS</PageTitle>
+
+@* Everything about getting EMIs in, on one page: what is due, what went to the bank today, what bounced and why, what will be presented
+   again, work waiting for an officer, broken mandates, and whether Digio's settlement agrees with us. Read through the tenant-filtered context. *@
+<div class="stage-page">
+    <div class="stage-card" style="padding:18px 22px;">
+        <h1 class="dk-title">Collections</h1>
+
+        @if (_loading)
+        {
+            <p class="dg-muted">Loading…</p>
+        }
+        else
+        {
+            <div class="loan-cards">
+                <div class="loan-card"><span class="loan-label">Due in 3 days</span><strong>@_due.Count</strong><span class="dg-muted">@Money(_due.Sum(i => i.Emi))</span></div>
+                <div class="loan-card"><span class="loan-label">Presented today</span><strong>@_today.Count</strong><span class="dg-muted">@Money(_today.Sum(p => p.Amount))</span></div>
+                <div class="loan-card @(_failed.Count > 0 ? "loan-bad" : null)"><span class="loan-label">Bounced (30 days)</span><strong>@_failed.Count</strong><span class="dg-muted">@Money(_failed.Sum(p => p.Amount))</span></div>
+                <div class="loan-card @(_tasks.Count > 0 ? "loan-bad" : null)"><span class="loan-label">Waiting for an officer</span><strong>@_tasks.Count</strong></div>
+            </div>
+
+            <h2 class="loan-h">Due in the next 3 days</h2>
+            @if (_due.Count == 0) { <p class="dg-muted">Nothing falls due in the next 3 days.</p> }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Loan</th><th>Instalment</th><th>Due</th><th>EMI</th></tr></thead>
+                    <tbody>
+                    @foreach (var i in _due)
+                    {
+                        <tr><td><a href="/loans/@i.LoanAccountId">@LoanNo(i.LoanAccountId)</a></td><td>@i.No</td><td>@i.DueDate.ToString("d MMM", CultureInfo.InvariantCulture)</td><td>@Money(i.Emi)</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <h2 class="loan-h">Presented today</h2>
+            @if (_today.Count == 0) { <p class="dg-muted">No debits are settling today.</p> }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Loan</th><th>Attempt</th><th>Amount</th><th>Status</th></tr></thead>
+                    <tbody>
+                    @foreach (var p in _today)
+                    {
+                        <tr><td><a href="/loans/@LoanIdOf(p)">@LoanNo(LoanIdOf(p))</a></td><td>@p.Attempt</td><td>@Money(p.Amount)</td><td>@p.Status</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <h2 class="loan-h">Bounced, by reason (last 30 days)</h2>
+            @if (_failed.Count == 0) { <p class="dg-muted">No bounced debits.</p> }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Reason</th><th>Code</th><th>Count</th><th>Amount</th></tr></thead>
+                    <tbody>
+                    @foreach (var g in _failed.GroupBy(p => BounceBook.Normalise(p.FailureCode) ?? "—").OrderByDescending(g => g.Count()))
+                    {
+                        <tr><td>@(BounceBook.NameOf(g.Key) ?? "Unknown code")</td><td>@g.Key</td><td>@g.Count()</td><td>@Money(g.Sum(p => p.Amount))</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <h2 class="loan-h">Re-presentation queue</h2>
+            @if (_queue.Count == 0) { <p class="dg-muted">Nothing is waiting to be presented again.</p> }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Loan</th><th>Instalment</th><th>Attempts</th><th>Next try</th><th>Why</th></tr></thead>
+                    <tbody>
+                    @foreach (var q in _queue)
+                    {
+                        <tr><td><a href="/loans/@q.Instalment.LoanAccountId">@LoanNo(q.Instalment.LoanAccountId)</a></td><td>@q.Instalment.No</td><td>@q.Attempts</td>
+                            <td>@(q.Decision.EarliestOn?.ToString("d MMM", CultureInfo.InvariantCulture))</td><td>@q.Decision.Reason</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <h2 class="loan-h">Work for an officer</h2>
+            @if (_tasks.Count == 0) { <p class="dg-muted">No open tasks.</p> }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Loan</th><th>What</th><th>Raised</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var t in _tasks)
+                    {
+                        <tr>
+                            <td><a href="/loans/@t.LoanAccountId">@LoanNo(t.LoanAccountId)</a></td>
+                            <td>@t.Reason</td>
+                            <td>@t.CreatedAt.ToString("d MMM", CultureInfo.InvariantCulture)</td>
+                            <td>
+                                <input class="field-input" placeholder="What was done" maxlength="300" @bind="_notes[t.Id]" @bind:event="oninput" />
+                                <button type="button" class="verify-button" @onclick="() => ResolveAsync(t.Id)">Done</button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <h2 class="loan-h">Broken mandates</h2>
+            @if (_broken.Count == 0) { <p class="dg-muted">Every active loan's mandate is in order.</p> }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Loan</th><th>Mandate state</th></tr></thead>
+                    <tbody>
+                    @foreach (var b in _broken)
+                    {
+                        <tr><td><a href="/loans/@b.LoanAccountId">@b.LoanNo</a></td><td>@b.State</td></tr>
+                    }
+                    </tbody>
+                </table>
+            }
+
+            <h2 class="loan-h">Digio settlement check</h2>
+            @if (Tenant.IsAdmin || Tenant.IsSuperAdmin)
+            {
+                <p class="dg-muted">Paste the settlement id (CID) from Digio's settlement email to compare it with our debits.</p>
+                <input class="field-input" placeholder="Settlement id" maxlength="80" @bind="_cid" @bind:event="oninput" style="max-width:320px" />
+                <button type="button" class="verify-button" disabled="@_checking" @onclick="CheckAsync">Check</button>
+                @if (_settlementMessage is not null) { <p class="dg-muted">@_settlementMessage</p> }
+            }
+            @if (_checks.Count == 0) { <p class="dg-muted">No settlement has been checked yet.</p> }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Checked</th><th>Settlement</th><th>Transactions</th><th>Digio</th><th>Ours</th><th>Result</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in _checks)
+                    {
+                        <tr class="@(c.MismatchCount > 0 ? "loan-overdue" : null)">
+                            <td>@c.CheckedAt.ToString("d MMM HH:mm", CultureInfo.InvariantCulture) UTC</td><td>@c.Cid</td><td>@c.TxnCount</td><td>@Money(c.DigioTotal)</td><td>@Money(c.OurTotal)</td>
+                            <td>@(c.MismatchCount == 0 ? "Agrees" : c.Detail)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly CultureInfo Indian = new("en-IN");
+    private static string Money(decimal v) => v.ToString("C0", Indian);
+
+    private bool _loading = true;
+    private bool _checking;
+    private string _cid = "";
+    private string? _settlementMessage;
+    private List<Instalment> _due = new();
+    private List<Presentation> _today = new();
+    private List<Presentation> _failed = new();
+    private List<RepresentItem> _queue = new();
+    private List<CollectionTask> _tasks = new();
+    private List<SettlementCheck> _checks = new();
+    private List<(int LoanAccountId, string LoanNo, string State)> _broken = new();
+    private Dictionary<int, string> _loanNos = new();
+    private Dictionary<int, int> _loanOfInstalment = new();
+    private readonly Dictionary<int, string> _notes = new();
+
+    private string LoanNo(int id) => _loanNos.TryGetValue(id, out var n) ? n : "Loan " + id;
+    private int LoanIdOf(Presentation p) => _loanOfInstalment.TryGetValue(p.InstalmentId, out var id) ? id : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var active = db.Instalments.AsNoTracking().Where(i => i.LoanAccount!.Status == "Active");
+        _due = await active.Where(i => i.Status == "Due" && i.DueDate >= today && i.DueDate <= today.AddDays(3)).OrderBy(i => i.DueDate).Take(200).ToListAsync();
+        _today = await db.Presentations.AsNoTracking().Where(p => p.SettlementDate == today && p.Status != "Cancelled").Take(200).ToListAsync();
+        var since = DateTime.UtcNow.AddDays(-30);
+        _failed = await db.Presentations.AsNoTracking().Where(p => p.Status == "Failed" && p.UpdatedAt >= since).ToListAsync();
+        _queue = await BounceService.RepresentQueueAsync(db, today, dueOnly: false);
+        _tasks = await db.CollectionTasks.AsNoTracking().Where(t => t.Status == "Open").OrderBy(t => t.CreatedAt).Take(200).ToListAsync();
+        foreach (var t in _tasks) { _notes.TryAdd(t.Id, ""); }
+        _checks = await db.SettlementChecks.AsNoTracking().OrderByDescending(c => c.CheckedAt).Take(10).ToListAsync();
+
+        var accounts = await db.LoanAccounts.AsNoTracking().Where(a => a.Status == "Active").Select(a => new { a.Id, a.LoanAccountNo, a.MandateId }).ToListAsync();
+        _loanNos = accounts.ToDictionary(a => a.Id, a => a.LoanAccountNo);
+        var mandateIds = accounts.Where(a => a.MandateId != null).Select(a => a.MandateId!.Value).ToList();
+        var mandates = await db.EnachMandates.AsNoTracking().Where(m => mandateIds.Contains(m.Id)).Select(m => new { m.Id, m.DigioState }).ToListAsync();
+        _broken = accounts.Select(a => (a, state: mandates.FirstOrDefault(m => m.Id == a.MandateId)?.DigioState))
+            .Where(x => x.state is "Cancelled" or "Rejected" or "Expired" or "AuthFailed")
+            .Select(x => (x.a.Id, x.a.LoanAccountNo, x.state!)).ToList();
+        _loanOfInstalment = await db.Instalments.AsNoTracking().Where(i => _today.Select(p => p.InstalmentId).Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.LoanAccountId);
+        _loading = false;
+    }
+
+    private async Task ResolveAsync(int taskId)
+    {
+        await Bounces.ResolveTaskAsync(taskId, _notes.GetValueOrDefault(taskId, ""), Tenant.UserId ?? "");
+        await LoadAsync();
+    }
+
+    private async Task CheckAsync()
+    {
+        _checking = true;
+        try
+        {
+            var (check, error) = await Settlements.CheckAsync(Tenant.CompanyId ?? 0, _cid);
+            _settlementMessage = error ?? (check!.MismatchCount == 0 ? "Digio's settlement agrees with our records." : "Differences found, listed below.");
+            await LoadAsync();
+        }
+        finally { _checking = false; }
+    }
+}

@@ -139,6 +139,20 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
     public DbSet<EsignSigner> EsignSigners => Set<EsignSigner>();
 
+    public DbSet<LoanAccount> LoanAccounts => Set<LoanAccount>();
+
+    public DbSet<Instalment> Instalments => Set<Instalment>();
+
+    public DbSet<Presentation> Presentations => Set<Presentation>();
+
+    public DbSet<Receipt> Receipts => Set<Receipt>();
+
+    public DbSet<LoanCharge> LoanCharges => Set<LoanCharge>();
+
+    public DbSet<CollectionTask> CollectionTasks => Set<CollectionTask>();
+
+    public DbSet<SettlementCheck> SettlementChecks => Set<SettlementCheck>();
+
     /// <summary>Encrypted admin-set passwords (PasswordVault). Not tenant-filtered.</summary>
     public DbSet<CredentialVaultEntry> CredentialVault => Set<CredentialVaultEntry>();
 
@@ -1055,6 +1069,76 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
             entity.HasQueryFilter(e => _isSuperAdmin || e.CompanyId == _companyId);
         });
 
+        // Servicing ledger (docs/digio/03): company-scoped; the collection scheduler and webhooks have no user and bypass the
+        // filter on purpose, scoping by an explicit CompanyId.
+        modelBuilder.Entity<LoanAccount>(entity =>
+        {
+            entity.ToTable("LoanAccount");
+            entity.HasIndex(a => a.ApplicationId).IsUnique();          // opened exactly once
+            entity.HasIndex(a => new { a.CompanyId, a.LoanAccountNo }).IsUnique();
+            entity.Property(a => a.Principal).HasPrecision(18, 2);
+            entity.Property(a => a.Roi).HasPrecision(6, 3);
+            entity.HasMany(a => a.Instalments).WithOne(i => i.LoanAccount).HasForeignKey(i => i.LoanAccountId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasQueryFilter(a => _isSuperAdmin || a.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<Instalment>(entity =>
+        {
+            entity.ToTable("Instalment");
+            entity.HasIndex(i => new { i.LoanAccountId, i.No }).IsUnique();
+            entity.HasIndex(i => new { i.Status, i.DueDate });
+            foreach (var p in new[] { nameof(Instalment.Emi), nameof(Instalment.Principal), nameof(Instalment.Interest), nameof(Instalment.PaidAmount) })
+            {
+                entity.Property(p).HasPrecision(18, 2);
+            }
+
+            entity.HasQueryFilter(i => _isSuperAdmin || i.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<Presentation>(entity =>
+        {
+            entity.ToTable("Presentation");
+            entity.HasIndex(p => new { p.InstalmentId, p.Attempt }).IsUnique();   // one row per attempt: a re-run of the scheduler cannot add a second
+            entity.HasIndex(p => new { p.CompanyId, p.DigioTxnId });
+            entity.HasIndex(p => new { p.Status, p.UpdatedAt });
+            entity.Property(p => p.Amount).HasPrecision(18, 2);
+            entity.HasQueryFilter(p => _isSuperAdmin || p.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<Receipt>(entity =>
+        {
+            entity.ToTable("Receipt");
+            entity.HasIndex(r => new { r.CompanyId, r.ReceiptNo }).IsUnique();
+            entity.HasIndex(r => r.PresentationId).IsUnique();                      // a replayed success webhook cannot make a second receipt
+            entity.Property(r => r.Amount).HasPrecision(18, 2);
+            entity.HasQueryFilter(r => _isSuperAdmin || r.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<CollectionTask>(entity =>
+        {
+            entity.ToTable("CollectionTask");
+            entity.HasIndex(t => new { t.InstalmentId, t.Kind, t.Status });
+            entity.HasIndex(t => new { t.CompanyId, t.Status });
+            entity.HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<SettlementCheck>(entity =>
+        {
+            entity.ToTable("SettlementCheck");
+            entity.HasIndex(c => new { c.CompanyId, c.Cid });
+            entity.Property(c => c.DigioTotal).HasPrecision(18, 2);
+            entity.Property(c => c.OurTotal).HasPrecision(18, 2);
+            entity.HasQueryFilter(c => _isSuperAdmin || c.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<LoanCharge>(entity =>
+        {
+            entity.ToTable("LoanCharge");
+            entity.Property(c => c.Amount).HasPrecision(18, 2);
+            entity.Property(c => c.Gst).HasPrecision(18, 2);
+            entity.HasQueryFilter(c => _isSuperAdmin || c.CompanyId == _companyId);
+        });
+
         modelBuilder.Entity<EsignSigner>(entity =>
         {
             entity.ToTable("EsignSigner");
@@ -1066,6 +1150,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
         {
             entity.ToTable("DigioSettings");
             entity.Property(s => s.NachMaxMultiplier).HasPrecision(4, 2);
+            entity.Property(s => s.BounceChargeAmount).HasPrecision(18, 2);
+            entity.Property(s => s.BounceChargeGstPct).HasPrecision(5, 2);
             entity.HasIndex(s => s.CompanyId).IsUnique();
             entity.HasQueryFilter(s => _isSuperAdmin || s.CompanyId == _companyId);
         });
