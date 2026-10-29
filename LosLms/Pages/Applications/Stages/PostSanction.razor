@@ -52,6 +52,14 @@ else
                             OnSaveDraft="GoToDisbursementTab"
                             OnCompleteStage="ReleaseFundsAsync" />
 
+            @if (_loanAccountId is { } loanId)
+            {
+                <div class="dg-gate" style="background:#e3f4e6;border-color:#b9dfc0;color:#1d6b2c;">
+                    <span>This loan has been disbursed.</span>
+                    <a class="file-link" href="/loans/@loanId">Open the loan account →</a>
+                </div>
+            }
+
             @if (!_digioGate.CanAdvance)
             {
                 <div class="dg-gate" role="alert">
@@ -854,6 +862,7 @@ else
     {
         var companyId = _application?.CompanyId ?? 0;
         _isElevated = db.IsElevatedUser;
+        _loanAccountId = await db.LoanAccounts.AsNoTracking().Where(a => a.ApplicationId == ApplicationId).Select(a => (int?)a.Id).FirstOrDefaultAsync();
         _digioNach = Digio.Credentials(companyId) is not null
             && await db.DigioSettings.AsNoTracking().AnyAsync(s => s.CompanyId == companyId && s.Enach);
         _digioGate = await DigioReleaseGate.CheckAsync(db, ApplicationId, await IsProductionAsync());
@@ -1107,6 +1116,7 @@ else
     private Dictionary<string, (string? Mobile, string? Email)> _contacts = new(StringComparer.Ordinal);
     private GateResult _digioGate = GateResult.Clear;
     private bool _isElevated, _digioNach, _subscribed;
+    private int? _loanAccountId;
     private string? _smsNotice;
 
     /// <summary>The SMS text the officer sees — composed for real from the loan's merge fields.</summary>
@@ -1383,11 +1393,16 @@ else
         var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
         application.Disbursed = true;
 
+        // The loan account and its instalment snapshot commit with the release, in the same SaveChanges.
+        var opened = await LoanAccountService.OpenAsync(db, application, SanctionedAmount, SanctionedRoi, SanctionedTenure,
+            _disbursement.FirstEmiDate, _disbursement.EmiDayOfMonth, _disbursement.FirstEmiOverride, _disbursement.EmiRoundedTo);
+
         // CurrentStage deliberately stays at 8 — this is the final stage, there is no Stage 9.
 
         await db.SaveChangesAsync();
 
         _disbursed = true;
+        _loanAccountId = opened?.Id ?? _loanAccountId;
         await ShowToastAsync("Funds released");
     }
 

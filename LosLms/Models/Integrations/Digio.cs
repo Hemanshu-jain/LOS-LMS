@@ -233,6 +233,22 @@ public class DigioSettings
     /// <summary>final_collection_date = last EMI + this many months (room to re-present a bounce).</summary>
     public int NachFinalBufferMonths { get; set; } = 12;
 
+    /// <summary>Days before the due date an EMI debit is created at Digio (cut-off is T-1; holidays roll forward).</summary>
+    public int DebitLeadDays { get; set; } = 2;
+
+    /// <summary>Debit attempts per instalment, the first included (slice 3 re-presentation).</summary>
+    public int MaxAttempts { get; set; } = 2;
+
+    /// <summary>Days to wait after a bounce before presenting again (Digio refuses a new debit within 3 days of a failure, DG103).</summary>
+    public int RepresentAfterDays { get; set; } = 3;
+
+    /// <summary>The NBFC's collection account at the sponsor bank, per environment (a sandbox account must never receive production debits).</summary>
+    [MaxLength(30)]
+    public string? CorporateAccountSandbox { get; set; }
+
+    [MaxLength(30)]
+    public string? CorporateAccountProduction { get; set; }
+
     /// <summary>Digio e-stamp inventory tag (entity_STATE_amount_LOB); empty = no stamp requested.</summary>
     [MaxLength(80)]
     public string? EstampTag { get; set; }

@@ -1526,6 +1526,17 @@ namespace LosLms.Migrations
                     b.Property<int>("CompanyId")
                         .HasColumnType("int");
 
+                    b.Property<string>("CorporateAccountProduction")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("CorporateAccountSandbox")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<int>("DebitLeadDays")
+                        .HasColumnType("int");
+
                     b.Property<bool>("Debits")
                         .HasColumnType("tinyint(1)");
 
@@ -1587,6 +1598,9 @@ namespace LosLms.Migrations
                     b.Property<int>("LinkExpiryDays")
                         .HasColumnType("int");
 
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("int");
+
                     b.Property<string>("NachCategory")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -1609,6 +1623,9 @@ namespace LosLms.Migrations
 
                     b.Property<bool>("Rc")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("RepresentAfterDays")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
@@ -2261,6 +2278,170 @@ namespace LosLms.Migrations
                             IfscPrefix = "UBIN",
                             BankName = "Union Bank of India"
                         });
+                });
+
+            modelBuilder.Entity("LosLms.Models.Instalment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("Emi")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("Interest")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("LoanAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("No")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("PaidAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateOnly?>("PaidOn")
+                        .HasColumnType("date");
+
+                    b.Property<decimal>("Principal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoanAccountId", "No")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "DueDate");
+
+                    b.ToTable("Instalment", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.LoanAccount", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EmiDay")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("FirstEmiDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("LoanAccountNo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<int?>("MandateId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("OpenedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("Principal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("Roi")
+                        .HasPrecision(6, 3)
+                        .HasColumnType("decimal(6,3)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("varchar(15)");
+
+                    b.Property<int>("Tenure")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "LoanAccountNo")
+                        .IsUnique();
+
+                    b.ToTable("LoanAccount", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.LoanCharge", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("Gst")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("InstalmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("varchar(15)");
+
+                    b.Property<int>("LoanAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("LoanCharge", (string)null);
                 });
 
             modelBuilder.Entity("LosLms.Models.LookupValue", b =>
@@ -2930,6 +3111,80 @@ namespace LosLms.Migrations
                     b.ToTable("PostSanctionChecklists");
                 });
 
+            modelBuilder.Entity("LosLms.Models.Presentation", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("Attempt")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DigioPlanId")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("DigioTxnId")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("varchar(12)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<int>("InstalmentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("SettlementDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("varchar(12)");
+
+                    b.Property<string>("Umrn")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Utr")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "DigioTxnId");
+
+                    b.HasIndex("InstalmentId", "Attempt")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "UpdatedAt");
+
+                    b.ToTable("Presentation", (string)null);
+                });
+
             modelBuilder.Entity("LosLms.Models.RcuInitiation", b =>
                 {
                     b.Property<int>("Id")
@@ -3083,6 +3338,79 @@ namespace LosLms.Migrations
                     b.HasIndex("ApplicationId", "SequenceNumber");
 
                     b.ToTable("RcuReports");
+                });
+
+            modelBuilder.Entity("LosLms.Models.Receipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ApprovedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int?>("InstalmentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LoanAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PdfPath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<string>("PresentationId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("ReceiptNo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<DateOnly>("ReceivedOn")
+                        .HasColumnType("date");
+
+                    b.Property<string>("RecordedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PresentationId")
+                        .IsUnique();
+
+                    b.HasIndex("CompanyId", "ReceiptNo")
+                        .IsUnique();
+
+                    b.ToTable("Receipt", (string)null);
                 });
 
             modelBuilder.Entity("LosLms.Models.Reference", b =>
@@ -4139,6 +4467,17 @@ namespace LosLms.Migrations
                     b.Navigation("Application");
                 });
 
+            modelBuilder.Entity("LosLms.Models.Instalment", b =>
+                {
+                    b.HasOne("LosLms.Models.LoanAccount", "LoanAccount")
+                        .WithMany("Instalments")
+                        .HasForeignKey("LoanAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LoanAccount");
+                });
+
             modelBuilder.Entity("LosLms.Models.LookupValue", b =>
                 {
                     b.HasOne("LosLms.Models.Company", "Company")
@@ -4445,6 +4784,11 @@ namespace LosLms.Migrations
             modelBuilder.Entity("LosLms.Models.Application", b =>
                 {
                     b.Navigation("Parties");
+                });
+
+            modelBuilder.Entity("LosLms.Models.LoanAccount", b =>
+                {
+                    b.Navigation("Instalments");
                 });
 #pragma warning restore 612, 618
         }

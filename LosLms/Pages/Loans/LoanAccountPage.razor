@@ -1,0 +1,127 @@
+@page "/loans/{Id:int}"
+@page "/loans/for/{ApplicationId}"
+@using System.Globalization
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject NavigationManager Nav
+
+<PageTitle>Loan account · LOS/LMS</PageTitle>
+
+@if (_loading)
+{
+    <div class="stage-page"><p class="loading-note">Loading loan account…</p></div>
+}
+else if (_account is null)
+{
+    <div class="stage-page">
+        <div class="not-found">
+            <h1 class="not-found-title">Loan account not found</h1>
+            <p class="not-found-body">There is no loan account here. One is opened when funds are released on Post Sanction.</p>
+        </div>
+    </div>
+}
+else
+{
+    <div class="stage-page">
+        <div class="stage-card" style="padding:18px 22px;">
+            <a class="file-link" href="/applications/@_account.ApplicationId/post-sanction">← Application @_account.ApplicationId</a>
+            <h1 class="dk-title" style="margin-top:6px;">Loan account @_account.LoanAccountNo
+                <span class="dg-chip dg-@(_account.Status == "Active" ? "ok" : "off")">@_account.Status</span>
+            </h1>
+
+            <div class="loan-cards">
+                <div class="loan-card"><span class="loan-label">Principal</span><strong>@Money(_account.Principal)</strong><span class="dg-muted">@_account.Roi% · @_account.Tenure months</span></div>
+                <div class="loan-card"><span class="loan-label">Outstanding principal</span><strong>@Money(_standing.OutstandingPrincipal)</strong><span class="dg-muted">Paid so far @Money(_standing.TotalPaid)</span></div>
+                <div class="loan-card @(_standing.DaysPastDue > 0 ? "loan-bad" : null)"><span class="loan-label">Days past due</span><strong>@_standing.DaysPastDue</strong><span class="dg-muted">Overdue @Money(_standing.OverdueAmount)</span></div>
+                <div class="loan-card"><span class="loan-label">Next EMI</span><strong>@(_standing.NextDue is { } n ? Money(n.Emi) : "—")</strong><span class="dg-muted">@(_standing.NextDue is { } d ? "due " + d.DueDate.ToString("d MMM yyyy", CultureInfo.InvariantCulture) : "all paid")</span></div>
+                <div class="loan-card"><span class="loan-label">EMI mandate</span>
+                    <strong>@(_mandate?.DigioState ?? _mandate?.Status ?? "None")</strong>
+                    <span class="dg-muted">@(_mandate?.Umrn is { Length: > 0 } u ? "UMRN ••••" + (u.Length > 4 ? u[^4..] : u) : "no UMRN yet")</span></div>
+            </div>
+
+            <h2 class="loan-h">Repayment schedule <span class="dg-muted">(snapshot taken when funds were released)</span></h2>
+            <table class="dg-signers">
+                <thead><tr><th>#</th><th>Due</th><th>EMI</th><th>Principal</th><th>Interest</th><th>Status</th><th>Paid</th></tr></thead>
+                <tbody>
+                @foreach (var i in _account.Instalments.OrderBy(x => x.No))
+                {
+                    var overdue = i.DueDate < _today && i.Status is not ("Paid" or "Waived");
+                    <tr class="@(overdue ? "loan-overdue" : null)">
+                        <td>@i.No</td>
+                        <td>@i.DueDate.ToString("d MMM yyyy", CultureInfo.InvariantCulture)</td>
+                        <td>@Money(i.Emi)</td>
+                        <td>@Money(i.Principal)</td>
+                        <td>@Money(i.Interest)</td>
+                        <td><span class="dg-chip dg-@ChipFor(i.Status, overdue)">@(overdue && i.Status == "Due" ? "Overdue" : i.Status)</span></td>
+                        <td>@(i.PaidAmount > 0 ? Money(i.PaidAmount) + (i.PaidOn is { } on ? " on " + on.ToString("d MMM", CultureInfo.InvariantCulture) : "") : "—")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+
+            <h2 class="loan-h">Receipts</h2>
+            @if (_receipts.Count == 0)
+            {
+                <p class="dg-muted">No receipts yet.</p>
+            }
+            else
+            {
+                <table class="dg-signers">
+                    <thead><tr><th>Receipt</th><th>Date</th><th>Source</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead>
+                    <tbody>
+                    @foreach (var r in _receipts)
+                    {
+                        <tr>
+                            <td>@r.ReceiptNo</td>
+                            <td>@r.ReceivedOn.ToString("d MMM yyyy", CultureInfo.InvariantCulture)</td>
+                            <td>@r.Source</td>
+                            <td>@Money(r.Amount)</td>
+                            <td>@(r.Reference ?? "—")</td>
+                            <td><span class="dg-chip dg-@(r.Status == "Approved" ? "ok" : "warn")">@r.Status</span></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+    [Parameter] public string? ApplicationId { get; set; }
+
+    private static readonly CultureInfo Indian = new("en-IN");
+
+    private bool _loading = true;
+    private LoanAccount? _account;
+    private EnachMandate? _mandate;
+    private List<Receipt> _receipts = new();
+    private LoanStanding _standing = LoanStanding.Compute([], DateOnly.MinValue);
+    private DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _account = ApplicationId is { Length: > 0 }
+            ? await db.LoanAccounts.AsNoTracking().Include(a => a.Instalments).FirstOrDefaultAsync(a => a.ApplicationId == ApplicationId)
+            : await db.LoanAccounts.AsNoTracking().Include(a => a.Instalments).FirstOrDefaultAsync(a => a.Id == Id);
+        if (_account is not null)
+        {
+            _mandate = await db.EnachMandates.AsNoTracking().FirstOrDefaultAsync(m => m.Id == _account.MandateId);
+            _receipts = await db.Receipts.AsNoTracking().Where(r => r.LoanAccountId == _account.Id).OrderByDescending(r => r.ReceivedOn).ThenByDescending(r => r.Id).ToListAsync();
+            _standing = LoanStanding.Compute(_account.Instalments, _today);
+        }
+
+        _loading = false;
+    }
+
+    private static string Money(decimal v) => "₹" + v.ToString("N2", Indian);
+
+    private static string ChipFor(string status, bool overdue) =>
+        status == "Paid" ? "ok" : status is "Bounced" || overdue ? "bad" : status is "PartPaid" or "Presented" ? "info" : status == "Waived" ? "warn" : "off";
+}

@@ -1203,3 +1203,13 @@ a.auth-submit {
 .dg-rc-bad strong { color: #8a1f1f; }
 .dg-rc-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 4px 0 2px; }
 .dg-rc-box .dg-rc { flex-basis: 100%; }
+
+/* Loan account page (Phase 5) */
+.loan-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 12px 0 6px; }
+.loan-card { border: 1px solid #d8dee7; border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; background: #fff; }
+.loan-card strong { font-size: 18px; color: #1d2733; }
+.loan-card.loan-bad { border-color: #e6b3b3; background: #fbeeee; }
+.loan-card.loan-bad strong { color: #8a1f1f; }
+.loan-label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #6b7686; font-weight: 600; }
+.loan-h { font-size: 13px; margin: 18px 0 6px; color: #1d2733; }
+.loan-overdue td { background: #fbeeee; }
