@@ -57,3 +57,11 @@ document.addEventListener("focusin", function (e) {
     var t = e.target;
     if (t && t.tagName === "INPUT" && t.type === "number" && Number(t.value) === 0 && t.value !== "") { t.select(); }
 });
+
+// A typed date / date-time only reaches Blazor on a "change" event, which some browsers hold back until blur. Send it as soon as the value is complete.
+document.addEventListener("input", function (e) {
+    var t = e.target;
+    if (t && t.tagName === "INPUT" && (t.type === "date" || t.type === "datetime-local") && t.value) {
+        t.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+});

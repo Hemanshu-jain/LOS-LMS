@@ -868,8 +868,8 @@ else
     private bool BusinessComplete =>
         !string.IsNullOrWhiteSpace(_business.FirmName)
         && !string.IsNullOrWhiteSpace(_business.Constitution)
-        && _business.IncorpDate.HasValue
-        && !string.IsNullOrWhiteSpace(_business.Gstin)
+        && (BusinessPrefill.IsSoleProprietorship(_business.Constitution)
+            || (_business.IncorpDate.HasValue && !string.IsNullOrWhiteSpace(_business.Gstin)))
         && !string.IsNullOrWhiteSpace(_business.Vintage)
         && !string.IsNullOrWhiteSpace(_business.Narrative);
 
@@ -1050,7 +1050,17 @@ else
     // ---------------------------------------------------------------------
 
     /// <summary>Re-loads the screen after an inline admin decision (e.g. approving the request here).</summary>
-    private async Task ReloadStateAsync() => await OnParametersSetAsync();
+    private async Task ReloadStateAsync()
+    {
+        // Save what is on screen first: reloading from the database would otherwise throw away anything typed since the last auto-save.
+        await SerializedAsync(async () =>
+        {
+            await using var saveDb = await DbFactory.CreateDbContextAsync();
+            await PersistAsync(saveDb);
+            await saveDb.SaveChangesAsync();
+        });
+        await OnParametersSetAsync();
+    }
 
     /// <summary>The sub-header's primary action, branched by role.</summary>
     private async Task PrimaryActionAsync()

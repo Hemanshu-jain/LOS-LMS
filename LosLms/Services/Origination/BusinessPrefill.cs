@@ -36,12 +36,19 @@ public static class BusinessPrefill
             business.FirmName = applicant.EmployerName.Trim();
         }
 
+        // An individual borrower's business is a proprietorship.
+        var category = string.Equals(applicant.CustomerCategory?.Trim(), "Individual", StringComparison.OrdinalIgnoreCase) ? "Proprietorship" : applicant.CustomerCategory?.Trim();
         if (string.IsNullOrWhiteSpace(business.Constitution)
-            && Constitutions.FirstOrDefault(c => string.Equals(c, applicant.CustomerCategory?.Trim(), StringComparison.OrdinalIgnoreCase)) is { } constitution)
+            && Constitutions.FirstOrDefault(c => string.Equals(c, category, StringComparison.OrdinalIgnoreCase)) is { } constitution)
         {
             business.Constitution = constitution;
         }
     }
+
+    /// <summary>An individual or proprietor has no incorporation date or (necessarily) a GSTIN, so Approvals does not insist on them.</summary>
+    public static bool IsSoleProprietorship(string? constitution) =>
+        string.Equals(constitution?.Trim(), "Proprietorship", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(constitution?.Trim(), "Individual", StringComparison.OrdinalIgnoreCase);
 
     private static void ClearIfLenders(Func<bool> isLenders, Action clear)
     {
