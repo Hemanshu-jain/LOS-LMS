@@ -410,7 +410,7 @@ else
                 return;
             }
             _branchOptions = await db.Branches.AsNoTracking()
-                .Where(b => b.IsActive)
+                .Where(b => b.IsActive && b.CompanyId == _application.CompanyId)
                 .OrderBy(b => b.Name)
                 .Select(b => b.Name)
                 .ToListAsync();
@@ -430,7 +430,7 @@ else
             // Vendors now come from the company's editable list. Same guard: a vendor this RCU was
             // raised with that has since been removed is re-inserted so the select never blanks it out.
             _vendorOptions = await db.LookupValues.AsNoTracking()
-                .Where(l => l.Kind == LookupKind.RcuVendor && l.IsActive)
+                .Where(l => l.Kind == LookupKind.RcuVendor && l.IsActive && l.CompanyId == _application.CompanyId)
                 .OrderBy(l => l.Name).Select(l => l.Name).ToListAsync();
             if (_initiation.Vendor is { Length: > 0 } recordedVendor
                 && !_vendorOptions.Contains(recordedVendor, StringComparer.OrdinalIgnoreCase))
