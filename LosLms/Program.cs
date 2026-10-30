@@ -25,7 +25,18 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(options =>
+    {
+        // A closed laptop or a backgrounded tab for half an hour comes back to the same circuit (no "connection closed"); the default is 3 minutes.
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(30);
+        options.DisconnectedCircuitMaxRetained = 200;
+    })
+    .AddHubOptions(hub =>
+    {
+        // Tolerate a silent client for a minute (a network blip) before the server drops the connection; keep-alives stay at 15 s.
+        hub.KeepAliveInterval = TimeSpan.FromSeconds(15);
+        hub.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+    });
 
 // Lift the request-body cap so a full-quality Video KYC clip fits (Kestrel defaults to 30 MB). The
 // camera upload streams a raw binary body to the /api/party-media middleware. App-wide, which is fine —
@@ -160,6 +171,7 @@ builder.Services.AddScoped<DigioWebhookService>();
 builder.Services.AddScoped<DigioEsignService>();
 builder.Services.AddScoped<DigioNachService>();
 builder.Services.AddScoped<DigioAsset>();
+builder.Services.AddScoped<ApiUsageReport>();
 builder.Services.AddScoped<DigioCollect>();
 builder.Services.AddScoped<IPresentationStarter>(sp => sp.GetRequiredService<DigioCollect>()); // re-presentation after a bounce (slice 3)
 builder.Services.AddHostedService<CollectionScheduler>();
@@ -219,16 +231,7 @@ builder.Services.Configure<SecurityStampValidatorOptions>(options =>
     options.ValidationInterval = TimeSpan.FromMinutes(5);
 });
 
-builder.Services.ConfigureApplicationCookie(options =>
-{
-    options.LoginPath = "/account/login";
-    options.LogoutPath = "/account/logout";
-    // A signed-in user who fails a role check is NOT sent to the sign-in form. They are already
-    // signed in; a login page would read as "your session expired" rather than "you lack the role".
-    options.AccessDeniedPath = "/account/denied";
-    options.ExpireTimeSpan = TimeSpan.FromHours(8);
-    options.SlidingExpiration = true;
-});
+builder.Services.ConfigureApplicationCookie(AuthCookie.Configure); // "remember me" = 7 days sliding; otherwise 12 h sliding
 
 // Remote users reach this backend through a Cloudflare tunnel that terminates HTTPS and forwards to
 // the app over plain HTTP on localhost. Without this, the app sees every request as "http" and builds
@@ -738,6 +741,22 @@ app.MapPartnerLoanApi();
 
 // The vendor's uploaded UPI QR image, shown on the payment page. Any signed-in user may fetch it (it is just
 // the vendor's public pay-to code, and a paused company must be able to see it).
+// The signed-in landing: / used to be a placeholder page. Everyone goes to the applications list (a SuperAdmin without a company is sent on to the company picker from there).
+app.MapGet("/", () => Results.Redirect("/applications"));
+
+// API usage log as CSV for the month (Admin / SuperAdmin; an Admin gets their own company, a SuperAdmin the company they act as, else all).
+app.MapGet("/admin/api-usage.csv", async (string? month, TenantContext tenant, ApiUsageReport report, IDbContextFactory<LosDbContext> dbFactory) =>
+{
+    await tenant.EnsureLoadedAsync();
+    var m = DateOnly.TryParseExact((month ?? "") + "-01", "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsed)
+        ? parsed : ApiBillingService.TodayIst();
+    var entries = await report.EntriesAsync(tenant.ScopeCompanyId, m);
+    await using var db = await dbFactory.CreateDbContextAsync();
+    var names = await db.Companies.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Name);
+    var csv = ApiUsageReport.Csv(entries, id => names.GetValueOrDefault(id) ?? "#" + id);
+    return Results.File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv; charset=utf-8", $"api-usage-{m:yyyy-MM}.csv");
+}).RequireAuthorization(new Microsoft.AspNetCore.Authorization.AuthorizeAttribute { Roles = TenantContext.AdminRoles });
+
 app.MapGet("/billing/qr", async (IDbContextFactory<LosDbContext> dbFactory) =>
 {
     await using var db = await dbFactory.CreateDbContextAsync();
