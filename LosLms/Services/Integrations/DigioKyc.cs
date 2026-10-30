@@ -19,7 +19,7 @@ public sealed record KycOutcome(string? Verdict, string Message, bool NotEnabled
 /// Each writes <see cref="VerificationEvidence"/> (what the gate reads) and never invents a result: a missing field is "Unavailable".
 /// Field names come from the saved sandbox samples (docs/digio/samples) and Digio's spec.
 /// </summary>
-public sealed partial class DigioKyc(DigioClient digio, ApiBillingService billing, IDbContextFactory<LosDbContext> dbFactory, IFileStore files)
+public sealed partial class DigioKyc(DigioClient digio, ApiBillingService billing, IDbContextFactory<LosDbContext> dbFactory, IFileStore files, DigioStatusNotifier? notifier = null)
 {
     /// <summary>Consent is part of the customer's signed application and of Digio's own DigiLocker journey, so nothing is gated on a tick; the wording is stored on every request.</summary>
     public const string ConsentText = "Customer's signed application / DigiLocker in-journey consent";
@@ -444,6 +444,11 @@ public sealed partial class DigioKyc(DigioClient digio, ApiBillingService billin
         });
         db.VerificationEvidence.AddRange(evidence);
         await db.SaveChangesAsync();
+        if (notifier is not null)
+        {
+            await notifier.NotifyAsync(req.ApplicationId); // an open Customer Details page refreshes instead of keeping (and re-saving) a stale form
+        }
+
         return new("Verified", evidence.Count > 1 ? "Aadhaar and PAN fetched from DigiLocker." : "Aadhaar fetched from DigiLocker.", RequestId: requestId);
     }
 
@@ -484,6 +489,17 @@ public sealed partial class DigioKyc(DigioClient digio, ApiBillingService billin
 
     private static readonly string[] DobFormats = ["yyyy-MM-dd", "dd-MM-yyyy", "dd/MM/yyyy", "yyyy/MM/dd", "d-M-yyyy", "d/M/yyyy"];
 
+    private static readonly System.Text.RegularExpressions.Regex CareOf =
+        new(@"(?:^|[\s,])(?:S|D|W|H)\s*/\s*O\s*[:.\-]?\s*([A-Za-z][A-Za-z .'\-]{1,58}?)\s*(?:,|$|\d)", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Aadhaar carries the relative in the address ("S/O Ramesh Kumar, ...", "W/O ...", "D/O ...", "H/O ..."), and DigiLocker often leaves
+    /// father_name empty. That name is the father or the spouse, which is exactly the "Father / spouse name" field. "C/O" (care of) is
+    /// not a relative, so it is not used.
+    /// </summary>
+    internal static string? CareOfName(string? address) =>
+        address is { Length: > 0 } && CareOf.Match(address) is { Success: true } m ? m.Groups[1].Value.Trim().TrimEnd('.', '-') is { Length: > 1 } n ? n : null : null;
+
     private static DigiKycData? ReadIdentity(JsonElement a)
     {
         if (a.ValueKind != JsonValueKind.Object)
@@ -494,7 +510,8 @@ public sealed partial class DigioKyc(DigioClient digio, ApiBillingService billin
         var addr = Sub(a, "current_address_details").ValueKind == JsonValueKind.Object ? Sub(a, "current_address_details") : Sub(a, "permanent_address_details");
         DateOnly? dob = DateOnly.TryParseExact(Str(a, "dob"), DobFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d) ? d : null;
         var gender = Str(a, "gender")?.Trim().ToUpperInvariant() switch { "M" or "MALE" => "Male", "F" or "FEMALE" => "Female", { Length: > 0 } => "Other", _ => null };
-        return new DigiKycData(Str(a, "name"), dob, gender, Str(a, "father_name"), Str(addr, "address") ?? Str(a, "current_address"),
+        var address = Str(addr, "address") ?? Str(a, "current_address");
+        return new DigiKycData(Str(a, "name"), dob, gender, Str(a, "father_name") ?? CareOfName(address) ?? CareOfName(Str(a, "permanent_address")), address,
             Str(addr, "district_or_city"), Str(addr, "state"), Str(addr, "pincode"), Str(addr, "locality_or_post_office"));
     }
 
