@@ -325,7 +325,7 @@ else
                                                         <a class="file-link" href="@UrlFor(_disbursement.AgreementFilePath!)" target="_blank">✓ @agreement</a>
                                                     }
                                                 </div>
-                                                <EsignPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" UserId="@Tenant.UserId"
+                                                <EsignPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" UserId="@Tenant.UserId" AgreementKey="@_disbursement.AgreementFilePath"
                                                             OnChanged="OnEsignChangedAsync" />
                                             </div>
                                         </div>
