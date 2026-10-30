@@ -389,13 +389,22 @@ else
                                             </FormField>
 
                                             <div style="grid-column: 1 / -1;">
-                                                <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
-                                                         Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
-                                                         InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
+                                                @* Extras on this page: if one of them fails it shows a short note (and logs), and the page still loads. *@
+                                                <ErrorBoundary>
+                                                    <ChildContent>
+                                                        <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
+                                                                 Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
+                                                                 InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
+                                                    </ChildContent>
+                                                    <ErrorContent><span class="inline-error" role="alert">The RC check is unavailable right now.</span></ErrorContent>
+                                                </ErrorBoundary>
                                             </div>
 
                                             <div style="grid-column: 1 / -1;">
-                                                <TgPortalPanel ApplicationId="@ApplicationId" />
+                                                <ErrorBoundary>
+                                                    <ChildContent><TgPortalPanel ApplicationId="@ApplicationId" /></ChildContent>
+                                                    <ErrorContent><span class="inline-error" role="alert">The TG portal record is unavailable right now.</span></ErrorContent>
+                                                </ErrorBoundary>
                                             </div>
 
                                             <FormField Label="Invoice no." For="sec-invno">
@@ -1011,8 +1020,9 @@ else
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
             _security = security is null ? new SecurityForm() : ToForm(security);
 
-            // Company-scoped by query filter, so this is only ever this company's catalog.
+            // Scoped explicitly: the query filter is open for a SuperAdmin who is not acting as a company.
             _vehicleCatalog = await db.VehicleLoanCaps.AsNoTracking()
+                .Where(v => v.CompanyId == _application.CompanyId)
                 .OrderBy(v => v.Make).ThenBy(v => v.Model)
                 .ToListAsync();
 
@@ -1462,7 +1472,7 @@ else
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        var caps = await db.VehicleLoanCaps.ToListAsync();
+        var caps = await db.VehicleLoanCaps.Where(v => v.CompanyId == _application!.CompanyId).ToListAsync();
         var exists = caps.Any(v =>
             string.Equals(v.Make, make, StringComparison.OrdinalIgnoreCase)
             && string.Equals(v.Model, model, StringComparison.OrdinalIgnoreCase)
@@ -1513,6 +1523,7 @@ else
             _capChangeAmount = null;
             _capChangeMessage = $"Cap updated to {FormatInr(newAmount)}.";
             _vehicleCatalog = await db.VehicleLoanCaps.AsNoTracking()
+                .Where(v => v.CompanyId == _application!.CompanyId)
                 .OrderBy(v => v.Make).ThenBy(v => v.Model).ToListAsync();
             await RefreshCapGateAsync();
             return;
@@ -1583,8 +1594,27 @@ else
         Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial");
     }
 
-    /// <summary>Writes all four tabs in a single operation. No validation blocks this.</summary>
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
+
+    /// <summary>
+    /// Writes all four tabs in a single operation. No validation blocks this. One save at a time: the 8 s auto-save and
+    /// Complete stage both delete-and-reinsert the references, so overlapping them made the second delete hit rows the
+    /// first had already removed (DbUpdateConcurrencyException). The second save now waits, then re-reads and writes.
+    /// </summary>
     private async Task PersistAsync(bool completeStage)
+    {
+        await _persistGate.WaitAsync();
+        try
+        {
+            await PersistCoreAsync(completeStage);
+        }
+        finally
+        {
+            _persistGate.Release();
+        }
+    }
+
+    private async Task PersistCoreAsync(bool completeStage)
     {
         if (_application is null)
         {

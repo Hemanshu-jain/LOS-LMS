@@ -442,7 +442,8 @@
                     break;
 
                 case AdminRequest.MakeModelCapChange:
-                    await ApplyCapChangeAsync(db, stored.SubjectKey);
+                    await ApplyCapChangeAsync(db, stored.SubjectKey,
+                        await db.Applications.IgnoreQueryFilters().Where(a => a.Id == ApplicationId).Select(a => a.CompanyId).FirstAsync());
                     break;
 
                 case AdminRequest.Reject:
@@ -475,7 +476,7 @@
     /// "Make Model|Year|NewAmount", so there is nothing for the Admin to re-enter. The catalog row is
     /// matched the same way the cap check matches it — composed make/model plus year.
     /// </summary>
-    private static async Task ApplyCapChangeAsync(LosDbContext db, string? subjectKey)
+    private static async Task ApplyCapChangeAsync(LosDbContext db, string? subjectKey, int companyId)
     {
         if (string.IsNullOrWhiteSpace(subjectKey))
         {
@@ -493,7 +494,7 @@
 
         var makeModel = parts[0].Trim();
 
-        var caps = await db.VehicleLoanCaps.ToListAsync();
+        var caps = await db.VehicleLoanCaps.Where(v => v.CompanyId == companyId).ToListAsync();
         var match = caps.FirstOrDefault(v =>
             string.Equals($"{v.Make} {v.Model}", makeModel, StringComparison.OrdinalIgnoreCase)
             && v.Year == year);

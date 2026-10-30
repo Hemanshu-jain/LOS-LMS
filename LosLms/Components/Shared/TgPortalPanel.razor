@@ -6,6 +6,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject IFileStore Files
 @inject TenantContext Tenant
+@inject ILogger<TgPortalPanel> Log
 
 @* The TG Transport vehicle search has a CAPTCHA, so the app does not touch it: the officer opens it in a new tab, checks the vehicle,
    then ticks it here. The record (tick, date, who, optional screenshot) is the officer's statement, not an automated check. *@
@@ -45,9 +46,17 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await using var db = await DbFactory.CreateDbContextAsync();
-        var row = await db.SecurityDetails.AsNoTracking().FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
-        (_verified, _at, _by, _shot) = row is null ? (false, null, null, null) : (row.TgPortalVerified, row.TgPortalVerifiedAt, row.TgPortalVerifiedBy, row.TgPortalScreenshotPath);
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var row = await db.SecurityDetails.AsNoTracking().FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
+            (_verified, _at, _by, _shot) = row is null ? (false, null, null, null) : (row.TgPortalVerified, row.TgPortalVerifiedAt, row.TgPortalVerifiedBy, row.TgPortalScreenshotPath);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log.LogError(ex, "TG portal panel could not load its record for {ApplicationId}", ApplicationId);
+            _notice = "The earlier TG portal record could not be shown.";
+        }
     }
 
     private async Task ToggleAsync(ChangeEventArgs e)

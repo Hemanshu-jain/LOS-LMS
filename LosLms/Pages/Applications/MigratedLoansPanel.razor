@@ -182,34 +182,7 @@ else
     private async Task<int> ImportRowsAsync(int companyId, List<MigratedLoanRow> rows)
     {
         await using var db = await DbFactory.CreateDbContextAsync();
-        var existing = await db.MigratedLoans.ToListAsync();
-
-        foreach (var row in rows)
-        {
-            var match = existing.FirstOrDefault(m =>
-                string.Equals(m.LoanAccountNo, row.LoanAccountNo, StringComparison.OrdinalIgnoreCase));
-
-            if (match is null)
-            {
-                match = new MigratedLoan { CompanyId = companyId, LoanAccountNo = row.LoanAccountNo };
-                db.MigratedLoans.Add(match);
-                existing.Add(match);
-            }
-
-            match.CustomerName = row.CustomerName;
-            match.Pan = row.Pan;
-            match.Mobile = row.Mobile;
-            match.Product = row.Product;
-            match.SanctionedAmount = row.SanctionedAmount;
-            match.OutstandingAmount = row.OutstandingAmount;
-            match.Status = row.Status;
-            match.DisbursedOn = row.DisbursedOn;
-            match.Branch = row.Branch;
-            match.ImportedAt = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync();
-        return rows.Count;
+        return await MigratedLoanImport.UpsertAsync(db, companyId, rows);
     }
 
     private async Task RemoveAsync(MigratedLoan loan)

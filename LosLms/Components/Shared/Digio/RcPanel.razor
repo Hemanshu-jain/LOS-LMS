@@ -6,6 +6,7 @@
 @inject DigioAsset Asset
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject TenantContext Tenant
+@inject ILogger<RcPanel> Log
 
 @* Vehicle RC check on Loan & Security: Verify RC, then the checks as ok / look / problem rows. The rows are worked out from Digio's last
    answer and the CURRENT entries, so changing the chassis or insurer re-checks at once with no second call. Renders nothing when
@@ -61,16 +62,40 @@
             return;
         }
 
-        await using var db = await DbFactory.CreateDbContextAsync();
-        _applicant = await db.Parties.AsNoTracking().Where(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant").Select(p => p.FullName).FirstOrDefaultAsync();
-        _lender = await db.Companies.AsNoTracking().Where(c => c.Id == CompanyId).Select(c => c.Name).FirstOrDefaultAsync();
-        _response = await Asset.LatestRcResponseAsync(CompanyId, ApplicationId);
-        await LoadLockAsync();
+        // This panel is an extra on Loan & Security: whatever goes wrong reading its data must never take the page down with it.
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _applicant = await db.Parties.AsNoTracking().Where(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant").Select(p => p.FullName).FirstOrDefaultAsync();
+            _lender = await db.Companies.AsNoTracking().Where(c => c.Id == CompanyId).Select(c => c.Name).FirstOrDefaultAsync();
+            _response = await Asset.LatestRcResponseAsync(CompanyId, ApplicationId);
+            await LoadLockAsync();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log.LogError(ex, "RC panel could not load its data for {ApplicationId}", ApplicationId);
+            _response = null;
+            _notice = "The earlier RC result could not be shown. You can still verify.";
+        }
     }
 
     private RcInputs Inputs => new(RegNo, Chassis, Engine, InsuranceProvider, _applicant, _lender, DateOnly.FromDateTime(DateTime.Today));
 
-    private List<RcCheck>? Checks => _response is { } r && r.TryGetProperty("vehicle_details", out _) ? RcChecks.Evaluate(r, Inputs) : null;
+    private List<RcCheck>? Checks
+    {
+        get
+        {
+            try
+            {
+                return _response is { ValueKind: System.Text.Json.JsonValueKind.Object } r && r.TryGetProperty("vehicle_details", out _) ? RcChecks.Evaluate(r, Inputs) : null;
+            }
+            catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)
+            {
+                Log.LogError(ex, "RC checks could not be worked out for {ApplicationId}", ApplicationId);
+                return null; // a stored answer in an unexpected shape shows no rows rather than an error page
+            }
+        }
+    }
 
     private string? Blocked => _lock.Reason ?? (string.IsNullOrWhiteSpace(RegNo) ? "Enter the registration number first." : null);
 

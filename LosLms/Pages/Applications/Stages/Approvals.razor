@@ -741,10 +741,7 @@ else
         };
 
         var scheme = _application?.Scheme;
-        var templates = string.IsNullOrWhiteSpace(scheme)
-            ? new List<SchemeChargeTemplate>()
-            : await db.SchemeChargeTemplates.AsNoTracking()
-                .Where(t => t.Scheme == scheme).OrderBy(t => t.Id).ToListAsync();
+        var templates = await SchemeTemplates.ForAsync(db, _application?.CompanyId ?? 0, scheme);
 
         if (templates.Count > 0)
         {
