@@ -84,11 +84,6 @@ public sealed class DigioEsignService(
             }
         }
 
-        var evidence = await db.VerificationEvidence.IgnoreQueryFilters().AsNoTracking()
-            .Where(e => e.CompanyId == companyId && e.ApplicationId == applicationId && e.Subject == "AADHAAR"
-                && (e.Verdict == "Verified" || e.Verdict == "AcceptedMismatch") && e.PartyId != null)
-            .Select(e => e.PartyId!.Value).ToListAsync();
-
         var requestId = Guid.NewGuid().ToString("N");
         var signers = parties.Select((p, i) => new
         {
@@ -109,13 +104,9 @@ public sealed class DigioEsignService(
             body["customer_notification_mode"] = channel;
         }
 
-        // ponytail: shape (map keyed by signer identifier) is from 02 section 8.1, not yet seen in a real sandbox call (Phase 0 sample missing).
-        var verification = parties.Where(p => evidence.Contains(p.Party.Id) && VerificationRules(p.Party) is not null)
-            .ToDictionary(p => Identifier(p.Party, channel)!, p => (object)new { abortOnFail = true, maxAttempt = 3, rules = VerificationRules(p.Party)! });
-        if (verification.Count > 0)
-        {
-            body["signature_verification"] = verification;
-        }
+        // ponytail: NO signature_verification. Digio's spec only says `signature_verification: object` and its sandbox rejected our guessed shape
+        // (match_type / max_attempt / abort_on_fail missing). Plain Aadhaar e-sign until Digio gives the exact shape; VerificationRules below is kept
+        // for that day (its field names are camelCase guesses and must be re-checked against a real sample first).
 
         if (settings.Estamp && !string.IsNullOrWhiteSpace(settings.EstampTag))
         {

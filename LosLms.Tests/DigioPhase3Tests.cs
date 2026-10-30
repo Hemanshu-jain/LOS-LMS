@@ -163,8 +163,10 @@ public sealed class DigioPhase3Tests : IDisposable
     }
 
     [Fact]
-    public async Task SignatureVerification_IsSentOnlyForPartiesWithKycEvidence()
+    public async Task TheUploadBody_NeverCarriesSignatureVerification_EvenWhenTheSignerHasKycEvidence()
     {
+        // Digio's sandbox rejected our guessed signature_verification shape ("match_type can't be null...", "max_attempt can't be null"), and the
+        // spec only says "object": until the exact shape is known the agreement goes out as a plain Aadhaar e-sign.
         using (var db = Anonymous())
         {
             var applicant = db.Parties.IgnoreQueryFilters().Single(p => p.PartyType == "Applicant");
@@ -176,12 +178,9 @@ public sealed class DigioPhase3Tests : IDisposable
         await scope.ServiceProvider.GetRequiredService<DigioEsignService>().SendAsync(1, "A1", null, "SMS");
 
         using var body = JsonDocument.Parse(_digio.Calls.Single(c => c.Path == "/v2/client/document/uploadpdf").Body);
-        var verification = body.RootElement.GetProperty("signature_verification");
-        Assert.True(verification.TryGetProperty("9000000001", out var rules));
-        Assert.False(verification.TryGetProperty("9000000002", out _));
-        var fields = rules.GetProperty("rules")[0].GetProperty("conditions").EnumerateArray().Select(c => c.GetProperty("field").GetString()).ToArray();
-        Assert.Equal(["NAME", "YOB", "AADHAAR", "GENDER"], fields);
-        Assert.Equal("1234", rules.GetProperty("rules")[0].GetProperty("conditions").EnumerateArray().Single(c => c.GetProperty("field").GetString() == "AADHAAR").GetProperty("value").GetString());
+        Assert.False(body.RootElement.TryGetProperty("signature_verification", out _));
+        Assert.Equal("aadhaar", body.RootElement.GetProperty("signers")[0].GetProperty("sign_type").GetString());
+        Assert.True(body.RootElement.GetProperty("sequential").GetBoolean());
     }
 
     [Fact]

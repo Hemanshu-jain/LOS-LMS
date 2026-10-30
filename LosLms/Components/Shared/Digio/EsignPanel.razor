@@ -86,6 +86,10 @@
     /// <summary>Called after the agreement's status changed here, so the page can re-check its release gate.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
+    /// <summary>The page's current agreement file. When it changes (Generate agreement) the panel re-reads, so Send is enabled without a reload.</summary>
+    [Parameter] public string? AgreementKey { get; set; }
+
+    private string? _seenAgreementKey;
     private string _channel = "SMS";
     private string? _status, _failure, _signedPath, _notice, _hash, _fingerprint, _agreementPath;
     private List<EsignSigner> _signers = new();
@@ -105,7 +109,17 @@
     protected override async Task OnInitializedAsync()
     {
         Notifier.Changed += OnDigioChangedAsync;
+        _seenAgreementKey = AgreementKey;
         await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_seenAgreementKey != AgreementKey)
+        {
+            _seenAgreementKey = AgreementKey;
+            await LoadAsync();
+        }
     }
 
     private async Task OnDigioChangedAsync(string applicationId)
