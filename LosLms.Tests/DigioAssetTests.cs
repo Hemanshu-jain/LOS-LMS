@@ -150,6 +150,7 @@ public sealed class DigioAssetTests : IDisposable
 
         using var db = Anonymous();
         Assert.All(db.VerificationEvidence.IgnoreQueryFilters().ToList(), e => Assert.Equal("VEHICLE_RC", e.Subject));
+        Assert.Equal(2, db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.VehicleRc && l.IsSuccess)); // Rs 2 each, only for the calls actually made
     }
 
     [Fact]

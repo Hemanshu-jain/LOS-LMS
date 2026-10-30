@@ -327,7 +327,7 @@
         r.TestResult = null;
         try
         {
-            var result = await Digio.GetAsync(r.Id, null, "/v3/client/mandate/banks", null);
+            var result = await Digio.GetAsync(r.Id, null, "/v3/client/mandate/banks", null, "key test: reads the bank list");
             r.TestResult = result.Status switch
             {
                 DigioStatus.Ok => "Test OK: Digio accepted the keys.",

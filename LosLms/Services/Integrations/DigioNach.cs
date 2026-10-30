@@ -134,7 +134,7 @@ public sealed class DigioNachService(
             return (hit.Banks, null);
         }
 
-        var r = await digio.GetAsync(companyId, null, "/v3/client/mandate/banks?mode=" + Uri.EscapeDataString(mode), null);
+        var r = await digio.GetAsync(companyId, null, "/v3/client/mandate/banks?mode=" + Uri.EscapeDataString(mode), null, "bank list");
         if (r.Status != DigioStatus.Ok)
         {
             return (null, r.Status == DigioStatus.NotConfigured ? "Digio is not configured for this company." : r.Error ?? "Could not load the bank list.");
@@ -236,7 +236,8 @@ public sealed class DigioNachService(
 
         var result = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v3/client/mandate/create_form", body,
             Product: "MANDATE", Operation: tab == EnachTab ? "ENACH_CREATE" : "SECURITY_NACH_CREATE", ApplicationId: applicationId,
-            RequestId: id, RequestedByUserId: userId, SuccessStatus: "WaitingForCustomer"));
+            RequestId: id, RequestedByUserId: userId, SuccessStatus: "WaitingForCustomer",
+            Free: "creating a mandate is free; it is billed when registered (MANDATE_API / MANDATE_ESIGN / MANDATE_PHYSICAL)"));
         if (result.Status != DigioStatus.Ok || result.Str("id") is not { } ena)
         {
             return new(false, result.Status == DigioStatus.NotConfigured ? "Digio is not configured for this company." : MandateError(result));
@@ -291,7 +292,7 @@ public sealed class DigioNachService(
     /// <summary>GET /v3/client/mandate/{id} is the source of truth. Applies it through the forward-only machine; returns true when Digio answered.</summary>
     public async Task<bool> ConfirmAsync(int companyId, string mandateId)
     {
-        var r = await digio.GetAsync(companyId, null, $"/v3/client/mandate/{Uri.EscapeDataString(mandateId)}", null);
+        var r = await digio.GetAsync(companyId, null, $"/v3/client/mandate/{Uri.EscapeDataString(mandateId)}", null, "reading a mandate's status; billed once when it is registered");
         if (r.Status != DigioStatus.Ok || r.Data is not { } details)
         {
             return false;
@@ -350,7 +351,7 @@ public sealed class DigioNachService(
         }
 
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, $"/v3/client/mandate/{Uri.EscapeDataString(ena)}/generate_file",
-            ApplicationId: applicationId, ExpectBinary: true));
+            ApplicationId: applicationId, ExpectBinary: true, Free: "prefilled physical NACH form (UNSURE: no price in the quote; physical is billed at registration)"));
         if (r.Bytes is not { } bytes || !FileSignature.Matches(".pdf", bytes))
         {
             return new(false, r.Error ?? "Digio did not return the form.");
@@ -372,7 +373,8 @@ public sealed class DigioNachService(
         }
 
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v3/client/mandate/submit_signed_mandate_raw",
-            new { id = ena, file_data = Convert.ToBase64String(scan) }, ApplicationId: applicationId));
+            new { id = ena, file_data = Convert.ToBase64String(scan) }, ApplicationId: applicationId,
+            Free: "submitting the signed physical mandate (UNSURE: no price in the quote; physical is billed at registration)"));
         return r.Status == DigioStatus.Ok && r.Bool("success") != false ? new(true, null) : new(false, r.Error ?? "Digio did not accept the scan.");
     }
 

@@ -161,7 +161,8 @@ public sealed class DigioEsignService(
     public async Task<EsignSendResult> CancelAsync(int companyId, string applicationId, string docId, string? userId)
     {
         var result = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, $"/v2/client/document/{Uri.EscapeDataString(docId)}/cancel", new { },
-            Product: "ESIGN", Operation: "CANCEL_SIGN_REQUEST", ApplicationId: applicationId, RequestedByUserId: userId));
+            Product: "ESIGN", Operation: "CANCEL_SIGN_REQUEST", ApplicationId: applicationId, RequestedByUserId: userId,
+            Free: "cancelling an open sign request (UNSURE: no price in the quote)"));
         if (result.Status != DigioStatus.Ok)
         {
             return new(false, result.Error ?? "Digio did not cancel the request.");
@@ -181,7 +182,7 @@ public sealed class DigioEsignService(
     /// <summary>The signer's own signing link ("Open on this device"), read from Digio when needed so no token is stored.</summary>
     public async Task<string?> SignerLinkAsync(int companyId, string docId, string identifier)
     {
-        var doc = await digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null);
+        var doc = await digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null, "reading a document's signing status (UNSURE: no price in the quote)");
         if (doc.Status != DigioStatus.Ok || doc.Data is not { } d || !d.TryGetProperty("signing_parties", out var parties) || parties.ValueKind != JsonValueKind.Array)
         {
             return null;
