@@ -167,12 +167,9 @@ else
                                     }
                                 </div>
 
-                                @* Firm details are pre-filled from the Company profile (Settings) — #14
-                                   "approvals entered in backend only". Annual turnover and the
-                                   partners/directors table were removed at the client's request. *@
+                                @* Firm name and constitution start from the applicant's business (Customer Details) and stay editable here. *@
                                 <p class="setup-note" style="margin:0;">
-                                    Firm details come from your Company profile (Settings → Company Profile).
-                                    Edit them there and they flow onto every application.
+                                    Firm details start from the applicant's business on Customer Details. Edit them here for this application.
                                 </p>
 
                                 <div class="sub-block">
@@ -669,7 +666,7 @@ else
             ?? Track(db.Businesses, new Business { ApplicationId = ApplicationId }, ref created);
         await LoadKybLocksAsync();
 
-        // #14: pre-fill blank firm details from the Company profile (the source of truth). Only blanks,
+        // Pre-fill blank firm details from the applicant (the borrower's business). Only blanks,
         // so an officer's manual entry is never overwritten. A newly created row is saved below.
         await PrefillBusinessFromCompanyAsync(db);
 
@@ -800,9 +797,8 @@ else
     }
 
     /// <summary>
-    /// Fills any blank firm field on the application's Business row from its Company profile, so the
-    /// Approvals firm details come "from the backend" (#14). Company is not query-filtered, so it is
-    /// fetched by id directly. Only blanks are filled — a manual entry is never overwritten.
+    /// Starts the borrower's business details from the applicant (employer / business name, customer category) — blanks only.
+    /// Never from the lender's Company profile; a row an earlier version filled from it is cleared. See <see cref="BusinessPrefill"/>.
     /// </summary>
     private async Task PrefillBusinessFromCompanyAsync(LosDbContext db)
     {
@@ -811,29 +807,10 @@ else
             return;
         }
 
-        var company = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId);
-        if (company is null)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(_business.FirmName) && !string.IsNullOrWhiteSpace(company.Name))
-        {
-            _business.FirmName = company.Name;
-        }
-        if (string.IsNullOrWhiteSpace(_business.Constitution) && !string.IsNullOrWhiteSpace(company.Constitution))
-        {
-            _business.Constitution = company.Constitution!;
-        }
-        if (string.IsNullOrWhiteSpace(_business.Gstin) && !string.IsNullOrWhiteSpace(company.Gstin))
-        {
-            _business.Gstin = company.Gstin!;
-        }
-        if (string.IsNullOrWhiteSpace(_business.Vintage) && !string.IsNullOrWhiteSpace(company.Vintage))
-        {
-            _business.Vintage = company.Vintage!;
-        }
-        _business.IncorpDate ??= company.IncorpDate;
+        BusinessPrefill.Apply(
+            _business,
+            await db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant"),
+            await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId));
     }
 
     /// <summary>
@@ -886,13 +863,13 @@ else
     // Completion conditions — the four that gate the sanction
     // ---------------------------------------------------------------------
 
-    // #14: turnover and the partners/directors table were removed; firm identity is pre-filled from the
-    // Company profile. Narrative stays a per-file writeup the officer completes.
+    // #14: turnover and the partners/directors table were removed; firm name and constitution start from the applicant;
+    // GSTIN, incorporation date and vintage are entered or come from the Digio company check. Narrative stays a per-file writeup the officer completes.
     private bool BusinessComplete =>
         !string.IsNullOrWhiteSpace(_business.FirmName)
         && !string.IsNullOrWhiteSpace(_business.Constitution)
-        && _business.IncorpDate.HasValue
-        && !string.IsNullOrWhiteSpace(_business.Gstin)
+        && (BusinessPrefill.IsSoleProprietorship(_business.Constitution)
+            || (_business.IncorpDate.HasValue && !string.IsNullOrWhiteSpace(_business.Gstin)))
         && !string.IsNullOrWhiteSpace(_business.Vintage)
         && !string.IsNullOrWhiteSpace(_business.Narrative);
 
@@ -1073,7 +1050,17 @@ else
     // ---------------------------------------------------------------------
 
     /// <summary>Re-loads the screen after an inline admin decision (e.g. approving the request here).</summary>
-    private async Task ReloadStateAsync() => await OnParametersSetAsync();
+    private async Task ReloadStateAsync()
+    {
+        // Save what is on screen first: reloading from the database would otherwise throw away anything typed since the last auto-save.
+        await SerializedAsync(async () =>
+        {
+            await using var saveDb = await DbFactory.CreateDbContextAsync();
+            await PersistAsync(saveDb);
+            await saveDb.SaveChangesAsync();
+        });
+        await OnParametersSetAsync();
+    }
 
     /// <summary>The sub-header's primary action, branched by role.</summary>
     private async Task PrimaryActionAsync()

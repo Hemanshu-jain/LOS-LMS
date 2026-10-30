@@ -437,6 +437,10 @@ else
             {
                 _vendorOptions.Insert(0, recordedVendor);
             }
+
+            // A list with exactly one real choice selects it when nothing is chosen yet.
+            _initiation.Branch = OnlyChoice.IfBlank(_initiation.Branch, _branchOptions);
+            _initiation.Vendor = OnlyChoice.IfBlank(_initiation.Vendor, _vendorOptions);
         }
 
         _loading = false;
