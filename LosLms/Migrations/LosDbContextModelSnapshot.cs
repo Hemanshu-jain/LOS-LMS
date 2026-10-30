@@ -415,6 +415,14 @@ namespace LosLms.Migrations
                         },
                         new
                         {
+                            Code = "VIDEO_KYC_INHOUSE",
+                            IsActive = true,
+                            Name = "Video KYC (in-house)",
+                            Product = "Video KYC",
+                            UnitRate = 1.00m
+                        },
+                        new
+                        {
                             Code = "ESIGN_SEND",
                             IsActive = true,
                             Name = "DigiSign: send document (sign-only API)",
@@ -453,6 +461,10 @@ namespace LosLms.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
 
                     b.Property<bool>("IsSuccess")
                         .HasColumnType("tinyint(1)");
@@ -1731,8 +1743,14 @@ namespace LosLms.Migrations
                     b.Property<int>("RepresentAfterDays")
                         .HasColumnType("int");
 
+                    b.Property<bool>("Uan")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("UpiVpa")
+                        .HasColumnType("tinyint(1)");
 
                     b.HasKey("Id");
 
@@ -3056,6 +3074,9 @@ namespace LosLms.Migrations
                     b.Property<string>("VideoKycPath")
                         .HasMaxLength(400)
                         .HasColumnType("varchar(400)");
+
+                    b.Property<int?>("VideoKycSeconds")
+                        .HasColumnType("int");
 
                     b.Property<int?>("YearsAtAddress")
                         .HasColumnType("int");

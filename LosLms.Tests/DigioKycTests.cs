@@ -37,7 +37,7 @@ public sealed class DigioKycTests : IDisposable
             db.SaveChanges();
             db.Parties.Add(new Party { ApplicationId = "A1", PartyType = "Applicant", FullName = "Raj Kumar", Pan = "ABCPE1234F", DateOfBirth = new DateOnly(1990, 1, 1) });
             db.ApiRates.Add(new ApiRate { Code = DigioRates.AmlScreen, Name = "AML screening (test price)", Product = "DigiShield", UnitRate = 1m, IsActive = true });
-            db.DigioSettings.Add(new DigioSettings { CompanyId = 1, PanVerify = true, DigiLocker = true, AadhaarMask = true, Aml = true });
+            db.DigioSettings.Add(new DigioSettings { CompanyId = 1, PanVerify = true, DigiLocker = true, AadhaarMask = true, Aml = true, UpiVpa = true, Uan = true });
             db.SaveChanges();
         }
 
@@ -389,6 +389,118 @@ public sealed class DigioKycTests : IDisposable
         Assert.Equal(2, db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.DigiLockerFetch));
         await _provider.GetRequiredService<DigioReconcileTrigger>().RequestReconcileAsync(start.RequestId!); // already done: a no-op
         Assert.Equal(2, db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.DigiLockerFetch));
+    }
+
+    // ---- Phase 6: UPI id ----
+
+    [Fact]
+    public async Task Vpa_Available_WithAMatchingName_IsVerified_BilledOneRupee_AndNotAgainForTheSameInputs()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"virtual_address":"raj@okbank","customer_name":"RAJ KUMAR","status":"available","fuzzy_match_score":92}""");
+
+        var first = await Kyc().VerifyVpaAsync(1, "A1", "Raj@OkBank", "Raj Kumar", "u1");
+        var again = await Kyc().VerifyVpaAsync(1, "A1", "raj@okbank", "Raj Kumar", "u1");
+
+        Assert.Equal("Verified", first.Verdict);
+        Assert.Equal("Verified", again.Verdict);
+        Assert.Single(_digio.Calls);
+        using var db = Anonymous();
+        var log = Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.UpiVpaVerify && l.IsSuccess));
+        Assert.Equal(1.00m, log.UnitRate);
+        Assert.Equal("UPI_VPA", Assert.Single(db.VerificationEvidence.IgnoreQueryFilters()).Subject);
+    }
+
+    [Fact]
+    public async Task Vpa_ALowNameScore_IsMismatch_AndANonExistentId_IsFailedWithDigiosReason()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"customer_name":"SOMEONE ELSE","status":"available","fuzzy_match_score":20}""");
+        Assert.Equal("Mismatch", (await Kyc().VerifyVpaAsync(1, "A1", "raj@okbank", "Raj Kumar", null)).Verdict);
+
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"status":"not_available","status_description":"VPA does not exist"}""");
+        var o = await Kyc().VerifyVpaAsync(1, "A1", "nobody@okbank", "Raj Kumar", null);
+        Assert.Equal("Failed", o.Verdict);
+        Assert.Contains("VPA does not exist", o.Message);
+    }
+
+    [Fact]
+    public async Task Vpa_BadFormat_OrSwitchedOff_SendsNothing()
+    {
+        Assert.Null((await Kyc().VerifyVpaAsync(1, "A1", "not a vpa", "Raj Kumar", null)).Verdict);
+        using (var db = Anonymous()) { db.DigioSettings.IgnoreQueryFilters().Single().UpiVpa = false; db.SaveChanges(); }
+
+        Assert.Contains("switched off", (await Kyc().VerifyVpaAsync(1, "A1", "raj@okbank", "Raj Kumar", null)).Message);
+        Assert.Empty(_digio.Calls);
+    }
+
+    // ---- Phase 6: UAN ----
+
+    private const string UanReply = """{"uan":"100123456789","employment_history":[{"name":"RAJ KUMAR","establishment_name":"ACME TRANSPORT PVT LTD","date_of_joining":"2020-01-01","date_of_exit":"2022-03-01"},{"name":"RAJ KUMAR","establishment_name":"BHARAT LOGISTICS","date_of_joining":"2022-04-01"}]}""";
+
+    [Fact]
+    public async Task Uan_Found_WithAMatchingName_IsVerified_FillsTheBlankEmployer_BillsFifteenRupees_AndNotAgain()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, UanReply);
+        var id = PartyId();
+
+        var first = await Kyc().VerifyUanAsync(1, "A1", id, "100123456789", "Raj Kumar", "u1");
+        await Kyc().VerifyUanAsync(1, "A1", id, "100123456789", "Raj Kumar", "u1");
+
+        Assert.Equal("Verified", first.Verdict);
+        Assert.Single(_digio.Calls);
+        using var db = Anonymous();
+        Assert.Equal("BHARAT LOGISTICS", db.Parties.IgnoreQueryFilters().Single().EmployerName); // the current employment (no exit date)
+        Assert.Equal(15.00m, Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.UanVerify && l.IsSuccess)).UnitRate);
+    }
+
+    [Fact]
+    public async Task Uan_KeepsAnEmployerTheOfficerTyped_AndFlagsADifferentName()
+    {
+        using (var db = Anonymous()) { db.Parties.IgnoreQueryFilters().Single().EmployerName = "My Own Co"; db.SaveChanges(); }
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, UanReply.Replace("RAJ KUMAR", "PRIYA SINGH"));
+
+        var o = await Kyc().VerifyUanAsync(1, "A1", PartyId(), "100123456789", "Raj Kumar", null);
+
+        Assert.Equal("Mismatch", o.Verdict);
+        using var read = Anonymous();
+        Assert.Equal("My Own Co", read.Parties.IgnoreQueryFilters().Single().EmployerName);
+    }
+
+    [Fact]
+    public async Task Uan_NoHistory_IsFailed_AndABadUanSendsNothing()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"uan":"100123456789","employment_history":[]}""");
+        Assert.Equal("Failed", (await Kyc().VerifyUanAsync(1, "A1", PartyId(), "100123456789", "Raj Kumar", null)).Verdict);
+
+        _digio.Calls.Clear();
+        Assert.Null((await Kyc().VerifyUanAsync(1, "A1", PartyId(), "123", "Raj Kumar", null)).Verdict);
+        Assert.Empty(_digio.Calls);
+    }
+
+    // ---- in-house Video KYC billing (not a Digio call) ----
+
+    [Theory]
+    [InlineData(1, "1.00")]
+    [InlineData(25, "1.00")]
+    [InlineData(26, "1.04")]
+    [InlineData(35, "1.40")]
+    [InlineData(100, "4.00")]
+    [InlineData(37, "1.48")]
+    public void VideoKycCharge_IsOneRupeeUpTo25s_ThenProRataRoundedUpToThePaisa(int seconds, string expected) =>
+        Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), ApiBillingService.VideoKycCharge(seconds));
+
+    [Fact]
+    public async Task VideoKyc_IsBilledOncePerRecording_OnItsRealLength_AndShowsOnTheUsageLine()
+    {
+        var billing = _provider.CreateScope().ServiceProvider.GetRequiredService<ApiBillingService>();
+
+        Assert.True(await billing.RecordVideoKycAsync(1, "A1", "videokyc-aaa.webm", 35));
+        Assert.False(await billing.RecordVideoKycAsync(1, "A1", "videokyc-aaa.webm", 35)); // replay
+        Assert.True(await billing.RecordVideoKycAsync(1, "A1", "videokyc-bbb.webm", 20));
+
+        using var db = Anonymous();
+        var rows = db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.VideoKycInhouse && l.IsSuccess).AsEnumerable().OrderBy(l => l.UnitRate).ToList();
+        Assert.Equal([1.00m, 1.40m], rows.Select(l => l.UnitRate).ToArray());     // the amount on the bill, GST is added on top at invoicing
+        Assert.Equal(["20 s", "35 s"], rows.Select(l => l.Detail).ToArray());     // what the usage page shows beside "Video KYC (in-house)"
     }
 
     // ---- the gate ----

@@ -57,7 +57,7 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
     /// <summary>Records a provider call. Unknown codes throw — a typo must never bill nothing.</summary>
     public async Task RecordAsync(
         int companyId, string apiCode, bool success,
-        string? applicationId = null, string? providerRef = null, DateTime? nowUtc = null)
+        string? applicationId = null, string? providerRef = null, DateTime? nowUtc = null, decimal? unitRateOverride = null, string? detail = null)
     {
         await using var db = await dbFactory.CreateDbContextAsync();
         var rate = await db.ApiRates.AsNoTracking().FirstOrDefaultAsync(r => r.Code == apiCode)
@@ -70,7 +70,8 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
             ApplicationId = applicationId,
             ProviderRef = providerRef,
             IsSuccess = success,
-            UnitRate = rate.UnitRate,
+            UnitRate = unitRateOverride ?? rate.UnitRate,
+            Detail = detail,
             CreatedAt = nowUtc ?? DateTime.UtcNow,
         });
         await db.SaveChangesAsync();
@@ -92,6 +93,27 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
         return true;
     }
 
+    /// <summary>Rs 1.00 up to 25 s; beyond that 1.00 x seconds / 25, rounded UP to the paisa (26 s = 1.04, 35 s = 1.40).</summary>
+    public static decimal VideoKycCharge(int seconds)
+    {
+        const decimal Base = 1.00m;
+        const int IncludedSeconds = 25;
+        return seconds <= IncludedSeconds ? Base : Math.Max(Base, Math.Ceiling(Base * seconds * 100m / IncludedSeconds) / 100m);
+    }
+
+    /// <summary>Bills one completed in-house Video KYC recording, once per recording id, on its real length. True when it recorded one.</summary>
+    public async Task<bool> RecordVideoKycAsync(int companyId, string applicationId, string recordingId, int seconds)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        if (await db.ApiUsageLogs.IgnoreQueryFilters().AnyAsync(l => l.CompanyId == companyId && l.ApiCode == DigioRates.VideoKycInhouse && l.ProviderRef == recordingId && l.IsSuccess))
+        {
+            return false;
+        }
+
+        await RecordAsync(companyId, DigioRates.VideoKycInhouse, true, applicationId, recordingId, null, VideoKycCharge(seconds), $"{seconds} s");
+        return true;
+    }
+
     /// <summary>Usage for one India-time month, optionally narrowed to a company.</summary>
     public async Task<IReadOnlyList<UsageLine>> UsageForMonthAsync(int? companyId, DateOnly month)
     {
@@ -106,12 +128,13 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
         }
 
         var grouped = await logs
-            .GroupBy(l => new { l.CompanyId, l.ApiCode, l.UnitRate })
+            .GroupBy(l => new { l.CompanyId, l.ApiCode, l.UnitRate, l.Detail })
             .Select(g => new
             {
                 g.Key.CompanyId,
                 g.Key.ApiCode,
                 g.Key.UnitRate,
+                g.Key.Detail,
                 Calls = g.Count(l => l.IsSuccess),
                 Failed = g.Count(l => !l.IsSuccess),
             })
@@ -123,7 +146,7 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
             .Select(g =>
             {
                 rates.TryGetValue(g.ApiCode, out var r);
-                return new UsageLine(g.CompanyId, g.ApiCode, r?.Name ?? g.ApiCode, r?.Product ?? "Other",
+                return new UsageLine(g.CompanyId, g.ApiCode, (r?.Name ?? g.ApiCode) + (g.Detail is { Length: > 0 } ? ", " + g.Detail : ""), r?.Product ?? "Other",
                     g.UnitRate, g.Calls, g.Failed, g.Calls * g.UnitRate);
             })
             .OrderBy(u => u.CompanyId).ThenBy(u => u.Product).ThenBy(u => u.Name)

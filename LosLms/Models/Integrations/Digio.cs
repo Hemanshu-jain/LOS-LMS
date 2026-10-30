@@ -195,6 +195,8 @@ public class DigioSettings
     public bool Enach { get; set; }
     public bool Debits { get; set; }
     public bool Ckyc { get; set; }
+    public bool UpiVpa { get; set; }
+    public bool Uan { get; set; }
 
     [MaxLength(60)]
     public string DigiLockerTemplate { get; set; } = "DIGILOCKER_AADHAAR_PAN";

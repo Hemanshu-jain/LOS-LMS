@@ -43,6 +43,8 @@ public static class DigioRates
     public const string MandateDebit = "MANDATE_DEBIT";
     public const string MandateCancel = "MANDATE_CANCEL";
     public const string VehicleRc = "KYC_VEHICLE_RC";
+    /// <summary>Our own in-house Video KYC (not a Digio call): Rs 1.00 up to 25 s, pro-rata beyond.</summary>
+    public const string VideoKycInhouse = "VIDEO_KYC_INHOUSE";
     /// <summary>Deliberately NOT in <see cref="Seed"/>: DigiShield is not in the quote, so with no price the call is refused until the vendor sets one.</summary>
     public const string AmlScreen = "AML_SCREEN";
     public const string EsignSend = "ESIGN_SEND";
@@ -80,6 +82,7 @@ public static class DigioRates
         R(MandateDebit, "ACH debit presentation", "DigiCollect", 2.00m),
         R(MandateCancel, "Mandate cancellation", "DigiCollect", 2.00m),
         R(VehicleRc, "Vehicle RC verification", "DigiKYC", 2.00m),
+        R(VideoKycInhouse, "Video KYC (in-house)", "Video KYC", 1.00m),
         R(EsignSend, "DigiSign: send document (sign-only API)", "DigiSign", 0.75m),
         R(EsignDownload, "DigiSign: download signed copy (sign-only API)", "DigiSign", 0.75m),
     };

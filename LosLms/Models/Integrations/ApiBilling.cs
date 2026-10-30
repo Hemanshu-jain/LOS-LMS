@@ -53,6 +53,10 @@ public class ApiUsageLog
     /// <summary>Rate at the time of the call (ex-GST). Charged only when <see cref="IsSuccess"/>.</summary>
     public decimal UnitRate { get; set; }
 
+    /// <summary>Shown beside the usage line when the charge depends on something (in-house video KYC: "35 s").</summary>
+    [MaxLength(60)]
+    public string? Detail { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public Company? Company { get; set; }

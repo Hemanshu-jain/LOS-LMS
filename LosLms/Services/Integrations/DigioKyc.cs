@@ -19,7 +19,7 @@ public sealed record KycOutcome(string? Verdict, string Message, bool NotEnabled
 /// Each writes <see cref="VerificationEvidence"/> (what the gate reads) and never invents a result: a missing field is "Unavailable".
 /// Field names come from the saved sandbox samples (docs/digio/samples) and Digio's spec.
 /// </summary>
-public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbContextFactory<LosDbContext> dbFactory, IFileStore files)
+public sealed partial class DigioKyc(DigioClient digio, ApiBillingService billing, IDbContextFactory<LosDbContext> dbFactory, IFileStore files)
 {
     /// <summary>Consent is part of the customer's signed application and of Digio's own DigiLocker journey, so nothing is gated on a tick; the wording is stored on every request.</summary>
     public const string ConsentText = "Customer's signed application / DigiLocker in-journey consent";

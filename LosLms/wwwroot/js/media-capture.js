@@ -102,6 +102,7 @@
             recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) { chunks.push(e.data); } };
             recorder.__chunks = chunks;
             recorder.__mime = mime;
+            recorder.__t0 = performance.now();
             recorders.set(previewId, recorder);
             recorder.start();
             return '';
@@ -120,7 +121,9 @@
                 const blob = new Blob(recorder.__chunks, { type: recorder.__mime });
                 recorders.delete(previewId);
                 if (blob.size === 0) { resolve({ error: 'The recording was empty.' }); return; }
-                resolve(await postCapture(url, blob));
+                // The length goes with the upload: in-house Video KYC is billed on it.
+                const seconds = Math.max(1, Math.round((performance.now() - recorder.__t0) / 1000));
+                resolve(await postCapture(url + (url.includes('?') ? '&' : '?') + 'd=' + seconds, blob));
             };
             recorder.stop();
         });
