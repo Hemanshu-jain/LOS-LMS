@@ -453,7 +453,7 @@ a.auth-submit {
 }
 
 .reconnect-button {
-    display: inline-block;
+    /* no display here: the "when rejected" rules decide, so the Reload button only shows once the connection is truly closed */
     margin-top: 18px;
     box-sizing: border-box;
     height: 34px;
