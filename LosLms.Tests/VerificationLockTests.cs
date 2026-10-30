@@ -40,6 +40,8 @@ public sealed class VerificationLockTests : IDisposable
             db.SaveChanges();
             db.Parties.Add(new Party { ApplicationId = "A1", PartyType = "Applicant", FullName = "Raj Kumar", Pan = Pan, DateOfBirth = new DateOnly(1990, 1, 1), Mobile = "9876543210" });
             db.DigioSettings.Add(new DigioSettings { CompanyId = 1, PanVerify = true, DigiLocker = true, AadhaarMask = true, Aml = true, Rc = true, Kyb = true });
+            // AML has no seeded rate on purpose (Digio has not priced it): a priced test rate lets the screening run.
+            db.ApiRates.Add(new ApiRate { Code = DigioRates.AmlScreen, Name = "AML screening (test price)", Product = "DigiShield", UnitRate = 1m, IsActive = true });
             db.SaveChanges();
         }
 
