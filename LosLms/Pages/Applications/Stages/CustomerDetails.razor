@@ -9,6 +9,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.EntityFrameworkCore
 @implements IDisposable
+@inject DigioStatusNotifier DigioNotifier
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
@@ -409,7 +410,7 @@ else
                     @* ---------- Contact details ---------- *@
                     <CollapsibleSection Title="Contact details"
                                         Collapsed="sections.ContactCollapsed"
-                                        SummaryText="@(party.IsContactComplete ? "10 fields · complete" : null)"
+                                        SummaryText="@(party.IsContactComplete ? "9 fields · complete" : null)"
                                         OnToggle="() => ToggleContact()">
                         <div class="field-grid">
                             <FormField Label="Mobile" For="contact-mobile" Required="true" Error="@ErrorFor("mobile")" Verified="party.MobileVerified">
@@ -420,7 +421,7 @@ else
                                 </div>
                             </FormField>
 
-                            <FormField Label="Alternate mobile" For="contact-altmobile" Required="true" Error="@ErrorFor("altMobile")">
+                            <FormField Label="Alternate mobile (optional)" For="contact-altmobile" Error="@ErrorFor("altMobile")">
                                 <input id="contact-altmobile" type="tel" class="field-input" maxlength="10"
                                        @bind="party.AltMobile" @bind:after="AfterContactChanged" @onblur='() => Validate("altMobile")' />
                             </FormField>
@@ -667,6 +668,12 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        if (!_digioSubscribed)
+        {
+            _digioSubscribed = true;
+            DigioNotifier.Changed += OnDigioChangedAsync;
+        }
+
         _loading = true;
 
         foreach (var (key, _) in PartyTabs)
@@ -710,8 +717,20 @@ else
         }
     }
 
+    private bool _digioSubscribed;
+
+    /// <summary>A Digio result for this application (DigiLocker finished on the customer's phone): pull the filled fields into the open form.</summary>
+    private async Task OnDigioChangedAsync(string applicationId)
+    {
+        if (applicationId == ApplicationId)
+        {
+            await InvokeAsync(async () => { await SyncFromDigioAsync(); StateHasChanged(); });
+        }
+    }
+
     public void Dispose()
     {
+        DigioNotifier.Changed -= OnDigioChangedAsync;
         _autoSave.Dispose();
         _toastCts?.Cancel();
         _toastCts?.Dispose();
@@ -947,11 +966,7 @@ else
 
         if (string.IsNullOrWhiteSpace(value))
         {
-            if (field == "altMobile")
-            {
-                _errors[key] = "Alternate mobile is required.";
-            }
-            else if (field == "address1")
+            if (field == "address1")
             {
                 _errors[key] = "Address line 1 is required.";
             }
@@ -1448,7 +1463,6 @@ else
         ("personal-nationality", "nationality", "Nationality", FieldSection.Personal),
         ("personal-tongue", "tongue", "Mother tongue", FieldSection.Personal),
         ("contact-mobile", "mobile", "Mobile", FieldSection.Contact),
-        ("contact-altmobile", "altMobile", "Alternate mobile", FieldSection.Contact),
         ("contact-email", "email", "Email", FieldSection.Contact),
         ("contact-address1", "address1", "Address line 1", FieldSection.Contact),
         ("contact-address2", "address2", "Address line 2", FieldSection.Contact),
@@ -1686,7 +1700,7 @@ else
         entity.DateOfBirth = form.DateOfBirth;
         entity.Gender = form.Gender;
         entity.MaritalStatus = form.MaritalStatus;
-        entity.FatherSpouseName = form.FatherSpouseName;
+        entity.FatherSpouseName = FormMerge.KeepIfBlank(form.FatherSpouseName, entity.FatherSpouseName);
         entity.CustomerCategory = form.CustomerCategory;
         entity.Nationality = form.Nationality;
         entity.MotherTongue = form.MotherTongue;
@@ -1705,11 +1719,11 @@ else
         entity.Mobile = form.Mobile;
         entity.AltMobile = form.AltMobile;
         entity.Email = form.Email;
-        entity.Address1 = form.Address1;
+        entity.Address1 = FormMerge.KeepIfBlank(form.Address1, entity.Address1);
         entity.Address2 = form.Address2;
-        entity.City = form.City;
-        entity.State = form.State;
-        entity.PinCode = form.PinCode;
+        entity.City = FormMerge.KeepIfBlank(form.City, entity.City);
+        entity.State = FormMerge.KeepIfBlank(form.State, entity.State);
+        entity.PinCode = FormMerge.KeepIfBlank(form.PinCode, entity.PinCode);
         entity.ResidenceType = form.ResidenceType;
         entity.YearsAtAddress = form.YearsAtAddress;
 

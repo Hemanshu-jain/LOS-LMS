@@ -91,7 +91,6 @@ public sealed class PartyForm
 
     public bool IsContactComplete =>
         !string.IsNullOrWhiteSpace(Mobile)
-        && !string.IsNullOrWhiteSpace(AltMobile)
         && !string.IsNullOrWhiteSpace(Email)
         && !string.IsNullOrWhiteSpace(Address1)
         && !string.IsNullOrWhiteSpace(Address2)

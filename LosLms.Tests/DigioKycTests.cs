@@ -327,6 +327,20 @@ public sealed class DigioKycTests : IDisposable
     }
 
     [Fact]
+    public async Task DigiLocker_EmptyFatherName_IsTakenFromTheAddressCareOf()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested","access_token":{"id":"GWT1"}}""");
+        var start = await Kyc().StartDigiLockerAsync(1, "A1", PartyId(), "Raj Kumar", "9876543210", false, "https://x.test", null);
+        var reply = Done.Replace("\"father_name\":\"SURESH KUMAR\"", "\"father_name\":\"\"").Replace("\"address\":\"1 Main Road\"", "\"address\":\"S/O: Suresh Kumar, 1 Main Road\"");
+        _digio.On = (m, _, _) => m == HttpMethod.Post ? (HttpStatusCode.OK, reply) : (HttpStatusCode.MethodNotAllowed, "{}");
+
+        await Kyc().CompleteDigiLockerAsync(1, start.RequestId!);
+
+        using var db = Anonymous();
+        Assert.Equal("Suresh Kumar", db.Parties.IgnoreQueryFilters().Single().FatherSpouseName);
+    }
+
+    [Fact]
     public async Task DigiLocker_IfDigioAnswers405ToPost_TheStatusIsReadWithGet()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"id":"KID1","status":"requested"}""");
