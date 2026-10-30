@@ -30,8 +30,9 @@
            this exact id when the SignalR circuit drops (a server restart/update closes it with WebSocket
            1011). Without our own element here the framework shows its bare default; with it, staff see a
            calm, on-brand "we're reconnecting / the server is updating" instead of a raw error.
-           Reload is a plain <a href=""> — it reloads the current URL for a fresh circuit, with no inline
-           script, so the self-only Content-Security-Policy stays intact. *@
+           Reload is a button marked data-reload: js/blazor-start.js (no inline script, so the self-only
+           Content-Security-Policy stays intact) reloads the page on click, and also reloads by itself once
+           the server answers again after an update. *@
         <div id="components-reconnect-modal" class="reconnect-overlay">
             <div class="reconnect-card">
                 <span class="reconnect-eyebrow">LOS/LMS</span>
@@ -55,7 +56,7 @@
                     Your session ended, most likely because the server was just updated. Reload to pick up
                     where you left off — your data is safe.
                 </p>
-                <a href="" class="reconnect-button reconnect-when-rejected">Reload LOS/LMS</a>
+                <button type="button" class="reconnect-button reconnect-when-rejected" data-reload>Reload LOS/LMS</button>
             </div>
         </div>
 
@@ -63,10 +64,11 @@
            Reworded and restyled from the raw template default. *@
         <div id="blazor-error-ui">
             <span>Something went wrong. Reloading usually fixes it.</span>
-            <a href="" class="blazor-error-reload">Reload</a>
+            <a href="#" class="blazor-error-reload" data-reload>Reload</a>
         </div>
 
-        <script src="_framework/blazor.web.js"></script>
+        <script src="_framework/blazor.web.js" autostart="false"></script>
+        <script src="js/blazor-start.js?v=@AssetVersion"></script>
     }
     <script src="js/download.js?v=@AssetVersion"></script>
     <script src="js/shortcuts.js?v=@AssetVersion"></script>

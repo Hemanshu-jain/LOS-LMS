@@ -24,6 +24,13 @@
         <h1 class="dk-title">Digio keys</h1>
         <p class="dk-muted">Per company. Until a company has keys, its Digio features stay “not configured” and nothing is sent or billed.</p>
 
+        <div class="dk-company">
+            <strong>Loan accounts</strong>
+            <p class="dk-muted">Loans disbursed before the servicing ledger existed have no loan account. This creates the missing ones from the disbursement record (accounts that already exist are never touched; safe to run again). Past instalments start as due until receipts are recorded.</p>
+            <button type="button" class="dk-btn" disabled="@_backfilling" @onclick="BackfillAsync">@(_backfilling ? "Working…" : "Create missing loan accounts")</button>
+            @if (_backfillMessage is not null) { <span class="dk-msg">@_backfillMessage</span> }
+        </div>
+
         @if (_rows is null)
         {
             <p class="dk-muted">Loading…</p>
@@ -134,6 +141,23 @@
 
 @code {
     private List<Row>? _rows;
+    private bool _backfilling;
+    private string? _backfillMessage;
+
+    private async Task BackfillAsync()
+    {
+        _backfilling = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var r = await LoanBackfill.RunAsync(db);
+            _backfillMessage = $"Created {r.Created}; {r.AlreadyHad} already had one" + (r.Skipped.Count > 0 ? $"; skipped {r.Skipped.Count} ({string.Join("; ", r.Skipped.Take(5))}{(r.Skipped.Count > 5 ? "…" : "")})." : ".");
+        }
+        finally
+        {
+            _backfilling = false;
+        }
+    }
 
     private sealed class Row
     {
