@@ -820,9 +820,17 @@ else
             _disbursement.FirstEmiDate = stage2Emi;
             _disbursement.EmiDayOfMonth = _application.EmiDayOfMonth;
         }
+        else if (_disbursement.FirstEmiDate is null && _application?.EmiDayOfMonth is { } preferredDay)
+        {
+            _disbursement.EmiDayOfMonth = preferredDay;
+            _disbursement.FirstEmiDate = NextDayOfMonth(_disbursement.ValueDate ?? DateOnly.FromDateTime(DateTime.Today), preferredDay);
+        }
 
         _enach = await db.EnachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId)
             ?? Track(db.EnachMandates, new EnachMandate { ApplicationId = ApplicationId }, ref created);
+
+        // Start the mandate from the Bank & Financial repayment bank and the first EMI date (blanks only).
+        NachPrefill.Apply(_enach, await db.BankDetails.AsNoTracking().FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId), _disbursement.FirstEmiDate);
 
         _snach = await db.SecurityNachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId)
             ?? Track(db.SecurityNachMandates, new SecurityNachMandate { ApplicationId = ApplicationId }, ref created);

@@ -1594,8 +1594,27 @@ else
         Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial");
     }
 
-    /// <summary>Writes all four tabs in a single operation. No validation blocks this.</summary>
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
+
+    /// <summary>
+    /// Writes all four tabs in a single operation. No validation blocks this. One save at a time: the 8 s auto-save and
+    /// Complete stage both delete-and-reinsert the references, so overlapping them made the second delete hit rows the
+    /// first had already removed (DbUpdateConcurrencyException). The second save now waits, then re-reads and writes.
+    /// </summary>
     private async Task PersistAsync(bool completeStage)
+    {
+        await _persistGate.WaitAsync();
+        try
+        {
+            await PersistCoreAsync(completeStage);
+        }
+        finally
+        {
+            _persistGate.Release();
+        }
+    }
+
+    private async Task PersistCoreAsync(bool completeStage)
     {
         if (_application is null)
         {

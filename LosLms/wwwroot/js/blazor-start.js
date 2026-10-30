@@ -51,3 +51,9 @@
         new MutationObserver(function () { if (giveUp()) { poll(); } }).observe(modal, { attributes: true, attributeFilter: ['class'] });
     }
 })();
+
+// Focusing a number box that still shows its zero selects it, so typing 80000 replaces the 0 instead of becoming 800000.
+document.addEventListener("focusin", function (e) {
+    var t = e.target;
+    if (t && t.tagName === "INPUT" && t.type === "number" && Number(t.value) === 0 && t.value !== "") { t.select(); }
+});
