@@ -1020,8 +1020,9 @@ else
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
             _security = security is null ? new SecurityForm() : ToForm(security);
 
-            // Company-scoped by query filter, so this is only ever this company's catalog.
+            // Scoped explicitly: the query filter is open for a SuperAdmin who is not acting as a company.
             _vehicleCatalog = await db.VehicleLoanCaps.AsNoTracking()
+                .Where(v => v.CompanyId == _application.CompanyId)
                 .OrderBy(v => v.Make).ThenBy(v => v.Model)
                 .ToListAsync();
 
@@ -1471,7 +1472,7 @@ else
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        var caps = await db.VehicleLoanCaps.ToListAsync();
+        var caps = await db.VehicleLoanCaps.Where(v => v.CompanyId == _application!.CompanyId).ToListAsync();
         var exists = caps.Any(v =>
             string.Equals(v.Make, make, StringComparison.OrdinalIgnoreCase)
             && string.Equals(v.Model, model, StringComparison.OrdinalIgnoreCase)
@@ -1522,6 +1523,7 @@ else
             _capChangeAmount = null;
             _capChangeMessage = $"Cap updated to {FormatInr(newAmount)}.";
             _vehicleCatalog = await db.VehicleLoanCaps.AsNoTracking()
+                .Where(v => v.CompanyId == _application!.CompanyId)
                 .OrderBy(v => v.Make).ThenBy(v => v.Model).ToListAsync();
             await RefreshCapGateAsync();
             return;

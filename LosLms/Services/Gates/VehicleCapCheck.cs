@@ -45,7 +45,8 @@ public static class VehicleCapCheck
             return GateResult.Clear;
         }
 
-        var result = await EvaluateAsync(db, assetType, makeModel, mfgYear, requestedAmount);
+        var companyId = await db.Applications.IgnoreQueryFilters().AsNoTracking().Where(a => a.Id == applicationId).Select(a => (int?)a.CompanyId).FirstOrDefaultAsync();
+        var result = await EvaluateAsync(db, assetType, makeModel, mfgYear, requestedAmount, companyId);
         if (!result.Blocked)
         {
             return GateResult.Clear;
@@ -71,7 +72,8 @@ public static class VehicleCapCheck
         string assetType,
         string? makeModel,
         string? mfgYear,
-        decimal requestedAmount)
+        decimal requestedAmount,
+        int? companyId = null)
     {
         // Property has no make, model or year — there is nothing to cap it against here.
         if (!string.Equals(assetType, "Vehicle", StringComparison.OrdinalIgnoreCase))
@@ -86,7 +88,8 @@ public static class VehicleCapCheck
             return VehicleCapResult.Clear;
         }
 
-        var caps = await db.VehicleLoanCaps.AsNoTracking().ToListAsync();
+        // companyId: whose catalog. Without it the query filter decides, which is open for a SuperAdmin who is not acting as a company.
+        var caps = await db.VehicleLoanCaps.AsNoTracking().Where(c => companyId == null || c.CompanyId == companyId).ToListAsync();
 
         // Composed "Make Model" is what SecurityDetail stores, so match on the same shape.
         var match = caps.FirstOrDefault(c =>
