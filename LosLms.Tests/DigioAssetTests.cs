@@ -144,7 +144,15 @@ public sealed class DigioAssetTests : IDisposable
         Assert.Equal("MH12AB1234", body.RootElement.GetProperty("id").GetString());
         Assert.False(string.IsNullOrEmpty(body.RootElement.GetProperty("unique_request_id").GetString()));
 
-        // A changed chassis is a different question: asked again.
+        // A changed chassis is a different question, but the check is on file: refused until an Admin allows one re-check.
+        var locked = await Asset().VerifyRcAsync(1, "A1", Inputs(chassis: "DDFBEH11999"), "u1");
+        Assert.Equal(VerificationLock.Refusal, locked.Outcome.Message);
+        Assert.Single(_digio.Calls);
+        using (var admin = new LosDbContext(_options, TenantContext.ForSeeding()))
+        {
+            Assert.Null(await VerificationLock.GrantAsync(admin, 1, "A1", null, "VEHICLE_RC", "chassis was mistyped", "admin1", null));
+        }
+
         await Asset().VerifyRcAsync(1, "A1", Inputs(chassis: "DDFBEH11999"), "u1");
         Assert.Equal(2, _digio.Calls.Count);
 

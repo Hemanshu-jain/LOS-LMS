@@ -158,7 +158,9 @@ else
                                 @* Company / ROC verification (#12). Honest stub until Digio Business KYC is
                                    onboarded — checks the firm's GSTIN/CIN against the Registrar of Companies. *@
                                 <div class="roc-row">
-                                    <VerifyButton Label="Verify company (GSTIN / CIN)" OnClick="VerifyRocAsync" />
+                                    <VerifyButton Label="Verify company (GSTIN / CIN)" DisabledReason="@KybReason" OnClick="VerifyRocAsync" />
+                                    <RecheckControl CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" Subject="GSTIN" OnGranted="LoadKybLocksAsync" />
+                                    <RecheckControl CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" Subject="CIN" OnGranted="LoadKybLocksAsync" />
                                     @foreach (var line in _rocNotices)
                                     {
                                         <span class="@(line.Verdict == "Verified" ? "inline-notice" : "inline-error")" role="status">@line.Message</span>
@@ -665,6 +667,7 @@ else
 
         _business = await db.Businesses.FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId)
             ?? Track(db.Businesses, new Business { ApplicationId = ApplicationId }, ref created);
+        await LoadKybLocksAsync();
 
         // #14: pre-fill blank firm details from the Company profile (the source of truth). Only blanks,
         // so an officer's manual entry is never overwritten. A newly created row is saved below.
@@ -840,6 +843,31 @@ else
     /// Verify company: GSTIN and CIN against Digio's registers (DigioAsset). Never Verified without an Active status; on a
     /// success it fills blank firm fields only.
     /// </summary>
+    private LockStatus _gstLock = LockStatus.Open, _cinLock = LockStatus.Open;
+
+    private async Task LoadKybLocksAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _gstLock = await VerificationLock.StatusAsync(db, _application.CompanyId, ApplicationId, null, "GSTIN");
+        _cinLock = await VerificationLock.StatusAsync(db, _application.CompanyId, ApplicationId, null, "CIN");
+    }
+
+    /// <summary>Disabled once every number entered has been checked (GSTIN, CIN); an Admin's re-check re-enables it for one run.</summary>
+    private string? KybReason
+    {
+        get
+        {
+            var gst = !string.IsNullOrWhiteSpace(_business.Gstin);
+            var cin = !string.IsNullOrWhiteSpace(_business.Cin);
+            return (gst || cin) && (!gst || _gstLock.Locked) && (!cin || _cinLock.Locked) ? (gst && _gstLock.Locked ? _gstLock.Reason : _cinLock.Reason) : null;
+        }
+    }
+
     private async Task VerifyRocAsync()
     {
         _rocNotices = new();
@@ -854,6 +882,7 @@ else
 
         // Blanks only: a manual entry (or the Company-profile pre-fill) is never overwritten.
         BusinessKycService.Apply(_business, new BusinessKycResult(result.Data is not null, result.Data));
+        await LoadKybLocksAsync();
     }
 
     // ---------------------------------------------------------------------
