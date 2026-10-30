@@ -51,6 +51,11 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             return new(prior.Verdict, prior.Summary ?? "Already verified.");
         }
 
+        if (!await VerificationLock.TryBeginAsync(dbFactory, companyId, applicationId, partyId, "PAN"))
+        {
+            return new(null, VerificationLock.Refusal); // nothing is sent to Digio
+        }
+
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v3/client/kyc/fetch_id_data/PAN",
             new { id_no = pan, name = name.Trim(), dob = dob?.ToString("yyyy-MM-dd"), unique_request_id = requestId },
@@ -160,6 +165,11 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             return new(prior.Verdict, prior.Summary ?? "Already screened.");
         }
 
+        if (!await VerificationLock.TryBeginAsync(dbFactory, companyId, applicationId, partyId, "AML"))
+        {
+            return new(null, VerificationLock.Refusal);
+        }
+
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/client/v1/user/screen", new
         {
@@ -226,6 +236,11 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             return (null, "The file is over 1 MB. Compress it and upload again.");
         }
 
+        if (!await VerificationLock.TryBeginAsync(dbFactory, companyId, applicationId, partyId, "AADHAAR_MASK"))
+        {
+            return (null, VerificationLock.Refusal);
+        }
+
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v4/client/kyc/aadhaar/mask",
             new { data = Convert.ToBase64String(file), data_content_type = type, file_name = Cut(fileName, 100), consent = "yes", mask_qr = true, is_validate = true, unique_request_id = requestId },
@@ -247,7 +262,9 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
 
         try
         {
-            return (Convert.FromBase64String(output), "Masked.");
+            var masked = Convert.FromBase64String(output);
+            await RecordAsync(companyId, applicationId, partyId, "AADHAAR_MASK", "Verified", null, "Aadhaar masked", requestId, r, Fingerprint(applicationId, partyId.ToString()));
+            return (masked, "Masked.");
         }
         catch (FormatException)
         {
@@ -271,6 +288,20 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         }
 
         await using var db = await dbFactory.CreateDbContextAsync();
+
+        // A request still waiting for the customer blocks a new one (open the same link / refresh / cancel it first); a finished check needs an Admin's re-check.
+        var now = DateTime.UtcNow;
+        if (await db.DigioRequests.IgnoreQueryFilters().AnyAsync(x => x.CompanyId == companyId && x.PartyId == partyId && x.Operation == "DIGILOCKER_AADHAAR_PAN"
+                && x.Status == "WaitingForCustomer" && (x.ExpiresAt == null || x.ExpiresAt > now)))
+        {
+            return new(null, "A DigiLocker request is already waiting for the customer. Use Refresh or Open on this device, or cancel it first.");
+        }
+
+        if (!await VerificationLock.TryBeginAsync(db, companyId, applicationId, partyId, "AADHAAR"))
+        {
+            return new(null, VerificationLock.Refusal);
+        }
+
         var settings = await db.DigioSettings.IgnoreQueryFilters().AsNoTracking().FirstAsync(s => s.CompanyId == companyId);
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/client/kyc/v2/request/with_template", new
@@ -294,10 +325,21 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             .SetProperty(x => x.Consent, ConsentStamp));
 
         var url = onDevice && kid is not null && r.Data is { } d && d.TryGetProperty("access_token", out var tok) && tok.TryGetProperty("id", out _)
-            ? $"{DigioEndpoints.Gateway(digio.Credentials(companyId)?.Production == true)}{kid}/{requestId}/{mobile}?redirect_url={Uri.EscapeDataString($"{returnBaseUrl.TrimEnd('/')}/digio/return?r={requestId}")}"
+            ? GatewayUrl(digio.Credentials(companyId)?.Production == true, kid, requestId, mobile, returnBaseUrl)
             : null;
         return new("Sent", onDevice ? "Opening DigiLocker on this device." : "Link sent to the customer.", RequestId: requestId, Url: url);
     }
+
+    private static string GatewayUrl(bool production, string kid, string requestId, string mobile, string returnBaseUrl) =>
+        $"{DigioEndpoints.Gateway(production)}{kid}/{requestId}/{mobile}?redirect_url={Uri.EscapeDataString($"{returnBaseUrl.TrimEnd('/')}/digio/return?r={requestId}")}";
+
+    /// <summary>
+    /// The link of a DigiLocker request that is already waiting for the customer, to open on this device. No new request, no Digio call.
+    /// Null when the request has no Digio id or the mobile is unknown.
+    /// </summary>
+    public string? DigiLockerLink(int companyId, DigioRequest request, string? mobile, string returnBaseUrl) =>
+        request.DigioId is { Length: > 0 } kid && !string.IsNullOrWhiteSpace(mobile)
+            ? GatewayUrl(digio.Credentials(companyId)?.Production == true, kid, request.Id, mobile, returnBaseUrl) : null;
 
     /// <summary>
     /// Asks Digio for the real result of a DigiLocker request and, when the customer finished, records AADHAAR evidence, fills BLANK party fields

@@ -139,6 +139,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
     public DbSet<EsignSigner> EsignSigners => Set<EsignSigner>();
 
+    public DbSet<VerificationRecheck> VerificationRechecks => Set<VerificationRecheck>();
+
     public DbSet<LoanAccount> LoanAccounts => Set<LoanAccount>();
 
     public DbSet<Instalment> Instalments => Set<Instalment>();
@@ -1137,6 +1139,13 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
             entity.Property(c => c.Amount).HasPrecision(18, 2);
             entity.Property(c => c.Gst).HasPrecision(18, 2);
             entity.HasQueryFilter(c => _isSuperAdmin || c.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<VerificationRecheck>(entity =>
+        {
+            entity.ToTable("VerificationRecheck");
+            entity.HasIndex(g => new { g.CompanyId, g.ApplicationId, g.Subject });
+            entity.HasQueryFilter(g => _isSuperAdmin || g.CompanyId == _companyId);
         });
 
         modelBuilder.Entity<EsignSigner>(entity =>

@@ -14,6 +14,7 @@
 {
     <div class="dg-rc-box">
         <VerifyButton Label="Verify RC" DisabledReason="@Blocked" OnClick="VerifyAsync" />
+        <RecheckControl CompanyId="CompanyId" ApplicationId="@ApplicationId" Subject="VEHICLE_RC" OnGranted="LoadLockAsync" />
         @if (_notice is not null)
         {
             <span class="@(_verdict == "Verified" ? "dg-muted" : "inline-error")" role="status">@_notice</span>
@@ -44,6 +45,13 @@
     private bool _enabled;
     private string? _notice, _verdict, _applicant, _lender;
     private JsonElement? _response;
+    private LockStatus _lock = LockStatus.Open;
+
+    private async Task LoadLockAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _lock = await VerificationLock.StatusAsync(db, CompanyId, ApplicationId, null, "VEHICLE_RC");
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -57,18 +65,20 @@
         _applicant = await db.Parties.AsNoTracking().Where(p => p.ApplicationId == ApplicationId && p.PartyType == "Applicant").Select(p => p.FullName).FirstOrDefaultAsync();
         _lender = await db.Companies.AsNoTracking().Where(c => c.Id == CompanyId).Select(c => c.Name).FirstOrDefaultAsync();
         _response = await Asset.LatestRcResponseAsync(CompanyId, ApplicationId);
+        await LoadLockAsync();
     }
 
     private RcInputs Inputs => new(RegNo, Chassis, Engine, InsuranceProvider, _applicant, _lender, DateOnly.FromDateTime(DateTime.Today));
 
     private List<RcCheck>? Checks => _response is { } r && r.TryGetProperty("vehicle_details", out _) ? RcChecks.Evaluate(r, Inputs) : null;
 
-    private string? Blocked => string.IsNullOrWhiteSpace(RegNo) ? "Enter the registration number first." : null;
+    private string? Blocked => _lock.Reason ?? (string.IsNullOrWhiteSpace(RegNo) ? "Enter the registration number first." : null);
 
     private async Task VerifyAsync()
     {
         await Tenant.EnsureLoadedAsync();
         var r = await Asset.VerifyRcAsync(CompanyId, ApplicationId, Inputs, Tenant.UserId);
+        await LoadLockAsync();
         _verdict = r.Outcome.Verdict;
         _notice = r.Outcome.Message;
         if (r.Response is not null)

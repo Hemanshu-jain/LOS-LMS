@@ -177,11 +177,12 @@ else
                                             <span class="pennydrop-note">@(_pennyDropNote ?? "Compared against KYC name from Stage 1")</span>
                                             break;
                                     }
-                                    @if (_bank.PennyDropStatus != "Matched")
+                                    @if (_bank.PennyDropStatus != "Matched" || _pennyLock.HasResult)
                                     {
-                                        <button type="button" class="pennydrop-button" disabled="@_pennyDropRunning" @onclick="RunPennyDropAsync">
-                                            @(_bank.PennyDropStatus == "NotRun" ? "Run penny-drop check" : "Run again")
+                                        <button type="button" class="pennydrop-button" disabled="@(_pennyDropRunning || _pennyLock.Locked)" title="@_pennyLock.Reason" @onclick="RunPennyDropAsync">
+                                            @(_pennyLock.Locked ? _pennyLock.Reason : _bank.PennyDropStatus == "NotRun" ? "Run penny-drop check" : "Run again")
                                         </button>
+                                        <LosLms.Components.Shared.Digio.RecheckControl CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" Subject="BANK_ACCOUNT" OnGranted="LoadPennyLockAsync" />
                                     }
                                 </div>
                             </div>
@@ -510,6 +511,7 @@ else
             _bank = await db.BankDetails.AsNoTracking()
                 .FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId)
                 ?? new BankDetail { ApplicationId = ApplicationId };
+            await LoadPennyLockAsync();
 
             // A stored branch can only have come from the live directory, so restore that state
             // rather than re-requesting it. Without this the caption would revert to the offline
@@ -734,6 +736,14 @@ else
 
     private string? _pennyDropNote;
     private bool _pennyDropRunning;
+    private LockStatus _pennyLock = LockStatus.Open;
+
+    private async Task LoadPennyLockAsync()
+    {
+        if (_application is null) { return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _pennyLock = await VerificationLock.StatusAsync(db, _application.CompanyId, ApplicationId, null, "BANK_ACCOUNT");
+    }
 
     /// <remarks>
     /// Digio penny drop (POST /v4/client/verify/bank_account), name compared against the Stage 1 KYC
@@ -746,6 +756,14 @@ else
         if (string.IsNullOrWhiteSpace(_bank.AccountNumber) || string.IsNullOrWhiteSpace(_bank.Ifsc))
         {
             _pennyDropNote = "Enter the account number and IFSC first.";
+            return;
+        }
+
+        // Server-side: a check already on file needs an Admin's one-time re-check; nothing is sent to Digio otherwise.
+        if (!await VerificationLock.TryBeginAsync(DbFactory, _application.CompanyId, ApplicationId, null, "BANK_ACCOUNT"))
+        {
+            _pennyDropNote = VerificationLock.Refusal;
+            await LoadPennyLockAsync();
             return;
         }
 
@@ -787,6 +805,18 @@ else
                     return;
             }
 
+            // The result on file is what locks the check (evidence, like every other Digio check).
+            if (result.Status == DigioStatus.Ok)
+            {
+                db.VerificationEvidence.Add(new VerificationEvidence
+                {
+                    CompanyId = _application.CompanyId, ApplicationId = ApplicationId, Subject = "BANK_ACCOUNT",
+                    Verdict = _bank.PennyDropStatus == "Matched" ? "Verified" : "Mismatch", Summary = "Penny drop: " + (_bank.PennyDropStatus == "Matched" ? "name matches" : "name not matched or account not verified"),
+                    Environment = result.Environment ?? "Sandbox", CreatedAt = DateTime.UtcNow,
+                });
+                await db.SaveChangesAsync();
+            }
+
             // Persist the (paid-for) answer now if the bank row exists; otherwise it saves with the page.
             if (await db.BankDetails.FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId) is { } row)
             {
@@ -794,6 +824,8 @@ else
                 row.PennyDropCheckedAt = _bank.PennyDropCheckedAt;
                 await db.SaveChangesAsync();
             }
+
+            await LoadPennyLockAsync();
         }
         finally
         {
