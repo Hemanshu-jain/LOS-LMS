@@ -30,7 +30,11 @@ public sealed partial class DigioKyc
             return new(prior.Verdict, prior.Summary ?? "Already checked.");
         }
 
-        // TODO(VerificationLock): call VerificationLock.TryBeginAsync(...) here, before the send, once ops/reverify-lock is on main.
+        if (!await VerificationLock.TryBeginAsync(dbFactory, companyId, applicationId, null, "UPI_VPA"))
+        {
+            return new(null, VerificationLock.Refusal); // nothing is sent to Digio
+        }
+
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v3/client/public/upi/check_vpa",
             new { reference_id = requestId, unique_request_id = requestId, virtual_address = vpa, name = holderName.Trim() },
@@ -81,7 +85,11 @@ public sealed partial class DigioKyc
             return new(prior.Verdict, prior.Summary ?? "Already checked.");
         }
 
-        // TODO(VerificationLock): call VerificationLock.TryBeginAsync(...) here, before the send, once ops/reverify-lock is on main.
+        if (!await VerificationLock.TryBeginAsync(dbFactory, companyId, applicationId, partyId, "UAN"))
+        {
+            return new(null, VerificationLock.Refusal); // nothing is sent to Digio
+        }
+
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/client/v4/apis/verify/uan",
             new { type = "UAN", identifier = uan, uan_history = "YES", unique_request_id = requestId },

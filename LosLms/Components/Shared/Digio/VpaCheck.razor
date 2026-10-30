@@ -16,6 +16,7 @@
             <input class="field-input" placeholder="name@bank" maxlength="100" style="max-width:260px" aria-label="UPI id" @bind="_vpa" @bind:event="oninput" />
             <VerifyBadge Info="@Badge" />
             <VerifyButton Label="Verify UPI id" DisabledReason="@Reason" OnClick="VerifyAsync" />
+            <RecheckControl CompanyId="CompanyId" ApplicationId="@ApplicationId" Subject="UPI_VPA" OnGranted="OnParametersSetAsync" />
         </div>
         @if (_message is not null) { <p class="@(_error ? "inline-error" : "dg-muted")" role="status">@_message</p> }
     </div>
@@ -35,7 +36,9 @@
 
     private BadgeInfo Badge => DigioUi.Badge(true, false, _production, null, _latest, null);
 
-    private string? Reason => string.IsNullOrWhiteSpace(HolderName) ? "Enter the account holder's name first." : string.IsNullOrWhiteSpace(_vpa) ? "Enter the UPI id." : null;
+    private LockStatus _lock = LockStatus.Open;
+
+    private string? Reason => _lock.Reason ?? (string.IsNullOrWhiteSpace(HolderName) ? "Enter the account holder's name first." : string.IsNullOrWhiteSpace(_vpa) ? "Enter the UPI id." : null);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -43,6 +46,7 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         _on = (await db.DigioSettings.AsNoTracking().FirstOrDefaultAsync(s => s.CompanyId == CompanyId))?.UpiVpa == true;
         _production = Digio.Credentials(CompanyId)?.Production == true;
+        _lock = await VerificationLock.StatusAsync(db, CompanyId, ApplicationId, null, "UPI_VPA");
         _latest = await db.VerificationEvidence.AsNoTracking().Where(e => e.ApplicationId == ApplicationId && e.Subject == "UPI_VPA" && e.PartyId == null).OrderByDescending(e => e.Id).FirstOrDefaultAsync();
         _loaded = true;
     }

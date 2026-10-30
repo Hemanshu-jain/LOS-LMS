@@ -411,13 +411,23 @@ public sealed class DigioKycTests : IDisposable
     }
 
     [Fact]
-    public async Task Vpa_ALowNameScore_IsMismatch_AndANonExistentId_IsFailedWithDigiosReason()
+    public async Task Vpa_ALowNameScore_IsMismatch_AndASecondDifferentCheckIsHeldByTheVerificationLock()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"customer_name":"SOMEONE ELSE","status":"available","fuzzy_match_score":20}""");
         Assert.Equal("Mismatch", (await Kyc().VerifyVpaAsync(1, "A1", "raj@okbank", "Raj Kumar", null)).Verdict);
 
+        var again = await Kyc().VerifyVpaAsync(1, "A1", "other@okbank", "Raj Kumar", null); // a result is on file: only an Admin's re-check allows another
+        Assert.Null(again.Verdict);
+        Assert.Single(_digio.Calls);
+    }
+
+    [Fact]
+    public async Task Vpa_ANonExistentId_IsFailedWithDigiosReason()
+    {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"status":"not_available","status_description":"VPA does not exist"}""");
+
         var o = await Kyc().VerifyVpaAsync(1, "A1", "nobody@okbank", "Raj Kumar", null);
+
         Assert.Equal("Failed", o.Verdict);
         Assert.Contains("VPA does not exist", o.Message);
     }

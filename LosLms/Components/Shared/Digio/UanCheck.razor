@@ -16,6 +16,7 @@
             <input class="field-input" placeholder="12-digit UAN" maxlength="12" inputmode="numeric" style="max-width:200px" aria-label="UAN" @bind="_uan" @bind:event="oninput" />
             <VerifyBadge Info="@Badge" />
             <VerifyButton Label="Verify UAN" DisabledReason="@Reason" OnClick="VerifyAsync" />
+            <RecheckControl CompanyId="CompanyId" ApplicationId="@ApplicationId" PartyId="PartyId" Subject="UAN" OnGranted="OnParametersSetAsync" />
         </div>
         @if (_message is not null) { <p class="@(_error ? "inline-error" : "dg-muted")" role="status">@_message</p> }
     </div>
@@ -37,7 +38,9 @@
 
     private BadgeInfo Badge => DigioUi.Badge(true, false, _production, null, _latest, null);
 
-    private string? Reason => string.IsNullOrWhiteSpace(FullName) ? "Enter the full name first." : _uan.Trim().Length != 12 ? "Enter the 12-digit UAN." : null;
+    private LockStatus _lock = LockStatus.Open;
+
+    private string? Reason => _lock.Reason ?? (string.IsNullOrWhiteSpace(FullName) ? "Enter the full name first." : _uan.Trim().Length != 12 ? "Enter the 12-digit UAN." : null);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -47,6 +50,7 @@
         _production = Digio.Credentials(CompanyId)?.Production == true;
         if (PartyId > 0)
         {
+            _lock = await VerificationLock.StatusAsync(db, CompanyId, ApplicationId, PartyId, "UAN");
             _latest = await db.VerificationEvidence.AsNoTracking().Where(e => e.PartyId == PartyId && e.Subject == "UAN").OrderByDescending(e => e.Id).FirstOrDefaultAsync();
         }
 
