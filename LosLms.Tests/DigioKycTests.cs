@@ -422,6 +422,35 @@ public sealed class DigioKycTests : IDisposable
     }
 
     [Fact]
+    public async Task Vpa_Verified_ThenADifferentUpiId_IsRefusedByTheLock_WithNoHttp()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"customer_name":"RAJ KUMAR","status":"available","fuzzy_match_score":95}""");
+        Assert.Equal("Verified", (await Kyc().VerifyVpaAsync(1, "A1", "raj@okbank", "Raj Kumar", null)).Verdict);
+        _digio.Calls.Clear();
+
+        var o = await Kyc().VerifyVpaAsync(1, "A1", "raj2@okbank", "Raj Kumar", null);
+
+        Assert.Null(o.Verdict);
+        Assert.Equal(VerificationLock.Refusal, o.Message);
+        Assert.Empty(_digio.Calls);
+    }
+
+    [Fact]
+    public async Task Uan_Verified_ThenADifferentUan_IsRefusedByTheLock_WithNoHttp()
+    {
+        _digio.On = (_, _, _) => (HttpStatusCode.OK, UanReply);
+        var id = PartyId();
+        Assert.Equal("Verified", (await Kyc().VerifyUanAsync(1, "A1", id, "100123456789", "Raj Kumar", null)).Verdict);
+        _digio.Calls.Clear();
+
+        var o = await Kyc().VerifyUanAsync(1, "A1", id, "100999999999", "Raj Kumar", null);
+
+        Assert.Null(o.Verdict);
+        Assert.Equal(VerificationLock.Refusal, o.Message);
+        Assert.Empty(_digio.Calls);
+    }
+
+    [Fact]
     public async Task Vpa_ANonExistentId_IsFailedWithDigiosReason()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"status":"not_available","status_description":"VPA does not exist"}""");
