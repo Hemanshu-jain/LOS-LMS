@@ -793,7 +793,17 @@ else
         Navigation.NavigateTo($"/applications/{ApplicationId}/approvals");
     }
 
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
+
+    /// <summary>One save at a time: auto-save and Complete stage both delete-and-reinsert rows, so overlapping them raised DbUpdateConcurrencyException.</summary>
     private async Task PersistAsync(bool completeStage)
+    {
+        await _persistGate.WaitAsync();
+        try { await PersistCoreAsync(completeStage); }
+        finally { _persistGate.Release(); }
+    }
+
+    private async Task PersistCoreAsync(bool completeStage)
     {
         if (_application is null)
         {

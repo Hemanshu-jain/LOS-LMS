@@ -643,12 +643,12 @@ else
 
         if (_application is not null)
         {
-            _autoSave.Start(() => InvokeAsync(async () =>
+            _autoSave.Start(() => InvokeAsync(() => SerializedAsync(async () =>
             {
                 await using var saveDb = await DbFactory.CreateDbContextAsync();
                 await PersistAsync(saveDb);
                 await saveDb.SaveChangesAsync();
-            }), TimeSpan.FromSeconds(8));
+            })), TimeSpan.FromSeconds(8));
         }
     }
 
@@ -1029,7 +1029,9 @@ else
     private bool SendBackBlocked =>
         _sendBackStage == 0 || string.IsNullOrWhiteSpace(_sendBackReason);
 
-    private async Task ConfirmSendBackAsync()
+    private Task ConfirmSendBackAsync() => SerializedAsync(ConfirmSendBackCoreAsync);
+
+    private async Task ConfirmSendBackCoreAsync()
     {
         // Re-checked here as well as on the button, so a crafted request cannot send an application
         // back with no stated reason.
@@ -1091,7 +1093,9 @@ else
     /// recorded as recommender) and raises a Sanction-approval request; the file is parked until an
     /// Admin decides it. This is what stops a file at Approvals rather than letting the officer sanction.
     /// </summary>
-    private async Task SendForApprovalAsync()
+    private Task SendForApprovalAsync() => SerializedAsync(SendForApprovalCoreAsync);
+
+    private async Task SendForApprovalCoreAsync()
     {
         if (SanctionGateBlocked || _sanctionPending || _application is null)
         {
@@ -1121,7 +1125,9 @@ else
     /// <see cref="SanctionService"/> records recommender (initiating officer) and approver (this Admin)
     /// and moves the file to Sanctioned; any pending approval request is closed as approved.
     /// </summary>
-    private async Task SanctionAsync()
+    private Task SanctionAsync() => SerializedAsync(SanctionCoreAsync);
+
+    private async Task SanctionCoreAsync()
     {
         _showSanctionConfirm = false;
 
@@ -1167,6 +1173,19 @@ else
     /// Writes every tab's state onto tracked entities. The caller owns SaveChangesAsync so that a
     /// send-back or a sanction commits its own stage change in the same transaction.
     /// </summary>
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
+
+    /// <summary>
+    /// One write at a time: the 8 s auto-save and the send-back / sanction actions all delete-and-reinsert the same rows, so
+    /// overlapping them made the second hit rows already gone (DbUpdateConcurrencyException). The later one waits, then re-reads.
+    /// </summary>
+    private async Task SerializedAsync(Func<Task> work)
+    {
+        await _persistGate.WaitAsync();
+        try { await work(); }
+        finally { _persistGate.Release(); }
+    }
+
     private async Task PersistAsync(LosDbContext db)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId);
