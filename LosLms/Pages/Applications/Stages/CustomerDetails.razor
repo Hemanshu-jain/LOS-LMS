@@ -486,6 +486,7 @@ else
                                         Collapsed="sections.EmploymentCollapsed"
                                         SummaryText="@(party.IsEmploymentComplete ? "6 fields · complete" : null)"
                                         OnToggle="() => ToggleEmployment()">
+                        <UanCheck CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" PartyId="party.Id" FullName="@party.FullName" OnChanged="SyncFromDigioAsync" />
                         <div class="field-grid">
                             <FormField Label="Employment type" For="emp-type" Required="true" Error="@ErrorFor("empType")">
                                 <select id="emp-type" class="field-input" @bind="party.EmploymentType">
@@ -650,6 +651,7 @@ else
             f.City = Blank(f.City) ?? row.City;
             f.State = Blank(f.State) ?? row.State;
             f.PinCode = Blank(f.PinCode) ?? row.PinCode;
+            f.EmployerName = Blank(f.EmployerName) ?? row.EmployerName;
         }
 
         await RefreshKycGateAsync();
@@ -1208,7 +1210,7 @@ else
     private string? _captureError;
 
     /// <summary>What the JS upload returns: the stored filename, or an error message.</summary>
-    private sealed record CaptureResult(string? Name, string? Error);
+    private sealed record CaptureResult(string? Name, string? Error, int? Seconds = null);
 
     /// <summary>URL for a stored capture, served by the authenticated /files endpoint.</summary>
     private string FileUrl(PartyForm party, string relativePath) =>
@@ -1296,6 +1298,7 @@ else
             else if (result.Name is { } name)
             {
                 party.VideoKycPath = StoredPath(party, name);
+                party.VideoKycSeconds = result.Seconds;
             }
         }
         catch (JSException ex) { _captureError = CameraError(ex); }
@@ -1695,6 +1698,7 @@ else
         entity.AadhaarScanPath = form.AadhaarScanPath;
         entity.AddressProofPath = form.AddressProofPath;
         entity.VideoKycPath = form.VideoKycPath;
+        entity.VideoKycSeconds = form.VideoKycSeconds;
         entity.AadhaarGeneratedOn = form.AadhaarGeneratedOn;
         entity.AddressChangedSinceAadhaar = form.AddressChangedSinceAadhaar;
 
@@ -1745,6 +1749,7 @@ else
         form.AadhaarScanPath = entity.AadhaarScanPath;
         form.AddressProofPath = entity.AddressProofPath;
         form.VideoKycPath = entity.VideoKycPath;
+        form.VideoKycSeconds = entity.VideoKycSeconds;
         form.AadhaarGeneratedOn = entity.AadhaarGeneratedOn;
         form.AddressChangedSinceAadhaar = entity.AddressChangedSinceAadhaar;
 

@@ -2,6 +2,7 @@
 @using System.Globalization
 @using System.Text.RegularExpressions
 @using LosLms.Components.Shared
+@using LosLms.Components.Shared.Digio
 @using LosLms.Data
 @using LosLms.Models
 @using LosLms.Services
@@ -186,6 +187,7 @@ else
                                     }
                                 </div>
                             </div>
+                            <VpaCheck CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" HolderName="@_bank.AccountHolderName" />
                         </Panel>
 
                         <Panel Title="Banking statements">

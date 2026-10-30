@@ -644,6 +644,18 @@ app.Use(async (context, next) =>
     var name = $"{kind}-{Guid.NewGuid():N}{extension}";
     await context.RequestServices.GetRequiredService<IFileStore>().SaveUploadAsync(applicationId, partyType, name, bytes);
 
+    if (kind == "videokyc")
+    {
+        // In-house Video KYC is billed per completed recording on its length. The browser reports the length; the file size gives a floor
+        // (the recorder is capped at 8 Mbit/s = 1 MB per second), so under-reporting cannot make it cheaper than the file itself allows.
+        _ = int.TryParse(context.Request.Query["d"], out var reported);
+        var seconds = Math.Clamp(Math.Max(reported, (int)Math.Ceiling(bytes.Length / 1_000_000d)), 1, 3600);
+        var companyId = await db.Applications.Where(a => a.Id == applicationId).Select(a => a.CompanyId).FirstAsync();
+        await context.RequestServices.GetRequiredService<ApiBillingService>().RecordVideoKycAsync(companyId, applicationId, name, seconds);
+        await context.Response.WriteAsJsonAsync(new { name, seconds });
+        return;
+    }
+
     await context.Response.WriteAsJsonAsync(new { name });
 });
 

@@ -66,6 +66,9 @@ public class Party
     /// <summary>Camera-recorded Video KYC clip (evidence), stored at high bitrate as WebM.</summary>
     [MaxLength(400)] public string? VideoKycPath { get; set; }
 
+    /// <summary>Length of the in-house Video KYC recording in seconds (what it was billed on).</summary>
+    public int? VideoKycSeconds { get; set; }
+
     // ---- Contact ----
     [MaxLength(10)] public string? Mobile { get; set; }
     [MaxLength(10)] public string? AltMobile { get; set; }

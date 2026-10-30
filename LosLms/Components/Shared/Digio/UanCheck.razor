@@ -1,0 +1,68 @@
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject DigioKyc Kyc
+@inject DigioClient Digio
+@inject TenantContext Tenant
+
+@* UAN / employment check for a salaried party. Rs 15 a lookup, so the same UAN and name reuse the last verdict. Fills a blank employer name only. *@
+@if (_loaded && _on && PartyId > 0)
+{
+    <div class="dg-panel">
+        <div class="dg-panel-head"><strong>UAN check</strong></div>
+        <div class="dg-row">
+            <input class="field-input" placeholder="12-digit UAN" maxlength="12" inputmode="numeric" style="max-width:200px" aria-label="UAN" @bind="_uan" @bind:event="oninput" />
+            <VerifyBadge Info="@Badge" />
+            <VerifyButton Label="Verify UAN" DisabledReason="@Reason" OnClick="VerifyAsync" />
+            <RecheckControl CompanyId="CompanyId" ApplicationId="@ApplicationId" PartyId="PartyId" Subject="UAN" OnGranted="OnParametersSetAsync" />
+        </div>
+        @if (_message is not null) { <p class="@(_error ? "inline-error" : "dg-muted")" role="status">@_message</p> }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+    [Parameter] public int PartyId { get; set; }
+    [Parameter] public string? FullName { get; set; }
+
+    /// <summary>Raised after a check changed what is on file (the page takes the filled employer name).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _loaded, _on, _production, _error;
+    private string _uan = "";
+    private string? _message;
+    private VerificationEvidence? _latest;
+
+    private BadgeInfo Badge => DigioUi.Badge(true, false, _production, null, _latest, null);
+
+    private LockStatus _lock = LockStatus.Open;
+
+    private string? Reason => _lock.Reason ?? (string.IsNullOrWhiteSpace(FullName) ? "Enter the full name first." : _uan.Trim().Length != 12 ? "Enter the 12-digit UAN." : null);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _on = (await db.DigioSettings.AsNoTracking().FirstOrDefaultAsync(s => s.CompanyId == CompanyId))?.Uan == true;
+        _production = Digio.Credentials(CompanyId)?.Production == true;
+        if (PartyId > 0)
+        {
+            _lock = await VerificationLock.StatusAsync(db, CompanyId, ApplicationId, PartyId, "UAN");
+            _latest = await db.VerificationEvidence.AsNoTracking().Where(e => e.PartyId == PartyId && e.Subject == "UAN").OrderByDescending(e => e.Id).FirstOrDefaultAsync();
+        }
+
+        _loaded = true;
+    }
+
+    private async Task VerifyAsync()
+    {
+        var o = await Kyc.VerifyUanAsync(CompanyId, ApplicationId, PartyId, _uan, FullName, Tenant.UserId);
+        _message = o.Message;
+        _error = o.Verdict is null or "Failed" or "Unavailable";
+        await OnParametersSetAsync();
+        await OnChanged.InvokeAsync();
+    }
+}
