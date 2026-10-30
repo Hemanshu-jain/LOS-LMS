@@ -59,6 +59,11 @@ public sealed class DigioAsset(DigioClient digio, PasswordVault vault, IDbContex
             return new(new(prior.Verdict, prior.Summary ?? "Already checked."), stored, FillFrom(stored));
         }
 
+        if (!await VerificationLock.TryBeginAsync(dbFactory, companyId, applicationId, null, "VEHICLE_RC"))
+        {
+            return new(new(null, VerificationLock.Refusal), null, null); // nothing is sent to Digio
+        }
+
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/client/v4/apis/verify/vehicle_rc",
             new { id = reg, unique_request_id = requestId }, DigioRates.VehicleRc, "RC", "VEHICLE_RC_VERIFY", applicationId, null, requestId, fingerprint, userId));
@@ -161,6 +166,11 @@ public sealed class DigioAsset(DigioClient digio, PasswordVault vault, IDbContex
         string[] names, string[] status, string[] date)
     {
         var fingerprint = DigioKyc.Fingerprint(idNo, firmName?.Trim().ToUpperInvariant());
+        if (!await VerificationLock.TryBeginAsync(dbFactory, companyId, applicationId, null, subject))
+        {
+            return (new(null, $"{subject} {VerificationLock.Refusal[0..1].ToLowerInvariant()}{VerificationLock.Refusal[1..]}"), null);
+        }
+
         var requestId = Guid.NewGuid().ToString("N");
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, $"/v3/client/kyc/fetch_id_data/{type}",
             new { id_no = idNo, unique_request_id = requestId }, DigioRates.BusinessKyc, "KYB", type + "_VERIFY", applicationId, null, requestId, fingerprint, userId));
