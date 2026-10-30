@@ -165,8 +165,14 @@ public sealed class DigioWebhookService(
             return;
         }
 
-        // The e-Sign credit is consumed on signing, so that is when it is metered.
-        await billing.RecordAsync(companyId, DigioRates.ESignAadhaar, success: true, applicationId: row.ApplicationId, providerRef: docId);
+        // A credit is consumed per Aadhaar signer (customer, co-applicant, guarantor; our lender stamp is not a Digio signer), when they sign.
+        // Documents sent before signers were recorded have no rows: those still cost one.
+        var signerIds = await db.EsignSigners.IgnoreQueryFilters().Where(x => x.CompanyId == companyId && x.DocumentId == docId).Select(x => x.Id.ToString()).ToListAsync();
+        foreach (var signer in signerIds.Count == 0 ? [""] : signerIds)
+        {
+            await billing.RecordOnceAsync(companyId, DigioRates.ESignAadhaar, $"{docId}:{signer}", row.ApplicationId);
+        }
+
         await RecordEvidenceAsync(db, companyId, row.ApplicationId, docId);
         await SaveSignedCopyAsync(companyId, row.Id, row.ApplicationId, docId);
         await notifier.NotifyAsync(row.ApplicationId);
@@ -237,7 +243,7 @@ public sealed class DigioWebhookService(
         try
         {
             var download = await digio.DownloadAsync(
-                companyId, null, $"/v2/client/document/download?document_id={Uri.EscapeDataString(docId)}", applicationId);
+                companyId, DigioRates.EsignDownload, $"/v2/client/document/download?document_id={Uri.EscapeDataString(docId)}", applicationId);
             if (download.Bytes is not { } bytes || !FileSignature.Matches(".pdf", bytes))
             {
                 log.LogWarning("No signed PDF for Digio document {DocId} (company {CompanyId}): {Status}", docId, companyId, download.Status);

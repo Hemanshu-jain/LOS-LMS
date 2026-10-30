@@ -86,7 +86,7 @@ public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory
         if (mandate is { DigioMandateId: not null, Umrn: not null } && mandate.DigioState == NachLifecycle.Registered)
         {
             var r = await digio.SendAsync(new DigioCall(account.CompanyId, HttpMethod.Post, "/v3/client/mandate/registration_cancel",
-                new { digio_mandate_id = mandate.DigioMandateId, umrn = mandate.Umrn, reason = reasonCode }, Product: "MANDATE", Operation: "MANDATE_CANCEL",
+                new { digio_mandate_id = mandate.DigioMandateId, umrn = mandate.Umrn, reason = reasonCode }, ApiCode: DigioRates.MandateCancel, Product: "MANDATE", Operation: "MANDATE_CANCEL",
                 ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId));
             if (r.Status != DigioStatus.Ok)
             {

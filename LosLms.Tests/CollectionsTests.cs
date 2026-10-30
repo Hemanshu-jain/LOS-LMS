@@ -159,6 +159,7 @@ public sealed class CollectionsTests : IDisposable
         var r = await Svc<LoanClosureService>().CloseAsync(AccountId(), foreclosure: true, "C001", "admin");
 
         Assert.True(r.Closed, r.Message);
+        using (var billing = Db(admin: true)) { Assert.Equal(2.00m, Assert.Single(billing.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.MandateCancel && l.IsSuccess)).UnitRate); }
         Assert.Contains(calls, c => c.Contains("transaction/action") && c.Contains("NPT1") && c.Contains("cancel"));
         Assert.Contains(calls, c => c.Contains("registration_cancel") && c.Contains("ENA1") && c.Contains("C001"));
         Assert.True(calls.FindIndex(c => c.Contains("transaction/action")) < calls.FindIndex(c => c.Contains("registration_cancel")));

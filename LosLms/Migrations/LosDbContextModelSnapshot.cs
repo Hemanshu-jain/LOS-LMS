@@ -396,6 +396,30 @@ namespace LosLms.Migrations
                             Name = "ACH debit presentation",
                             Product = "DigiCollect",
                             UnitRate = 2.00m
+                        },
+                        new
+                        {
+                            Code = "MANDATE_CANCEL",
+                            IsActive = true,
+                            Name = "Mandate cancellation",
+                            Product = "DigiCollect",
+                            UnitRate = 2.00m
+                        },
+                        new
+                        {
+                            Code = "ESIGN_SEND",
+                            IsActive = true,
+                            Name = "DigiSign: send document (sign-only API)",
+                            Product = "DigiSign",
+                            UnitRate = 0.75m
+                        },
+                        new
+                        {
+                            Code = "ESIGN_DOWNLOAD",
+                            IsActive = true,
+                            Name = "DigiSign: download signed copy (sign-only API)",
+                            Product = "DigiSign",
+                            UnitRate = 0.75m
                         });
                 });
 

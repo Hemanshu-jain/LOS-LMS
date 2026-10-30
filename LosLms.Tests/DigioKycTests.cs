@@ -319,7 +319,9 @@ public sealed class DigioKycTests : IDisposable
         Assert.True(party.PanVerified);
         Assert.Equal("Verified", db.VerificationEvidence.IgnoreQueryFilters().Single(e => e.Subject == "PAN").Verdict); // from the same DigiLocker answer
         Assert.DoesNotContain(_digio.Calls, c => c.Contains("fetch_id_data"));                                        // no separate PAN call or charge
-        Assert.Equal(1, db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.DigiLockerFetch && l.IsSuccess));
+        var fetches = db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.DigiLockerFetch && l.IsSuccess).ToList();
+        Assert.Equal(2, fetches.Count);              // Rs 2 per document: the Aadhaar and the PAN in the one reply
+        Assert.Equal(4.00m, fetches.Sum(l => l.UnitRate));
         Assert.Equal(1, db.VerificationEvidence.IgnoreQueryFilters().Count(e => e.Subject == "AADHAAR"));
     }
 
@@ -383,9 +385,9 @@ public sealed class DigioKycTests : IDisposable
         using var db = Anonymous();
         Assert.Equal("Succeeded", db.DigioRequests.IgnoreQueryFilters().Single().Status);
         Assert.True(db.Parties.IgnoreQueryFilters().Single().AadhaarVerified);
-        Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.DigiLockerFetch));
+        Assert.Equal(2, db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.DigiLockerFetch));
         await _provider.GetRequiredService<DigioReconcileTrigger>().RequestReconcileAsync(start.RequestId!); // already done: a no-op
-        Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.DigiLockerFetch));
+        Assert.Equal(2, db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == DigioRates.DigiLockerFetch));
     }
 
     // ---- the gate ----

@@ -105,6 +105,7 @@ public sealed class DigioPhase3Tests : IDisposable
         Assert.Equal(root.GetProperty("callback").GetString(), d.EsignRequestId);
         Assert.Equal(DigioEsignService.Sha256(PdfV1), d.AgreementFingerprint);
         Assert.Equal(["requested", "sequenced"], Signers().Select(s => s.Status).ToArray());
+        Assert.Equal(1, Usage(DigioRates.EsignSend)); // Rs 0.75 for sending the document
 
         // First signer signs: still Sent, 1 of 2.
         _digio.On("GET", "/v2/client/document/DID1", _ => Doc("DID1", "requested", "signed", "requested"));
@@ -122,6 +123,8 @@ public sealed class DigioPhase3Tests : IDisposable
         Assert.Equal("Signed", Disbursement().AgreementEsignStatus);
         using var db = Anonymous();
         Assert.Single(db.VerificationEvidence.IgnoreQueryFilters().Where(e => e.Subject == "AGREEMENT_SIGNED"));
+        Assert.Equal(2, Usage(DigioRates.ESignAadhaar));   // one Aadhaar credit per signer, none for the lender stamp, none again on the replay
+        Assert.Equal(1, Usage(DigioRates.EsignDownload));  // Rs 0.75 for the signed copy, fetched once
     }
 
     [Fact]
@@ -313,10 +316,13 @@ public sealed class DigioPhase3Tests : IDisposable
         _digio.On("GET", "/v3/client/mandate/ENA1", _ => """{"id":"ENA1","state":"auth_success","umrn":"UMRN9","bank_details":{"state":"register_success"}}""");
         Assert.True(await webhook.HandleAsync(1, MandateEvent("APIMNDT.DESTACCEPT", "ENA1")));
         Assert.Equal(("Registered", "UMRN9", "Registered"), Mandate());
+        Assert.Equal(1, Usage(DigioRates.MandateApi)); // metered when it registered, by how it was authorised
 
         _digio.On("GET", "/v3/client/mandate/ENA1", _ => """{"id":"ENA1","state":"auth_success","bank_details":{"state":"transfer_success"}}""");
         await webhook.HandleAsync(1, MandateEvent("APIMNDT.AUTHSUCCESS", "ENA1")); // arrives late
         Assert.Equal(("Registered", "UMRN9", "Registered"), Mandate());
+        await webhook.HandleAsync(1, MandateEvent("APIMNDT.DESTACCEPT", "ENA1")); // a replay of the registration
+        Assert.Equal(1, Usage(DigioRates.MandateApi));
     }
 
     // ---- the release gate ----
@@ -417,6 +423,12 @@ public sealed class DigioPhase3Tests : IDisposable
 
     /// <summary>A signed-in context that sees every company (what the page's user context does for its own).</summary>
     private LosDbContext Seeded() => new(_options, TenantContext.ForSeeding());
+
+    private int Usage(string code)
+    {
+        using var db = Anonymous();
+        return db.ApiUsageLogs.IgnoreQueryFilters().Count(l => l.ApiCode == code && l.IsSuccess);
+    }
 
     private LosDbContext Anonymous()
     {
