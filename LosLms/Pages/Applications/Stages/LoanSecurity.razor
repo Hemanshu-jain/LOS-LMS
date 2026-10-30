@@ -389,13 +389,22 @@ else
                                             </FormField>
 
                                             <div style="grid-column: 1 / -1;">
-                                                <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
-                                                         Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
-                                                         InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
+                                                @* Extras on this page: if one of them fails it shows a short note (and logs), and the page still loads. *@
+                                                <ErrorBoundary>
+                                                    <ChildContent>
+                                                        <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
+                                                                 Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
+                                                                 InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
+                                                    </ChildContent>
+                                                    <ErrorContent><span class="inline-error" role="alert">The RC check is unavailable right now.</span></ErrorContent>
+                                                </ErrorBoundary>
                                             </div>
 
                                             <div style="grid-column: 1 / -1;">
-                                                <TgPortalPanel ApplicationId="@ApplicationId" />
+                                                <ErrorBoundary>
+                                                    <ChildContent><TgPortalPanel ApplicationId="@ApplicationId" /></ChildContent>
+                                                    <ErrorContent><span class="inline-error" role="alert">The TG portal record is unavailable right now.</span></ErrorContent>
+                                                </ErrorBoundary>
                                             </div>
 
                                             <FormField Label="Invoice no." For="sec-invno">

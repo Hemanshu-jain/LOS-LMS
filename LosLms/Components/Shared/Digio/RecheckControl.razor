@@ -3,6 +3,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject TenantContext Tenant
+@inject ILogger<RecheckControl> Log
 
 @* The Admin-only "Allow re-check" for a check that is already on file. It needs a reason, is audited (VerificationRecheck) and grants exactly
    ONE more run; the officer's button re-enables for that run only. Everyone else sees a short note while a re-check is open and nothing otherwise. *@
@@ -49,8 +50,16 @@
     {
         await Tenant.EnsureLoadedAsync();
         _admin = Tenant.IsAdmin || Tenant.IsSuperAdmin;
-        await using var db = await DbFactory.CreateDbContextAsync();
-        _status = await VerificationLock.StatusAsync(db, CompanyId, ApplicationId, PartyId, Subject);
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _status = await VerificationLock.StatusAsync(db, CompanyId, ApplicationId, PartyId, Subject);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log.LogError(ex, "Re-check status could not be read for {Subject} on {ApplicationId}", Subject, ApplicationId);
+        }
+
         _loaded = true;
     }
 
