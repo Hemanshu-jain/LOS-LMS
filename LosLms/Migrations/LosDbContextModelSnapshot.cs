@@ -407,6 +407,14 @@ namespace LosLms.Migrations
                         },
                         new
                         {
+                            Code = "KYC_VEHICLE_RC",
+                            IsActive = true,
+                            Name = "Vehicle RC verification",
+                            Product = "DigiKYC",
+                            UnitRate = 2.00m
+                        },
+                        new
+                        {
                             Code = "ESIGN_SEND",
                             IsActive = true,
                             Name = "DigiSign: send document (sign-only API)",

@@ -115,8 +115,8 @@ public static partial class DigioHarness
     private static async Task<object> RunAsync(DigioClient digio, int company, Probe p, string samples, Action<string?>? gotId)
     {
         var r = p.Method == HttpMethod.Get
-            ? await digio.GetAsync(company, null, p.Path, null)
-            : await digio.PostAsync(company, null, p.Path, p.Body!, null);
+            ? await digio.GetAsync(company, null, p.Path, null, "Phase 0 harness: sandbox only, DEBUG builds")
+            : await digio.PostAsync(company, null, p.Path, p.Body!, null, "Phase 0 harness: sandbox only, DEBUG builds");
 
         gotId?.Invoke(r.Str("id"));
         if (r.Data is { } data)

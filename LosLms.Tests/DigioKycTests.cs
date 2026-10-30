@@ -36,6 +36,7 @@ public sealed class DigioKycTests : IDisposable
             db.Applications.Add(new Application { Id = "A1", CompanyId = 1 });
             db.SaveChanges();
             db.Parties.Add(new Party { ApplicationId = "A1", PartyType = "Applicant", FullName = "Raj Kumar", Pan = "ABCPE1234F", DateOfBirth = new DateOnly(1990, 1, 1) });
+            db.ApiRates.Add(new ApiRate { Code = DigioRates.AmlScreen, Name = "AML screening (test price)", Product = "DigiShield", UnitRate = 1m, IsActive = true });
             db.DigioSettings.Add(new DigioSettings { CompanyId = 1, PanVerify = true, DigiLocker = true, AadhaarMask = true, Aml = true });
             db.SaveChanges();
         }

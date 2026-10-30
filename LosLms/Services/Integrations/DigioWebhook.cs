@@ -114,7 +114,7 @@ public sealed class DigioWebhookService(
     /// <summary>Asks Digio for the document's real status and completes it if every party has signed.</summary>
     public async Task ConfirmAsync(int companyId, string docId)
     {
-        var result = await digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null);
+        var result = await digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null, "reading a document's signing status (UNSURE: no price in the quote)");
         if (result.Status != DigioStatus.Ok)
         {
             return;

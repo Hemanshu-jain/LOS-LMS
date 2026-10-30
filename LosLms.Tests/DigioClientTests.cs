@@ -60,7 +60,7 @@ public sealed class DigioClientTests : IDisposable
     }
 
     private static DigioCall Tracked(string? requestId = null) =>
-        new(1, HttpMethod.Post, "/v3/client/kyc/pan/verify", new { x = 1 }, Product: "KYC_ID", Operation: "PAN_VERIFY", ApplicationId: "A1", RequestId: requestId);
+        new(1, HttpMethod.Post, "/v3/client/kyc/pan/verify", new { x = 1 }, Product: "KYC_ID", Operation: "PAN_VERIFY", ApplicationId: "A1", RequestId: requestId, Free: "test call");
 
     [Fact]
     public async Task NoKeys_SendsNothing_AndWritesNoRow()
@@ -138,7 +138,7 @@ public sealed class DigioClientTests : IDisposable
         _digio.OnSend = (_, _) => throw new HttpRequestException("down");
         var client = Client();
 
-        var get = await client.SendAsync(new DigioCall(1, HttpMethod.Get, "/x"));
+        var get = await client.SendAsync(new DigioCall(1, HttpMethod.Get, "/x", Free: "test call"));
         Assert.Equal(DigioStatus.Failed, get.Status);
         Assert.Equal(2, _digio.Calls);
 
@@ -149,9 +149,43 @@ public sealed class DigioClientTests : IDisposable
     }
 
     [Fact]
+    public async Task ACallWithNoBillingDeclaration_IsRefused_AndNothingIsSent()
+    {
+        DigioResult? result = null;
+        try { result = await Client().SendAsync(new DigioCall(1, HttpMethod.Get, "/x")); }
+        catch (InvalidOperationException) { /* a debug build throws instead, so it is found the day it is written */ }
+
+        Assert.True(result is null || result.Status == DigioStatus.Failed);
+        Assert.Equal(0, _digio.Calls);
+    }
+
+    [Fact]
+    public async Task ACodeWithNoActivePrice_IsRefused_AndNothingIsSent()
+    {
+        var r = await Client().SendAsync(new DigioCall(1, HttpMethod.Post, "/client/v1/user/screen", new { }, ApiCode: DigioRates.AmlScreen)); // not in the quote, so not seeded
+
+        Assert.Equal(DigioStatus.Failed, r.Status);
+        Assert.Contains("Price not set for AML_SCREEN", r.Error);
+        Assert.Equal(0, _digio.Calls);
+        using var db = Anonymous();
+        Assert.Empty(db.ApiUsageLogs.IgnoreQueryFilters());
+    }
+
+    [Fact]
+    public async Task APricedCode_IsSent_AndMeteredOnSuccess()
+    {
+        var r = await Client().SendAsync(new DigioCall(1, HttpMethod.Post, "/client/v4/apis/verify/vehicle_rc", new { }, ApiCode: DigioRates.VehicleRc));
+
+        Assert.Equal(DigioStatus.Ok, r.Status);
+        using var db = Anonymous();
+        var log = Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters());
+        Assert.Equal((DigioRates.VehicleRc, 2.00m, true), (log.ApiCode, log.UnitRate, log.IsSuccess));
+    }
+
+    [Fact]
     public async Task UntrackedCall_WritesNoRow()
     {
-        var r = await Client().GetAsync(1, null, "/x", null);
+        var r = await Client().GetAsync(1, null, "/x", null, "test call");
 
         Assert.Equal(DigioStatus.Ok, r.Status);
         Assert.Null(r.RequestId);

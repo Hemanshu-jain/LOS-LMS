@@ -67,9 +67,11 @@ public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory
             {
                 var r = p.DigioTxnId is not null
                     ? await digio.SendAsync(new DigioCall(account.CompanyId, HttpMethod.Post, "/v3/client/nach_debit/transaction/action",
-                        new { transaction_id = p.DigioTxnId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId))
+                        new { transaction_id = p.DigioTxnId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId,
+                        Free: "cancelling a debit not yet taken (UNSURE: no price in the quote)"))
                     : await digio.SendAsync(new DigioCall(account.CompanyId, HttpMethod.Post, "/v3/client/nach_debit/scheduled/action",
-                        new { scheduled_plan_id = p.DigioPlanId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId));
+                        new { scheduled_plan_id = p.DigioPlanId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId,
+                        Free: "cancelling a debit plan not yet taken (UNSURE: no price in the quote)"));
                 if (r.Status != DigioStatus.Ok)
                 {
                     await db.SaveChangesAsync(); // keep the ones already cancelled
@@ -125,7 +127,8 @@ public sealed class SettlementReconciler(IDbContextFactory<LosDbContext> dbFacto
             return (null, "Enter the settlement id (CID) from Digio's settlement email.");
         }
 
-        var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Get, $"/v3/client/nach_debit/requester_settlement/{Uri.EscapeDataString(cid)}"));
+        var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Get, $"/v3/client/nach_debit/requester_settlement/{Uri.EscapeDataString(cid)}",
+            Free: "settlement report read (UNSURE: documented for Digio PA users only; no price in the quote)"));
         if (r.Status != DigioStatus.Ok || r.Data is not { } data)
         {
             return (null, r.HttpStatus is 403 or 404 ? "Digio has no settlement report for this id, or this report is not enabled for your account." : r.Error ?? "Digio could not be reached.");
