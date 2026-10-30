@@ -1016,6 +1016,11 @@ else
                 _schemeOptions.Insert(0, scheme);
             }
 
+            // A list with exactly one real choice selects it when nothing is chosen yet.
+            _application.Branch = OnlyChoice.IfBlank(_application.Branch, _branchOptions);
+            _application.SourcingChannel = OnlyChoice.IfBlank(_application.SourcingChannel, _channelOptions);
+            _application.Scheme = OnlyChoice.IfBlank(_application.Scheme, _schemeOptions);
+
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
             _security = security is null ? new SecurityForm() : ToForm(security);

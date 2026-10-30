@@ -154,8 +154,10 @@ else
 
                                             <tr>
                                                 <td class="cell-name">@kyc.Label</td>
-                                                <td class="cell-file @(storedPath is null ? "is-empty" : null)">
-                                                    @(storedPath is null ? "—" : Path.GetFileName(storedPath))
+                                                <td class="cell-file @(storedPath is null && VerifiedOnDate(_activeTab, type) is null ? "is-empty" : null)">
+                                                    @if (storedPath is not null) { @Path.GetFileName(storedPath) }
+                                                    else if (VerifiedOnDate(_activeTab, type) is { } verifiedOn) { <span>Verified via Digio (@(type == "Pan" ? "PAN check" : "DigiLocker")) on @verifiedOn.ToString("dd MMM yyyy", CultureInfo.InvariantCulture)</span> }
+                                                    else { @("—") }
                                                 </td>
                                                 <td class="cell-muted">
                                                     @(uploadedOn?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "—")
@@ -168,7 +170,7 @@ else
                                                     }
                                                 </td>
                                                 <td class="cell-signed">
-                                                    @if (!chaseable)
+                                                    @if (!chaseable && storedPath is not null)
                                                     {
                                                         <input type="checkbox" @bind="doc.SignedConfirmed"
                                                                aria-label="@($"{kyc.Label} signed")" title="Scanned copy is signed" />
@@ -223,7 +225,7 @@ else
                                                     }
                                                 </td>
                                                 <td>
-                                                    @if (!chaseable)
+                                                    @if (!chaseable && storedPath is not null)
                                                     {
                                                         <button type="button" class="view-link"
                                                                 @onclick="() => OpenPreview(kyc.Label, storedPath, uploadedOn)">View</button>
@@ -434,6 +436,12 @@ else
 
         _hasGuarantor = PartyRules.HasGuarantor(parties);
 
+        _verifiedOn = ChecklistVerification.VerifiedOn(
+            await db.VerificationEvidence.AsNoTracking()
+                .Where(e => e.ApplicationId == ApplicationId && e.Verdict == "Verified" && (e.Subject == "PAN" || e.Subject == "AADHAAR"))
+                .ToListAsync(),
+            parties);
+
         if (!VisibleParties.Any(p => p.Key == _activeTab))
         {
             _activeTab = "Applicant";
@@ -563,8 +571,19 @@ else
         });
     }
 
+    private Dictionary<(string PartyType, string DocumentType), DateTime> _verifiedOn = new();
+
+    /// <summary>When Digio verified this PAN / Aadhaar (so no scan is needed); null if it has not been.</summary>
+    private DateTime? VerifiedOnDate(string partyType, string documentType) =>
+        _verifiedOn.TryGetValue((partyType, documentType), out var on) ? on : null;
+
     private DateTime? UploadDateFor(string partyType, string documentType)
     {
+        if (FilePathFor(partyType, documentType) is null && VerifiedOnDate(partyType, documentType) is { } verified)
+        {
+            return verified;
+        }
+
         if (!IsPartySourced(documentType))
         {
             return _docs[partyType][documentType].UploadDate;
@@ -583,7 +602,7 @@ else
     {
         if (FilePathFor(partyType, documentType) is null)
         {
-            return "Pending";
+            return VerifiedOnDate(partyType, documentType) is null ? "Pending" : "Collected";
         }
 
         var document = _docs[partyType][documentType];
