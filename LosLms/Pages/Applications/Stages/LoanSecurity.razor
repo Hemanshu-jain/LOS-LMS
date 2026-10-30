@@ -978,7 +978,7 @@ else
                 return;
             }
             _branchOptions = await db.Branches.AsNoTracking()
-                .Where(b => b.IsActive)
+                .Where(b => b.IsActive && b.CompanyId == _application.CompanyId)
                 .OrderBy(b => b.Name)
                 .Select(b => b.Name)
                 .ToListAsync();
@@ -997,10 +997,10 @@ else
             // branch: a value stored on this file that has since been removed is re-inserted so the
             // select never renders blank and write a blank back on the next save.
             var channels = await db.LookupValues.AsNoTracking()
-                .Where(l => l.Kind == LookupKind.SourcingChannel && l.IsActive)
+                .Where(l => l.Kind == LookupKind.SourcingChannel && l.IsActive && l.CompanyId == _application.CompanyId)
                 .OrderBy(l => l.Name).Select(l => new { l.Name, l.Code }).ToListAsync();
             _channelOptions = channels.Select(c => c.Name).ToList();
-            _channelCodes = channels.ToDictionary(c => c.Name, c => c.Code, StringComparer.OrdinalIgnoreCase);
+            _channelCodes = channels.DistinctBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(c => c.Name, c => c.Code, StringComparer.OrdinalIgnoreCase);
             if (_application.SourcingChannel is { Length: > 0 } channel
                 && !_channelOptions.Contains(channel, StringComparer.OrdinalIgnoreCase))
             {
@@ -1008,7 +1008,7 @@ else
             }
 
             _schemeOptions = await db.LookupValues.AsNoTracking()
-                .Where(l => l.Kind == LookupKind.Scheme && l.IsActive)
+                .Where(l => l.Kind == LookupKind.Scheme && l.IsActive && l.CompanyId == _application.CompanyId)
                 .OrderBy(l => l.Name).Select(l => l.Name).ToListAsync();
             if (_application.Scheme is { Length: > 0 } scheme
                 && !_schemeOptions.Contains(scheme, StringComparer.OrdinalIgnoreCase))
