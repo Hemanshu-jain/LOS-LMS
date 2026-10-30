@@ -123,7 +123,7 @@ public sealed class DigioEsignService(
         }
 
         var result = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/v2/client/document/uploadpdf", body,
-            Product: "ESIGN", Operation: "SIGN_AGREEMENT", ApplicationId: applicationId, RequestId: requestId,
+            ApiCode: DigioRates.EsignSend, Product: "ESIGN", Operation: "SIGN_AGREEMENT", ApplicationId: applicationId, RequestId: requestId,
             InputFingerprint: hash, RequestedByUserId: userId, SuccessStatus: "WaitingForCustomer"));
         if (result.Status != DigioStatus.Ok || result.Str("id") is not { } docId)
         {

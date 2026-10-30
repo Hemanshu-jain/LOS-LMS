@@ -41,6 +41,9 @@ public static class DigioRates
     public const string MandatePhysical = "MANDATE_PHYSICAL";
     public const string MandateEsign = "MANDATE_ESIGN";
     public const string MandateDebit = "MANDATE_DEBIT";
+    public const string MandateCancel = "MANDATE_CANCEL";
+    public const string EsignSend = "ESIGN_SEND";
+    public const string EsignDownload = "ESIGN_DOWNLOAD";
 
     public static readonly IReadOnlyList<ApiRate> Seed = new ApiRate[]
     {
@@ -72,6 +75,9 @@ public static class DigioRates
         R(MandatePhysical, "Physical / scan NACH mandate", "DigiCollect", 5.00m),
         R(MandateEsign, "eSign eNACH mandate", "DigiCollect", 12.00m),
         R(MandateDebit, "ACH debit presentation", "DigiCollect", 2.00m),
+        R(MandateCancel, "Mandate cancellation", "DigiCollect", 2.00m),
+        R(EsignSend, "DigiSign: send document (sign-only API)", "DigiSign", 0.75m),
+        R(EsignDownload, "DigiSign: download signed copy (sign-only API)", "DigiSign", 0.75m),
     };
 
     private static ApiRate R(string code, string name, string product, decimal rate) =>

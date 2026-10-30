@@ -117,7 +117,7 @@ public sealed record NachResult(bool Ok, string? Error, string? AuthUrl = null, 
 
 /// <summary>DigiCollect e-NACH for the E-Nach and Security-Nach tabs (06-NACH.md). Every call goes through DigioClient.SendAsync.</summary>
 public sealed class DigioNachService(
-    IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, IFileStore files, PasswordVault vault, DigioStatusNotifier notifier)
+    IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, IFileStore files, PasswordVault vault, DigioStatusNotifier notifier, ApiBillingService billing)
 {
     public const string EnachTab = "Enach", SecurityTab = "Security";
     public static readonly string[] Routes = ["API", "ESIGN", "PHYSICAL"];
@@ -299,10 +299,17 @@ public sealed class DigioNachService(
 
         await using var db = await dbFactory.CreateDbContextAsync();
         string? application = null;
+        var justRegistered = new List<(string Application, string? AuthMode)>();
         foreach (var m in await MandatesAsync(db, companyId, mandateId))
         {
+            var was = m.DigioState;
             if (NachLifecycle.Apply(m, details, DateTime.UtcNow))
             {
+                if (was != NachLifecycle.Registered && m.DigioState == NachLifecycle.Registered)
+                {
+                    justRegistered.Add((m switch { EnachMandate e => e.ApplicationId, SecurityNachMandate s => s.ApplicationId, _ => "" }, m.AuthMode));
+                }
+
                 application = m switch { EnachMandate e => e.ApplicationId, SecurityNachMandate s => s.ApplicationId, _ => null };
                 if (m.DigioRequestId is { } rid)
                 {
@@ -316,6 +323,14 @@ public sealed class DigioNachService(
         }
 
         await db.SaveChangesAsync();
+
+        // Metered once, when the mandate is registered; the code follows how it was authorised (once per mandate id, so a replay adds none).
+        foreach (var (app, mode) in justRegistered)
+        {
+            var code = mode switch { "ESIGN" => DigioRates.MandateEsign, "PHYSICAL" => DigioRates.MandatePhysical, _ => DigioRates.MandateApi };
+            await billing.RecordOnceAsync(companyId, code, mandateId, app);
+        }
+
         if (application is not null)
         {
             await notifier.NotifyAsync(application);
