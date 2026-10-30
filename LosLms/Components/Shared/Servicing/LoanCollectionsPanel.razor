@@ -45,7 +45,7 @@
         <div class="dg-row">
             <select class="field-input" @bind="_reason" style="max-width:260px">
                 <option value="">Cancellation reason…</option>
-                @foreach (var rc in LoanClosureService.ReasonCodes) { <option value="@rc">@rc (meaning TBD from Digio)</option> }
+                @foreach (var (rcCode, label) in LoanClosureService.Reasons) { <option value="@rcCode">@(rcCode) · @label</option> }
             </select>
             <label><input type="checkbox" @bind="_foreclose" /> Foreclosure (instalments are still unpaid)</label>
             <label><input type="checkbox" @bind="_confirm" /> I confirm</label>
@@ -63,7 +63,7 @@
     private List<LoanCharge> _charges = new();
     private readonly Dictionary<int, string> _waiveNote = new();
     private bool _loaded, _admin, _active, _foreclose, _confirm, _busy;
-    private string _reason = "";
+    private string _reason = LoanClosureService.DefaultReason;
     private string? _message;
 
     protected override async Task OnParametersSetAsync()

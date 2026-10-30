@@ -65,9 +65,8 @@ public sealed class DigioAsset(DigioClient digio, PasswordVault vault, IDbContex
         }
 
         var requestId = Guid.NewGuid().ToString("N");
-        // ponytail: not metered. The rate card has no vehicle-RC price yet (Digio's quote lacks one); add KYC_VEHICLE_RC when it is known.
         var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Post, "/client/v4/apis/verify/vehicle_rc",
-            new { id = reg, unique_request_id = requestId }, null, "RC", "VEHICLE_RC_VERIFY", applicationId, null, requestId, fingerprint, userId));
+            new { id = reg, unique_request_id = requestId }, DigioRates.VehicleRc, "RC", "VEHICLE_RC_VERIFY", applicationId, null, requestId, fingerprint, userId));
         if (Failure(r) is { } fail)
         {
             return new(fail, null, null);

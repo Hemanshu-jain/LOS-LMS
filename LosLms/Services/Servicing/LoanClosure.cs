@@ -15,8 +15,21 @@ public sealed record ClosureResult(bool Closed, string Message);
 /// </summary>
 public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory, DigioClient digio)
 {
-    /// <summary>What Digio's registration_cancel reason codes mean is not known yet (ask Digio); the Admin picks one.</summary>
-    public static readonly string[] ReasonCodes = ["C001", "C002", "C003", "C004"];
+    /// <summary>
+    /// Digio's registration_cancel reason codes, with the meanings the owner confirmed. C004 is left out until Digio confirms what it means;
+    /// add it back here (and only here) then.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> Reasons = new Dictionary<string, string>
+    {
+        ["C001"] = "Customer asked to cancel",
+        ["C002"] = "Lender cancelled (loan closed / foreclosed)",
+        ["C003"] = "Bank account closed, frozen or inoperative",
+    };
+
+    public static readonly string[] ReasonCodes = Reasons.Keys.ToArray();
+
+    /// <summary>What closing a loan normally is, so the dropdown starts there.</summary>
+    public const string DefaultReason = "C002";
 
     private static string Why(DigioResult r) =>
         r.Status == DigioStatus.NotConfigured ? "Digio keys are not saved for this company." : (r.Error ?? "Digio gave no reason.").TrimEnd('.') + ".";
@@ -54,9 +67,11 @@ public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory
             {
                 var r = p.DigioTxnId is not null
                     ? await digio.SendAsync(new DigioCall(account.CompanyId, HttpMethod.Post, "/v3/client/nach_debit/transaction/action",
-                        new { transaction_id = p.DigioTxnId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId))
+                        new { transaction_id = p.DigioTxnId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId,
+                        Free: "cancelling a debit not yet taken (UNSURE: no price in the quote)"))
                     : await digio.SendAsync(new DigioCall(account.CompanyId, HttpMethod.Post, "/v3/client/nach_debit/scheduled/action",
-                        new { scheduled_plan_id = p.DigioPlanId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId));
+                        new { scheduled_plan_id = p.DigioPlanId, action = "cancel" }, Product: "NACH_DEBIT", Operation: "DEBIT_CANCEL", ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId,
+                        Free: "cancelling a debit plan not yet taken (UNSURE: no price in the quote)"));
                 if (r.Status != DigioStatus.Ok)
                 {
                     await db.SaveChangesAsync(); // keep the ones already cancelled
@@ -73,7 +88,7 @@ public sealed class LoanClosureService(IDbContextFactory<LosDbContext> dbFactory
         if (mandate is { DigioMandateId: not null, Umrn: not null } && mandate.DigioState == NachLifecycle.Registered)
         {
             var r = await digio.SendAsync(new DigioCall(account.CompanyId, HttpMethod.Post, "/v3/client/mandate/registration_cancel",
-                new { digio_mandate_id = mandate.DigioMandateId, umrn = mandate.Umrn, reason = reasonCode }, Product: "MANDATE", Operation: "MANDATE_CANCEL",
+                new { digio_mandate_id = mandate.DigioMandateId, umrn = mandate.Umrn, reason = reasonCode }, ApiCode: DigioRates.MandateCancel, Product: "MANDATE", Operation: "MANDATE_CANCEL",
                 ApplicationId: account.ApplicationId, RequestedByUserId: adminUserId));
             if (r.Status != DigioStatus.Ok)
             {
@@ -112,7 +127,8 @@ public sealed class SettlementReconciler(IDbContextFactory<LosDbContext> dbFacto
             return (null, "Enter the settlement id (CID) from Digio's settlement email.");
         }
 
-        var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Get, $"/v3/client/nach_debit/requester_settlement/{Uri.EscapeDataString(cid)}"));
+        var r = await digio.SendAsync(new DigioCall(companyId, HttpMethod.Get, $"/v3/client/nach_debit/requester_settlement/{Uri.EscapeDataString(cid)}",
+            Free: "settlement report read (UNSURE: documented for Digio PA users only; no price in the quote)"));
         if (r.Status != DigioStatus.Ok || r.Data is not { } data)
         {
             return (null, r.HttpStatus is 403 or 404 ? "Digio has no settlement report for this id, or this report is not enabled for your account." : r.Error ?? "Digio could not be reached.");

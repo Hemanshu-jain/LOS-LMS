@@ -159,6 +159,7 @@ public sealed class CollectionsTests : IDisposable
         var r = await Svc<LoanClosureService>().CloseAsync(AccountId(), foreclosure: true, "C001", "admin");
 
         Assert.True(r.Closed, r.Message);
+        using (var billing = Db(admin: true)) { Assert.Equal(2.00m, Assert.Single(billing.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.MandateCancel && l.IsSuccess)).UnitRate); }
         Assert.Contains(calls, c => c.Contains("transaction/action") && c.Contains("NPT1") && c.Contains("cancel"));
         Assert.Contains(calls, c => c.Contains("registration_cancel") && c.Contains("ENA1") && c.Contains("C001"));
         Assert.True(calls.FindIndex(c => c.Contains("transaction/action")) < calls.FindIndex(c => c.Contains("registration_cancel")));
@@ -184,7 +185,10 @@ public sealed class CollectionsTests : IDisposable
     {
         _asAdmin = false;
         Assert.False((await Svc<LoanClosureService>().CloseAsync(AccountId(), true, "C001", "u")).Closed);
+        Assert.Equal(["C001", "C002", "C003"], LoanClosureService.ReasonCodes);          // C004's meaning is unconfirmed: not offered
+        Assert.Equal("C002", LoanClosureService.DefaultReason);
         _asAdmin = true;
+        Assert.Contains("Pick a cancellation reason", (await Svc<LoanClosureService>().CloseAsync(AccountId(), true, "C004", "admin")).Message);
         Assert.False((await Svc<LoanClosureService>().CloseAsync(AccountId(), true, "X9", "admin")).Closed);
         Assert.Contains("Not every instalment", (await Svc<LoanClosureService>().CloseAsync(AccountId(), false, "C001", "admin")).Message);
         Assert.Empty(_digio.Calls);

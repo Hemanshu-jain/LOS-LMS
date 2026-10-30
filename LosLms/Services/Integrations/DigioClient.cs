@@ -68,7 +68,9 @@ public sealed record DigioResult(DigioStatus Status, JsonElement? Data, string? 
 }
 
 /// <summary>
-/// One call to Digio. A call with a <see cref="Product"/> is tracked: a <see cref="DigioRequest"/> row (its id =
+/// One call to Digio. EVERY call must say how it is billed: an <see cref="ApiCode"/> (metered when it succeeds) or a <see cref="Free"/>
+/// reason in words (why Digio does not charge for it). A call with neither is refused before it is sent, so a missed meter cannot be added
+/// silently. A call with a <see cref="Product"/> is tracked: a <see cref="DigioRequest"/> row (its id =
 /// <see cref="RequestId"/>) is written before the call is sent and updated after. The caller sends <see cref="RequestId"/>
 /// to Digio as its idempotency key (unique_request_id / reference_id / customer_ref_number), so a retry of the same
 /// action reuses it; a null one gets a fresh id.
@@ -88,7 +90,8 @@ public sealed record DigioCall(
     string? RequestedByUserId = null,
     bool ExpectBinary = false,
     TimeSpan? Timeout = null,
-    string SuccessStatus = "Succeeded");
+    string SuccessStatus = "Succeeded",
+    string? Free = null);
 
 /// <summary>
 /// Every call to Digio goes through <see cref="SendAsync"/>: no credentials → NotConfigured (nothing sent); an overdue
@@ -113,23 +116,34 @@ public sealed class DigioClient(
         vault.Store(VaultKey(companyId), JsonSerializer.Serialize(credentials));
 
     /// <summary>
-    /// POSTs JSON to Digio for a company. <paramref name="apiCode"/> is the rate-card code to meter, or
-    /// null when Digio bills the action elsewhere (e.g. e-Sign is billed on DOC.SIGNED, not on upload).
+    /// POSTs JSON to Digio for a company. Pass the rate-card <paramref name="apiCode"/> to meter, or (code null) a <paramref name="free"/> reason
+    /// saying why Digio does not charge for it.
     /// </summary>
-    public Task<DigioResult> PostAsync(int companyId, string? apiCode, string path, object body, string? applicationId) =>
-        SendAsync(new DigioCall(companyId, HttpMethod.Post, path, body, apiCode, ApplicationId: applicationId));
+    public Task<DigioResult> PostAsync(int companyId, string? apiCode, string path, object body, string? applicationId, string? free = null) =>
+        SendAsync(new DigioCall(companyId, HttpMethod.Post, path, body, apiCode, ApplicationId: applicationId, Free: free));
 
-    /// <summary>GET with the same gate (keys, billing pause, metering) as <see cref="PostAsync"/>.</summary>
-    public Task<DigioResult> GetAsync(int companyId, string? apiCode, string path, string? applicationId) =>
-        SendAsync(new DigioCall(companyId, HttpMethod.Get, path, null, apiCode, ApplicationId: applicationId));
+    /// <summary>GET with the same gates (keys, billing pause, billing declaration, price) as <see cref="PostAsync"/>.</summary>
+    public Task<DigioResult> GetAsync(int companyId, string? apiCode, string path, string? applicationId, string? free = null) =>
+        SendAsync(new DigioCall(companyId, HttpMethod.Get, path, null, apiCode, ApplicationId: applicationId, Free: free));
 
     /// <summary>GET of a binary body (e.g. the signed agreement PDF); <see cref="DigioResult.Bytes"/> on success.</summary>
-    public Task<DigioResult> DownloadAsync(int companyId, string? apiCode, string path, string? applicationId) =>
-        SendAsync(new DigioCall(companyId, HttpMethod.Get, path, null, apiCode, ApplicationId: applicationId, ExpectBinary: true));
+    public Task<DigioResult> DownloadAsync(int companyId, string? apiCode, string path, string? applicationId, string? free = null) =>
+        SendAsync(new DigioCall(companyId, HttpMethod.Get, path, null, apiCode, ApplicationId: applicationId, ExpectBinary: true, Free: free));
 
     /// <summary>The one implementation behind every verb. See <see cref="DigioCall"/>.</summary>
     public async Task<DigioResult> SendAsync(DigioCall call)
     {
+        // A call must declare how it is billed. Refused, not sent, when it does not (and loud in a debug build, so it is found the day it is written).
+        if (call.ApiCode is null && string.IsNullOrWhiteSpace(call.Free))
+        {
+            log.LogError("Digio call {Path} has no billing declaration (ApiCode or Free); it was NOT sent", call.Path.Split('?')[0]);
+#if DEBUG
+            throw new InvalidOperationException($"Digio call {call.Path.Split('?')[0]} must declare ApiCode or Free.");
+#else
+            return new DigioResult(DigioStatus.Failed, null, "This Digio call is missing its billing declaration, so it was not sent. Tell the developer.");
+#endif
+        }
+
         if (Credentials(call.CompanyId) is not { } c)
         {
             return DigioResult.NotConfigured;
@@ -139,6 +153,13 @@ public sealed class DigioClient(
         if (!access.Allowed)
         {
             return new DigioResult(DigioStatus.Paused, null, access.Reason);
+        }
+
+        // No price, no call: never use an unpriced product at a loss.
+        if (call.ApiCode is not null && !await IsPricedAsync(call.ApiCode))
+        {
+            log.LogWarning("Digio call {Path} refused: no active price for {Code}", call.Path.Split('?')[0], call.ApiCode);
+            return new DigioResult(DigioStatus.Failed, null, $"Price not set for {call.ApiCode}; ask the vendor admin.");
         }
 
         var environment = DigioEndpoints.Environment(c.Production);
@@ -161,6 +182,12 @@ public sealed class DigioClient(
         }
 
         return result;
+    }
+
+    private async Task<bool> IsPricedAsync(string code)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return await db.ApiRates.AsNoTracking().AnyAsync(r => r.Code == code && r.IsActive);
     }
 
     // A POST is never retried (it could create twice; the user's "Try again" reuses the same request id).

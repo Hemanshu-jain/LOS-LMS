@@ -214,7 +214,7 @@ public sealed class DigioCollect(
     /// </summary>
     public async Task<bool> ConfirmAsync(int companyId, string presentationId)
     {
-        var r = await digio.GetAsync(companyId, null, $"/v3/client/nach_debit/scheduled/by_reference_id/{Uri.EscapeDataString(presentationId)}", null);
+        var r = await digio.GetAsync(companyId, null, $"/v3/client/nach_debit/scheduled/by_reference_id/{Uri.EscapeDataString(presentationId)}", null, "reading a debit's status; the debit itself is billed at presentation (MANDATE_DEBIT)");
         if (r.Status != DigioStatus.Ok || r.Data is not { } plan)
         {
             return false;

@@ -177,7 +177,7 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             screening_settings = new { screening_type = "SCREEN_ONLY_RESPONSE", response_mode = "DETAILED", cut_off_threshold = 80 },
             // A stable id with no PII in it. The DOB is left out: its format was never captured (AML is not enabled on our sandbox).
             user_details = new { client_id = $"{companyId}-{partyId}", name = Cut(name.Trim(), 50), pan = string.IsNullOrWhiteSpace(pan) ? null : pan.Trim().ToUpperInvariant() },
-        }, null, "AML", "AML_SCREEN", applicationId, partyId, requestId, fingerprint, userId));
+        }, DigioRates.AmlScreen, "AML", "AML_SCREEN", applicationId, partyId, requestId, fingerprint, userId)); // no seeded price: refused until the vendor sets one
         await StampConsentAsync(requestId);
         if (Failure(r) is { } fail)
         {
@@ -308,7 +308,8 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
         {
             customer_identifier = mobile, template_name = settings.DigiLockerTemplate, customer_name = Cut(name.Trim(), 100), reference_id = requestId,
             transaction_id = applicationId, notify_customer = !onDevice, expire_in_days = settings.LinkExpiryDays, generate_access_token = true,
-        }, null, "KYC_ID", "DIGILOCKER_AADHAAR_PAN", applicationId, partyId, requestId, null, userId, SuccessStatus: "WaitingForCustomer"));
+        }, null, "KYC_ID", "DIGILOCKER_AADHAAR_PAN", applicationId, partyId, requestId, null, userId, SuccessStatus: "WaitingForCustomer",
+            Free: "creating the request is free; each document fetched is billed on completion (KYC_DIGILOCKER)"));
         if (Failure(r) is { } fail)
         {
             return fail;
@@ -388,10 +389,19 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
             return new("Verified", "Already completed.", RequestId: requestId);
         }
 
-        await billing.RecordAsync(companyId, DigioRates.DigiLockerFetch, true, req.ApplicationId, req.DigioId);
         var details = action is { } act && act.TryGetProperty("details", out var dt) && dt.ValueKind == JsonValueKind.Object ? dt : default;
         var aadhaar = Sub(details, "aadhaar");
         var panDoc = Sub(details, "pan");
+
+        // Rs 2 per successful DOCUMENT fetch (Digio quote): Aadhaar and PAN in the reply are two. Inside the "won" block, so a replay adds none.
+        foreach (var (doc, name) in new[] { (aadhaar, "aadhaar"), (panDoc, "pan") })
+        {
+            if (doc.ValueKind == JsonValueKind.Object)
+            {
+                await billing.RecordOnceAsync(companyId, DigioRates.DigiLockerFetch, $"{req.DigioId}:{name}", req.ApplicationId);
+            }
+        }
+
         var party = await db.Parties.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == req.PartyId && p.ApplicationId == req.ApplicationId);
         var aadhaarSummary = "Aadhaar fetched from DigiLocker";
         var evidence = new List<VerificationEvidence>();
@@ -441,8 +451,9 @@ public sealed class DigioKyc(DigioClient digio, ApiBillingService billing, IDbCo
     public async Task<DigioResult> FetchDigiLockerAsync(int companyId, string kid, string? applicationId)
     {
         var path = $"/client/kyc/v2/{Uri.EscapeDataString(kid)}/response?detail_response=true";
-        var r = await digio.PostAsync(companyId, null, path, new { }, applicationId);
-        return r.HttpStatus == 405 ? await digio.GetAsync(companyId, null, path, applicationId) : r;
+        const string free = "re-reading a DigiLocker result; billed once per document at completion (UNSURE if Digio bills each read)";
+        var r = await digio.PostAsync(companyId, null, path, new { }, applicationId, free);
+        return r.HttpStatus == 405 ? await digio.GetAsync(companyId, null, path, applicationId, free) : r;
     }
 
     private static JsonElement? DigiLockerAction(JsonElement? root)

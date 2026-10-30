@@ -76,6 +76,22 @@ public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory,
         await db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// Records a successful call once per (company, code, provider reference): a redelivered webhook or a repeated poll finds the row and adds none.
+    /// Returns true when it recorded one.
+    /// </summary>
+    public async Task<bool> RecordOnceAsync(int companyId, string apiCode, string providerRef, string? applicationId = null)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        if (await db.ApiUsageLogs.IgnoreQueryFilters().AnyAsync(l => l.CompanyId == companyId && l.ApiCode == apiCode && l.ProviderRef == providerRef && l.IsSuccess))
+        {
+            return false;
+        }
+
+        await RecordAsync(companyId, apiCode, true, applicationId, providerRef);
+        return true;
+    }
+
     /// <summary>Usage for one India-time month, optionally narrowed to a company.</summary>
     public async Task<IReadOnlyList<UsageLine>> UsageForMonthAsync(int? companyId, DateOnly month)
     {
