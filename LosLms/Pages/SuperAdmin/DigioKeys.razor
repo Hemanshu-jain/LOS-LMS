@@ -310,39 +310,25 @@
     /// <summary>The lender's signature image, kept in the file store and stamped on each new loan agreement (the lender is not a Digio signer).</summary>
     private async Task UploadSignatureAsync(Row r, InputFileChangeEventArgs e)
     {
-        const int Max = 1024 * 1024;
         try
         {
-            var ext = Path.GetExtension(e.File.Name).ToLowerInvariant();
-            await using var stream = e.File.OpenReadStream(Max);
+            await using var stream = e.File.OpenReadStream(LenderSignatureImage.MaxBytes);
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
-            var bytes = buffer.ToArray();
-            if (ext is not (".png" or ".jpg" or ".jpeg") || !FileSignature.Matches(ext, bytes))
-            {
-                r.Message = "That is not a PNG or JPG image.";
-                return;
-            }
-
-            var key = $"App_Data/lender-signature/{r.Id}{(ext == ".png" ? ".png" : ".jpg")}";
-            await Files.SaveAsync(key, bytes);
             await using var db = await DbFactory.CreateDbContextAsync();
-            var row = await db.DigioSettings.FirstOrDefaultAsync(x => x.CompanyId == r.Id);
-            if (row is null)
-            {
-                row = new DigioSettings { CompanyId = r.Id };
-                db.DigioSettings.Add(row);
-            }
-
-            row.LenderSignaturePath = key;
-            row.UpdatedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
+            await LenderSignatureImage.SaveAsync(db, Files, r.Id, e.File.Name, buffer.ToArray());
             r.HasSignature = true;
             r.Message = "Signature saved.";
         }
+        catch (InvalidDataException ex)
+        {
+            r.Message = ex.Message;
+        }
         catch (IOException)
         {
-            r.Message = "The image is over 1 MB.";
+            r.Message = e.File.Size > LenderSignatureImage.MaxBytes
+                ? "The image is larger than 10 MB. Please choose a smaller file."
+                : "The signature could not be saved. Please try again.";
         }
     }
 

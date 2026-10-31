@@ -533,3 +533,6 @@ license.txt
 clients/
 clients-registry.json
 cloudflare-config.json
+
+# Uploaded lender signatures (per company, written by the app)
+LosLms/App_Data/lender-signature/
