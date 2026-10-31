@@ -431,6 +431,14 @@ namespace LosLms.Migrations
                         },
                         new
                         {
+                            Code = "ESIGN_COORDINATES",
+                            IsActive = true,
+                            Name = "DigiSign: custom signature coordinates (per signatory)",
+                            Product = "DigiSign",
+                            UnitRate = 1.50m
+                        },
+                        new
+                        {
                             Code = "ESIGN_DOWNLOAD",
                             IsActive = true,
                             Name = "DigiSign: download signed copy (sign-only API)",
@@ -2242,6 +2250,9 @@ namespace LosLms.Migrations
 
                     b.Property<int>("SignOrder")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("SignedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("Status")
                         .IsRequired()

@@ -34,6 +34,7 @@ public static partial class DigioMasker
         if ((k.Contains("locality") || k.Contains("city") || k.Contains("district")) && s.Length > 0) { return "TEST"; }
         if (k.EndsWith("id_number") && s.Length > 4) { return new string('X', s.Length - 4) + s[^4..]; }
         if (s.Contains('@')) { return "test@example.com"; }
+        if (s.Contains("gateway/login/", StringComparison.OrdinalIgnoreCase)) { return s[..(s.IndexOf("gateway/login/", StringComparison.OrdinalIgnoreCase) + 14)] + "<omitted>"; }
         if (s.StartsWith("http", StringComparison.OrdinalIgnoreCase) && s.Contains('?')) { return s[..s.IndexOf('?')] + "?<omitted>"; }
 
         s = PanPattern().Replace(s, m => "XXXXX" + m.Value[5..9] + "X");
@@ -70,6 +71,23 @@ public static partial class DigioMasker
         {
             await using var db = await dbFactory.CreateDbContextAsync();
             return await Show(await db.DigioRequests.IgnoreQueryFilters().AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId), kyc);
+        }).RequireAuthorization(superAdmin);
+
+        // The e-Sign document as Digio reports it, masked (to see where signer links and states really are).
+        app.MapGet("/system/digio/masked-document/app/{applicationId}", async (string applicationId, DigioEsignService esign, IDbContextFactory<LosDbContext> dbFactory) =>
+        {
+            await using var db = await dbFactory.CreateDbContextAsync();
+            var row = await db.Disbursements.IgnoreQueryFilters().AsNoTracking().Where(d => d.ApplicationId == applicationId && d.EsignDocumentId != null)
+                .Select(d => new { d.EsignDocumentId, d.Application!.CompanyId }).FirstOrDefaultAsync();
+            if (row is null)
+            {
+                return Results.NotFound();
+            }
+
+            var r = await esign.ReadDocumentAsync(row.CompanyId, row.EsignDocumentId!);
+            return r.Data is { } d2
+                ? Results.Json(new JsonObject { ["http"] = r.HttpStatus, ["document"] = Mask(JsonNode.Parse(d2.GetRawText())) })
+                : Results.Json(new { http = r.HttpStatus, error = r.Error });
         }).RequireAuthorization(superAdmin);
 
         app.MapGet("/system/digio/masked-response/app/{applicationId}", async (string applicationId, DigioKyc kyc, IDbContextFactory<LosDbContext> dbFactory) =>

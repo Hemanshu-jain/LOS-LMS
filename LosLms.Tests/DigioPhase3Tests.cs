@@ -68,6 +68,7 @@ public sealed class DigioPhase3Tests : IDisposable
         services.AddSingleton<DigioStatusNotifier>();
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
+        services.AddSingleton<IAgreementSignatureBoxes>(_boxes);
         services.AddScoped<DigioEsignService>();
         services.AddScoped<DigioNachService>();
         services.AddScoped<DigioCollect>();
@@ -181,6 +182,95 @@ public sealed class DigioPhase3Tests : IDisposable
         Assert.False(body.RootElement.TryGetProperty("signature_verification", out _));
         Assert.Equal("aadhaar", body.RootElement.GetProperty("signers")[0].GetProperty("sign_type").GetString());
         Assert.True(body.RootElement.GetProperty("sequential").GetBoolean());
+    }
+
+    [Fact]
+    public async Task SignerLink_IsBuiltTheDocumentedWay_ForTheNextSignerOnly()
+    {
+        using var scope = _provider.CreateScope();
+        var esign = scope.ServiceProvider.GetRequiredService<DigioEsignService>();
+        await esign.SendAsync(1, "A1", "u1", "DEVICE");
+        // Digio's reply carries no authentication_url (it does not, with notify_signers=false): the link is built from the redirection approach.
+        _digio.On("GET", "/v2/client/document/DID1", _ => Doc("DID1", "requested", "requested", "sequenced"));
+
+        var (url, why) = await esign.SignerLinkAsync(1, "DID1", "9000000001", "https://app.test");
+        Assert.Null(why);
+        var requestId = Disbursement().EsignRequestId;
+        Assert.StartsWith("https://ext.digio.in/#/gateway/login/DID1/", url);
+        Assert.Contains("/9000000001?redirect_url=", url);
+        Assert.Contains(Uri.EscapeDataString("https://app.test/digio/return?r="), url);
+
+        var (none, notNext) = await esign.SignerLinkAsync(1, "DID1", "9000000002", "https://app.test");
+        Assert.Null(none);
+        Assert.Contains("not next", notNext);
+    }
+
+    [Fact]
+    public async Task SignerLink_UsesDigiosOwnUrlWhenItGivesOne_AndExplainsASignedSigner()
+    {
+        using var scope = _provider.CreateScope();
+        var esign = scope.ServiceProvider.GetRequiredService<DigioEsignService>();
+        await esign.SendAsync(1, "A1", "u1", "DEVICE");
+        _digio.On("GET", "/v2/client/document/DID1", _ => """{"id":"DID1","signing_parties":[{"identifier":"9000000001","status":"requested","authentication_url":"https://ext.digio.in/x/own"},{"identifier":"9000000002","status":"signed"}]}""");
+
+        Assert.Equal("https://ext.digio.in/x/own", (await esign.SignerLinkAsync(1, "DID1", "9000000001", "https://app.test")).Url);
+        Assert.Contains("already signed", (await esign.SignerLinkAsync(1, "DID1", "9000000002", "https://app.test")).Why);
+    }
+
+    [Fact]
+    public void TheMaskedView_HidesTheSignerIdentifierInsideAGatewayLink()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse("""{"authentication_url":"https://ext.digio.in/#/gateway/login/DID1/abc/9000000001"}""");
+
+        var text = DigioMasker.Mask(node)!.ToJsonString();
+
+        Assert.DoesNotContain("9000000001", text);
+        Assert.Contains("gateway/login/", text);
+    }
+
+    [Fact]
+    public async Task VisibleSignatures_AreSentAsCustomCoordinatesPerSigner_AndBilledPerSignatory()
+    {
+        _boxes.Map["Applicant"] = [new SignBox(2, 90.5, 236, 259.7, 298)];
+        _boxes.Map["CoApplicant"] = [new SignBox(2, 340, 236, 509, 298)];
+        using var scope = _provider.CreateScope();
+
+        await scope.ServiceProvider.GetRequiredService<DigioEsignService>().SendAsync(1, "A1", "u1", "SMS");
+
+        using var body = JsonDocument.Parse(_digio.Calls.Single(c => c.Path == "/v2/client/document/uploadpdf").Body);
+        Assert.Equal("custom", body.RootElement.GetProperty("display_on_page").GetString());
+        var coords = body.RootElement.GetProperty("sign_coordinates");
+        Assert.Equal(90.5, coords.GetProperty("9000000001").GetProperty("2")[0].GetProperty("llx").GetDouble());
+        Assert.Equal(509, coords.GetProperty("9000000002").GetProperty("2")[0].GetProperty("urx").GetDouble());
+        Assert.Equal(2, Usage(DigioRates.EsignCoordinates)); // Rs 1.50 x 2 signatories
+    }
+
+    [Fact]
+    public async Task IfAnySignerHasNoKnownBox_DigioPlacesTheSignatures_AndNothingExtraIsBilled()
+    {
+        _boxes.Map["Applicant"] = [new SignBox(2, 90.5, 236, 259.7, 298)]; // the co-applicant has none
+
+        using var scope = _provider.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<DigioEsignService>().SendAsync(1, "A1", "u1", "SMS");
+
+        using var body = JsonDocument.Parse(_digio.Calls.Single(c => c.Path == "/v2/client/document/uploadpdf").Body);
+        Assert.False(body.RootElement.TryGetProperty("sign_coordinates", out _));
+        Assert.Equal("last", body.RootElement.GetProperty("display_on_page").GetString());
+        Assert.Equal(0, Usage(DigioRates.EsignCoordinates));
+    }
+
+    [Fact]
+    public async Task TheSignerRows_RememberWhenEachSigned_ForTheSignedByLine()
+    {
+        using var scope = _provider.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<DigioEsignService>().SendAsync(1, "A1", "u1", "SMS");
+        _digio.On("GET", "/v2/client/document/DID1", _ => Doc("DID1", "completed", "signed", "signed"));
+        _digio.Download = PdfV1;
+
+        await Webhook(scope, "doc.signed", "DID1", "completed");
+        await _provider.GetRequiredService<DigioBackgroundTasks>().WhenIdleAsync();
+
+        Assert.All(Signers(), s => Assert.NotNull(s.SignedAt));
     }
 
     [Fact]
@@ -385,6 +475,15 @@ public sealed class DigioPhase3Tests : IDisposable
     {
         public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
             throw new InvalidOperationException("Do not call GetAuthenticationStateAsync outside of the DI scope for a Razor component.");
+    }
+
+    private readonly FakeBoxes _boxes = new();
+
+    private sealed class FakeBoxes : IAgreementSignatureBoxes
+    {
+        public Dictionary<string, IReadOnlyList<SignBox>> Map { get; } = [];
+
+        public IReadOnlyList<SignBox>? BoxesFor(string partyType) => Map.GetValueOrDefault(partyType);
     }
 
     private static string Doc(string id, string status, params string[] signerStatuses) =>
