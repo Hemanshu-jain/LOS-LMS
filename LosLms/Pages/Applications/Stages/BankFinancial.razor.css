@@ -667,6 +667,20 @@ select.field-input {
     line-height: 1.4;
 }
 
+/* Branch + address take the whole row of the field grid, side by side when there is room, and wrap long text. */
+.field-wide {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+}
+
+.field-wide ::deep .form-field { flex: 1 1 240px; min-width: 0; }
+
+.resolved-bank.is-multiline {
+    overflow-wrap: anywhere;
+}
+
 /* Honest not-configured notice for bank statement analysis. */
 .inline-notice {
     font-size: 12px;

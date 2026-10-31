@@ -322,6 +322,15 @@
                            OnSaved="ShowToastAsync" />
             }
 
+            @if (_activeTab == DisbursementAccountsTab)
+            {
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.DisbursementAccount" ShowCode="true"
+                           CodeHeader="Account no. / IFSC" CodePlaceholder="Account no. / IFSC"
+                           Title="Disbursement accounts" ItemNoun="account"
+                           Description="Your own bank accounts that loans are paid out from. Name it with the bank and a short label (for example 'HDFC Bank — Operations A/C'); put the account number and IFSC in the second box. These become the choices in 'Disburse from account' on Post Sanction."
+                           OnSaved="ShowToastAsync" />
+            }
+
             @* ---------- Tab: User management ---------- *@
             @if (_activeTab == UsersTab)
             {
@@ -352,11 +361,12 @@
     private const string SchemeTab = "Schemes";
     private const string SchemeChargesTab = "Scheme Charges";
     private const string RcuVendorTab = "RCU Vendors";
+    private const string DisbursementAccountsTab = "Disbursement Accounts";
     private const string UsersTab = "User Management";
     private const string ToolsTabName = "Usage & Updates";
 
     private static readonly string[] Tabs =
-        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, RcuVendorTab, UsersTab, ToolsTabName };
+        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, RcuVendorTab, DisbursementAccountsTab, UsersTab, ToolsTabName };
 
     private string _activeTab = ProfileTab;
     private Company? _company;

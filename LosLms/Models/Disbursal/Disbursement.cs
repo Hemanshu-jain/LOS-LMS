@@ -118,6 +118,10 @@ public class Disbursement
     [MaxLength(400)]
     public string? WelcomeLetterFilePath { get; set; }
 
+    /// <summary>The generated Disbursement Memo PDF (distinct from <see cref="MemoFilePath"/>, the signed copy an officer uploads).</summary>
+    [MaxLength(400)]
+    public string? DisbursementMemoFilePath { get; set; }
+
     /// <summary>NotSent / Sent. Only ever 'NotSent' in this build — no SMS gateway.</summary>
     [MaxLength(20)]
     public string WelcomeSmsStatus { get; set; } = "NotSent";

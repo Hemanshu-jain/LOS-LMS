@@ -11,6 +11,8 @@
 @inject NavigationManager Navigation
 @inject IWebHostEnvironment HostEnvironment
 @inject LosLms.Services.IFileStore Files
+@inject TenantContext Tenant
+@inject AdminRequestNotifier AdminNotifier
 
 <PageTitle>Reports (RCU) · @ApplicationId</PageTitle>
 
@@ -192,18 +194,29 @@ else
                                                     <td class="cell-name">@name</td>
                                                     <td class="cell-muted">@RoleLabel(key)</td>
                                                     <td>
-                                                        <select class="status-select status-select-@rowBand"
-                                                                aria-label="@($"RCU status for {name}")"
-                                                                value="@outcome.Status"
-                                                                @onchange="e => OnStatusChanged(key, e.Value?.ToString())">
-                                                            @foreach (var status in Statuses)
-                                                            {
-                                                                <option value="@status">@StatusLabel(status)</option>
-                                                            }
-                                                        </select>
+                                                        @if (_isAdmin)
+                                                        {
+                                                            <select class="status-select status-select-@rowBand"
+                                                                    aria-label="@($"RCU status for {name}")"
+                                                                    value="@outcome.Status"
+                                                                    @onchange="e => OnStatusChanged(key, e.Value?.ToString())">
+                                                                @foreach (var status in Statuses)
+                                                                {
+                                                                    <option value="@status">@StatusLabel(status)</option>
+                                                                }
+                                                            </select>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="status-select status-select-@rowBand" aria-label="@($"RCU status for {name}")">@(isPending && _rcuPending ? "Submitted for approval" : StatusLabel(outcome.Status))</span>
+                                                        }
                                                     </td>
                                                     <td>
-                                                        @if (isPending)
+                                                        @if (!_isAdmin)
+                                                        {
+                                                            <span>@(outcome.VerifiedOn?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")</span>
+                                                        }
+                                                        else if (isPending)
                                                         {
                                                             <span class="is-empty">—</span>
                                                         }
@@ -215,7 +228,11 @@ else
                                                         }
                                                     </td>
                                                     <td>
-                                                        @if (isPending)
+                                                        @if (!_isAdmin)
+                                                        {
+                                                            <span>@(OfficerName(outcome.VerifiedByOfficerId) ?? "—")</span>
+                                                        }
+                                                        else if (isPending)
                                                         {
                                                             <span class="is-empty">—</span>
                                                         }
@@ -242,6 +259,20 @@ else
                                         </tbody>
                                     </table>
                                 </div>
+                                @if (!_isAdmin)
+                                {
+                                    <div class="rcu-submit-row">
+                                        <button type="button" class="report-view" id="rcu-send-approval"
+                                                disabled="@_rcuPending" @onclick="SendRcuForApprovalAsync">
+                                            @(_rcuPending ? "Sent for approval" : "Send for approval")
+                                        </button>
+                                        <span class="field-caption">
+                                            @(_rcuPending
+                                                ? "Waiting in the Admin Inbox. An Admin sets the outcome."
+                                                : "Records who verified, when, and your remarks, and puts the RCU in the Admin Inbox. An Admin sets the outcome.")
+                                        </span>
+                                    </div>
+                                }
                             </Panel>
                         </div>
 
@@ -542,6 +573,11 @@ else
             .Where(u => u.IsActive)
             .OrderBy(u => u.DisplayName)
             .ToListAsync();
+
+        await Tenant.EnsureLoadedAsync();
+        _isAdmin = Tenant.IsAdmin || Tenant.IsSuperAdmin;
+        _rcuPending = await db.AdminRequests.AsNoTracking()
+            .AnyAsync(r => r.ApplicationId == ApplicationId && r.RequestType == AdminRequest.RcuReview && r.Status == AdminRequest.Pending);
     }
 
     public void Dispose()
@@ -597,9 +633,48 @@ else
     // Outcome editing
     // ---------------------------------------------------------------------
 
+    private bool _isAdmin, _rcuPending;
+
+    private string? OfficerName(string? id) => id is null ? null : _officers.FirstOrDefault(o => o.Id == id)?.DisplayName;
+
+    /// <summary>
+    /// Staff do not decide an RCU. This records who verified and when (blank outcomes only), saves the remarks, and raises a request
+    /// for an Admin, who then sets Recommended / Not recommended. The statuses themselves stay Pending.
+    /// </summary>
+    private async Task SendRcuForApprovalAsync()
+    {
+        if (_isAdmin || _rcuPending || _application is null)
+        {
+            return;
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var stored = await db.RcuOutcomes.Where(o => o.ApplicationId == ApplicationId).ToListAsync();
+        foreach (var outcome in stored.Where(o => _outcomes.ContainsKey(o.PartyType)))
+        {
+            var local = _outcomes[outcome.PartyType];
+            outcome.Remarks = local.Remarks;
+            outcome.VerifiedOn ??= today;
+            outcome.VerifiedByOfficerId ??= Tenant.UserId;
+            local.VerifiedOn = outcome.VerifiedOn;
+            local.VerifiedByOfficerId = outcome.VerifiedByOfficerId;
+        }
+
+        await db.SaveChangesAsync();
+
+        var summary = string.Join("; ", VisiblePartyKeys.Select(k => $"{PartyName(k)}: {(string.IsNullOrWhiteSpace(_outcomes[k].Remarks) ? "no remarks" : _outcomes[k].Remarks!.Trim())}"));
+        var raised = await GateCheckService.RaiseRequestAsync(
+            db, AdminNotifier, ApplicationId, AdminRequest.RcuReview, Tenant.UserId,
+            $"RCU verified by {OfficerName(Tenant.UserId) ?? "an officer"} on {today:dd MMM yyyy}. {summary}");
+
+        _rcuPending = true;
+        await ShowToastAsync(raised ? "Sent for approval" : "Already waiting for an Admin");
+    }
+
     private void OnStatusChanged(string partyType, string? newStatus)
     {
-        if (newStatus is null || !_outcomes.TryGetValue(partyType, out var outcome))
+        if (!_isAdmin || newStatus is null || !_outcomes.TryGetValue(partyType, out var outcome))
         {
             return;
         }
@@ -847,9 +922,14 @@ else
                 continue;
             }
 
-            outcome.Status = local.Status;
-            outcome.VerifiedOn = local.VerifiedOn;
-            outcome.VerifiedByOfficerId = local.VerifiedByOfficerId;
+            // Only an Admin decides an outcome; staff saves can never overwrite a status the Admin set meanwhile.
+            if (_isAdmin)
+            {
+                outcome.Status = local.Status;
+                outcome.VerifiedOn = local.VerifiedOn;
+                outcome.VerifiedByOfficerId = local.VerifiedByOfficerId;
+            }
+
             outcome.Remarks = local.Remarks;
         }
 

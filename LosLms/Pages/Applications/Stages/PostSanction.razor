@@ -10,6 +10,7 @@
 @implements IDisposable
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject IWebHostEnvironment HostEnvironment
 @inject LosLms.Services.IFileStore Files
 @inject DigioClient Digio
@@ -49,7 +50,7 @@ else
                             PrimaryLabel="Release funds"
                             CompleteBlocked="ReleaseBlocked"
                             BlockedReason="@ReleaseBlockedReason"
-                            OnSaveDraft="GoToDisbursementTab"
+                            OnSaveDraft="GenerateDisbursementMemoAsync"
                             OnCompleteStage="ReleaseFundsAsync" />
 
             @if (_loanAccountId is { } loanId)
@@ -172,7 +173,7 @@ else
                                         <div class="stacked">
                                             <div class="field-grid">
                                                 <FormField Label="Disbursement type" For="ps-type">
-                                                    <select id="ps-type" class="field-input" @bind="_disbursement.Type">
+                                                    <select id="ps-type" class="field-input" @bind="_disbursement.Type" @bind:after="OnDisbursementTypeChanged">
                                                         <option value="">@BlankOption</option>
                                                         @foreach (var o in DisbursementTypes) { <option value="@o">@o</option> }
                                                     </select>
@@ -186,9 +187,19 @@ else
                                                 </FormField>
 
                                                 <FormField Label="Disburse from account" For="ps-fromacct">
-                                                    <input id="ps-fromacct" class="field-input"
-                                                           placeholder="e.g. HDFC Bank — Operations A/C ****1234"
-                                                           @bind="_disbursement.DisburseFromAccount" @bind:event="oninput" />
+                                                    @if (_lenderAccounts.Count > 0)
+                                                    {
+                                                        <select id="ps-fromacct" class="field-input" @bind="_disbursement.DisburseFromAccount">
+                                                            <option value="">@BlankOption</option>
+                                                            @foreach (var a in LenderAccountChoices) { <option value="@a">@a</option> }
+                                                        </select>
+                                                    }
+                                                    else
+                                                    {
+                                                        <input id="ps-fromacct" class="field-input"
+                                                               placeholder="Add your accounts in Settings → Disbursement Accounts"
+                                                               @bind="_disbursement.DisburseFromAccount" @bind:event="oninput" />
+                                                    }
                                                 </FormField>
 
                                                 <FormField Label="Trade advance already paid" For="ps-tradeadv">
@@ -203,8 +214,8 @@ else
                                                     <div class="currency-input">
                                                         <span class="currency-symbol">₹</span>
                                                         <input id="ps-firstemiamt" type="number" min="0" step="1" class="field-input has-prefix"
-                                                               placeholder="@FormatInr(StandardEmi)"
-                                                               @bind="_disbursement.FirstEmiOverride" />
+                                                               value="@(Math.Round(_disbursement.FirstEmiOverride ?? StandardEmi, 2).ToString("0.##", CultureInfo.InvariantCulture))"
+                                                               @onchange="OnFirstEmiAmountChanged" />
                                                     </div>
                                                 </FormField>
 
@@ -243,9 +254,9 @@ else
 
                                                 <FormField Label="Preferred EMI date" For="ps-emiday">
                                                     <select id="ps-emiday" class="field-input" @bind="EmiDayChoice">
-                                                        <option value="">Use exact date below</option>
                                                         <option value="5">5th of the month</option>
                                                         <option value="10">10th of the month</option>
+                                                        <option value="">Exact date (set below)</option>
                                                     </select>
                                                 </FormField>
 
@@ -256,6 +267,19 @@ else
                                                         <span class="field-caption">Set to the next @Ordinal(day) on/after the value date; every EMI falls on the @Ordinal(day).</span>
                                                     }
                                                 </FormField>
+                                            </div>
+
+                                            <div class="upload-block">
+                                                <span class="sub-block-label">Disbursement memo</span>
+                                                <div class="doc-row">
+                                                    <button type="button" class="doc-action" @onclick="GenerateDisbursementMemoAsync">
+                                                        @(string.IsNullOrEmpty(_disbursement.DisbursementMemoFilePath) ? "Generate memo (PDF)" : "Regenerate memo (PDF)")
+                                                    </button>
+                                                    @if (FileNameOf(_disbursement.DisbursementMemoFilePath) is { } generatedMemo)
+                                                    {
+                                                        <a class="file-link" href="@UrlFor(_disbursement.DisbursementMemoFilePath!)" target="_blank">✓ @generatedMemo</a>
+                                                    }
+                                                </div>
                                             </div>
 
                                             <div class="upload-block">
@@ -431,10 +455,20 @@ else
                                 @* ---------- Tab 4: Security-Nach ---------- *@
                                 @if (_activeTab == SecurityNachTab)
                                 {
-                                    <Panel Title="Security-Nach mandate">
+                                    <Panel Title="Security-Nach · guarantor's backup mandate">
+                                      @if (!HasGuarantor)
+                                      {
+                                        <p class="setup-note" id="ps-snach-notneeded">Not needed: no guarantor on this application.</p>
+                                      }
+                                      else
+                                      {
+                                        <p class="setup-note">A backup mandate on the guarantor's own bank account, used if the borrower's E-Nach fails.</p>
                                         <div class="field-grid">
                                             <FormField Label="Mandate holder (guarantor)" For="ps-snach-holder">
-                                                <input id="ps-snach-holder" class="field-input" @bind="_snach.MandateHolder" @bind:event="oninput" />
+                                                <select id="ps-snach-holder" class="field-input" @bind="_snach.MandateHolder">
+                                                    <option value="">Select the guarantor</option>
+                                                    @foreach (var g in GuarantorNames) { <option value="@g">@g</option> }
+                                                </select>
                                             </FormField>
                                         </div>
 
@@ -447,6 +481,7 @@ else
                                                      CompanyId="_application.CompanyId" UserId="@Tenant.UserId" Terms="NachTermsOrNull"
                                                      Mobile="@ContactOf(GuarantorPartyType).Mobile" Email="@ContactOf(GuarantorPartyType).Email"
                                                      OnChanged="RefreshMandatesAsync" />
+                                      }
                                     </Panel>
                                 }
 
@@ -585,11 +620,11 @@ else
                                         </span>
                                     </div>
 
-                                    <div class="mandate-card mandate-@BandFor(_snach.Status)">
+                                    <div class="mandate-card mandate-@(HasGuarantor ? BandFor(_snach.Status) : "healthy")">
                                         <span class="mandate-label">Security-Nach</span>
-                                        <span class="mandate-value">@_snach.Status</span>
+                                        <span class="mandate-value">@(HasGuarantor ? _snach.Status : "Not needed")</span>
                                         <span class="mandate-caption">
-                                            @(string.IsNullOrWhiteSpace(_snach.MandateHolder) ? "no holder named" : _snach.MandateHolder)
+                                            @(!HasGuarantor ? "no guarantor" : string.IsNullOrWhiteSpace(_snach.MandateHolder) ? "no holder named" : _snach.MandateHolder)
                                         </span>
                                     </div>
 
@@ -813,6 +848,12 @@ else
         _disbursement = await db.Disbursements.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
             ?? Track(db.Disbursements, new Disbursement { ApplicationId = ApplicationId }, ref created);
 
+        _lenderAccounts = await db.LookupValues.AsNoTracking()
+            .Where(l => l.Kind == LookupKind.DisbursementAccount && l.IsActive && l.CompanyId == _application!.CompanyId)
+            .OrderBy(l => l.Name).Select(l => l.Code == null ? l.Name : l.Name + " — " + l.Code).ToListAsync();
+        _borrowerBank = await db.BankDetails.AsNoTracking().FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId);
+        DisbursementDefaults.Apply(_disbursement, PartyNameFor("Applicant"), _borrowerBank, DateOnly.FromDateTime(DateTime.Today), _lenderAccounts);
+
         // Carry the EMI start set at Loan & Security (stage 2) into the schedule, unless an officer has
         // already chosen one here — Post-Sanction stays free to override it.
         if (_disbursement.FirstEmiDate is null && _application?.FirstEmiDate is { } stage2Emi)
@@ -820,8 +861,10 @@ else
             _disbursement.FirstEmiDate = stage2Emi;
             _disbursement.EmiDayOfMonth = _application.EmiDayOfMonth;
         }
-        else if (_disbursement.FirstEmiDate is null && _application?.EmiDayOfMonth is { } preferredDay)
+        else if (_disbursement.FirstEmiDate is null)
         {
+            // Nothing set at Loan & Security: the 5th of the month is the default (the 10th or an exact date are one click away).
+            var preferredDay = _application?.EmiDayOfMonth ?? DisbursementDefaults.DefaultEmiDay;
             _disbursement.EmiDayOfMonth = preferredDay;
             _disbursement.FirstEmiDate = NextDayOfMonth(_disbursement.ValueDate ?? DateOnly.FromDateTime(DateTime.Today), preferredDay);
         }
@@ -834,6 +877,12 @@ else
 
         _snach = await db.SecurityNachMandates.FirstOrDefaultAsync(m => m.ApplicationId == ApplicationId)
             ?? Track(db.SecurityNachMandates, new SecurityNachMandate { ApplicationId = ApplicationId }, ref created);
+
+        // The backup mandate belongs to the guarantor: name them as the holder unless an officer already chose.
+        if (string.IsNullOrWhiteSpace(_snach.MandateHolder) && PartyNameFor(GuarantorPartyType) is { Length: > 0 } guarantorName)
+        {
+            _snach.MandateHolder = guarantorName;
+        }
 
         _downPayment = await db.DownPaymentRecords.FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId)
             ?? Track(db.DownPaymentRecords, new DownPaymentRecord { ApplicationId = ApplicationId }, ref created);
@@ -1258,6 +1307,41 @@ else
 
     private void GoToDisbursementTab() => _activeTab = DisbursementTab;
 
+    /// <summary>
+    /// Builds the Disbursement Memo from what is on screen (saved first, so the stored copy matches), files it like the welcome
+    /// letter and downloads it.
+    /// </summary>
+    private async Task GenerateDisbursementMemoAsync()
+    {
+        if (_application is null)
+        {
+            return;
+        }
+
+        _activeTab = DisbursementTab;
+        var schedule = Schedule;
+        var data = new DisbursementMemoData(
+            _companyName, _application.Id, _application.CustomerName, SanctionedAmount, _decision?.SanctionedRoi, SanctionedTenure,
+            _charges.Select(c => (c.Head, c.Amount + c.Gst, c.Waived)).ToList(),
+            _disbursement.TradeAdvance ?? 0m, NetDisbursement, _disbursement.Type,
+            _disbursement.BeneficiaryName, _disbursement.BeneficiaryAccount, _disbursement.DisburseFromAccount,
+            _disbursement.PaymentMode, _disbursement.ValueDate, _disbursement.Utr,
+            NameFor(_decision?.RecommenderUserId), NameFor(_decision?.ApproverUserId), _decision?.ApproverDate,
+            FirstMonthEmi, _disbursement.FirstEmiDate, schedule.Count > 0 ? schedule[^1].DueDate : null,
+            schedule.Count, schedule.Sum(r => r.Emi));
+
+        var bytes = DisbursementMemoPdf.Build(data);
+        _disbursement.DisbursementMemoFilePath = await WriteGeneratedAsync(bytes, "disbursement-memo");
+        await SaveDisbursementAsync();
+
+        using var stream = new MemoryStream(bytes);
+        using var reference = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("downloadFileFromStream", DisbursementMemoPdf.FileNameFor(_application.Id), "application/pdf", reference);
+        await ShowToastAsync("Disbursement memo generated");
+    }
+
+    private string? NameFor(string? userId) => userId is null ? null : _officers.FirstOrDefault(o => o.Id == userId)?.DisplayName;
+
     /// <summary>Clearing a flag stamps the server date; reverting to Pending clears it again.</summary>
     private void SetFlag(PostSanctionChecklist row, string? flag)
     {
@@ -1445,6 +1529,7 @@ else
         disbursement.FirstEmiOverride = _disbursement.FirstEmiOverride;
         disbursement.EmiRoundedTo = _disbursement.EmiRoundedTo;
         disbursement.WelcomeLetterFilePath = _disbursement.WelcomeLetterFilePath;
+        disbursement.DisbursementMemoFilePath = _disbursement.DisbursementMemoFilePath;
         disbursement.WelcomeSmsStatus = _disbursement.WelcomeSmsStatus;
         disbursement.WelcomeSmsSentAt = _disbursement.WelcomeSmsSentAt;
         disbursement.AgreementFilePath = _disbursement.AgreementFilePath;
@@ -1543,6 +1628,31 @@ else
     };
 
     private string? PartyNameFor(string partyType) => _partyNames.GetValueOrDefault(partyType);
+
+    private List<string> _lenderAccounts = new();
+    private BankDetail? _borrowerBank;
+
+    /// <summary>The lender's accounts, plus whatever this file already recorded if it is no longer in the list (so a select never blanks it).</summary>
+    private IEnumerable<string> LenderAccountChoices =>
+        string.IsNullOrWhiteSpace(_disbursement.DisburseFromAccount) || _lenderAccounts.Contains(_disbursement.DisburseFromAccount)
+            ? _lenderAccounts
+            : _lenderAccounts.Prepend(_disbursement.DisburseFromAccount);
+
+    private void OnDisbursementTypeChanged() =>
+        DisbursementDefaults.Apply(_disbursement, PartyNameFor("Applicant"), _borrowerBank, DateOnly.FromDateTime(DateTime.Today), _lenderAccounts);
+
+    /// <summary>The box shows the sanctioned EMI; only a different figure is stored as an override.</summary>
+    private void OnFirstEmiAmountChanged(ChangeEventArgs e)
+    {
+        _disbursement.FirstEmiOverride = decimal.TryParse(e.Value?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var v)
+                                         && Math.Round(v, 0) != Math.Round(StandardEmi, 0)
+            ? v
+            : null;
+    }
+
+    private bool HasGuarantor => !string.IsNullOrWhiteSpace(PartyNameFor(GuarantorPartyType));
+
+    private IEnumerable<string> GuarantorNames => PartyNameFor(GuarantorPartyType) is { Length: > 0 } g ? new[] { g } : Array.Empty<string>();
 
     /// <summary>Copies the shared registration-flow fields onto the tracked entity.</summary>
     private static void CopyMandateFlow(INachMandate from, INachMandate to)

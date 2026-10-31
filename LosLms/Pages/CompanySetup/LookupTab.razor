@@ -22,7 +22,7 @@
                        @bind="_newName" @bind:event="oninput" />
                 @if (ShowCode)
                 {
-                    <input class="field-input" placeholder="Code (optional)" maxlength="40"
+                    <input class="field-input" placeholder="@CodePlaceholder" maxlength="40"
                            @bind="_newCode" @bind:event="oninput" />
                 }
                 <button type="button" class="setup-save" disabled="@string.IsNullOrWhiteSpace(_newName)"
@@ -40,7 +40,7 @@
                 <thead>
                     <tr>
                         <th>@CapitalisedNoun</th>
-                        @if (ShowCode) { <th>Code</th> }
+                        @if (ShowCode) { <th>@CodeHeader</th> }
                         <th>Status</th>
                         <th></th>
                     </tr>
@@ -101,6 +101,10 @@
 
     /// <summary>Show the optional agent/reference <see cref="LookupValue.Code"/> column (DSA codes).</summary>
     [Parameter] public bool ShowCode { get; set; }
+
+    [Parameter] public string CodeHeader { get; set; } = "Code";
+
+    [Parameter] public string CodePlaceholder { get; set; } = "Code (optional)";
 
     /// <summary>One-line explanation shown above the table.</summary>
     [Parameter] public string Description { get; set; } =

@@ -205,4 +205,32 @@ public static class GateCheckService
         await notifier.NotifyAsync(companyId);
         return true;
     }
+
+    /// <summary>
+    /// Nudges a request that is still waiting: bumps it to the top of the Admin Inbox, notes who re-sent it and when
+    /// (kept on the request, so the history stays with it), and re-notifies. False when nothing is pending.
+    /// </summary>
+    public static async Task<bool> ResendRequestAsync(
+        LosDbContext db, AdminRequestNotifier notifier, string applicationId, string requestType, string? byUserId, DateTime? nowUtc = null)
+    {
+        var pending = await db.AdminRequests
+            .Where(r => r.ApplicationId == applicationId && r.RequestType == requestType && r.Status == AdminRequest.Pending)
+            .OrderByDescending(r => r.Id)
+            .FirstOrDefaultAsync();
+        if (pending is null)
+        {
+            return false;
+        }
+
+        var now = nowUtc ?? DateTime.UtcNow;
+        var note = $"Re-sent {now:dd MMM yyyy HH:mm} UTC by {byUserId ?? "an officer"}.";
+        var combined = string.IsNullOrWhiteSpace(pending.RequestReason) ? note : $"{pending.RequestReason} | {note}";
+        pending.RequestReason = combined.Length > 1000 ? combined[^1000..] : combined; // column is 1000 chars: keep the newest
+        pending.RequestedAt = now;
+        await db.SaveChangesAsync();
+
+        var companyId = await db.Applications.AsNoTracking().Where(a => a.Id == applicationId).Select(a => a.CompanyId).FirstOrDefaultAsync();
+        await notifier.NotifyAsync(companyId);
+        return true;
+    }
 }

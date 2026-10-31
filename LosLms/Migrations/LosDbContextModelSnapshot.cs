@@ -1877,6 +1877,10 @@ namespace LosLms.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<string>("DisbursementMemoFilePath")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
                     b.Property<int?>("EmiDayOfMonth")
                         .HasColumnType("int");
 

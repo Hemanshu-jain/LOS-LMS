@@ -204,10 +204,12 @@ else
                     </CollapsibleSection>
 
                     @* ---------- Identity + Gates ---------- *@
-                    <div class="panel-pair">
-                        <div class="panel">
-                            <div class="panel-header"><span class="panel-title">Identity · OCR verify</span></div>
+                    <div class="cd-main">
+                        <div class="panel cd-identity">
                             <div class="panel-body">
+                                <div class="id-grid">
+                                    <div class="id-head" style="grid-row:1">Identity · OCR verify</div>
+                                    <div class="id-cell" style="grid-row:2">
                                 <div class="identity-row">
                                     <FormField Label="PAN" For="identity-pan" Error="@ErrorFor("pan")">
                                         <input id="identity-pan" type="text" class="field-input" maxlength="10"
@@ -226,6 +228,8 @@ else
                                     <p class="field-caption" role="status">@panNotice</p>
                                 }
 
+                                    </div>
+                                    <div class="id-cell" style="grid-row:3">
                                 <div class="identity-row">
                                     <FormField Label="Aadhaar" For="identity-aadhaar" Error="@ErrorFor("aadhaar")">
                                         @* Masked once valid and unfocused; the real value stays in state and in the
@@ -247,11 +251,12 @@ else
                                     <p class="field-caption" role="status">@aadhaarNotice</p>
                                 }
 
+                                    </div>
                                 <PartyKycPanel CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" PartyId="party.Id"
                                                FullName="@party.FullName" Pan="@party.Pan" Dob="party.DateOfBirth" Mobile="@party.Mobile"
                                                Individual="@(party.CustomerCategory is null || !party.CustomerCategory.Contains("Company", StringComparison.OrdinalIgnoreCase))"
-                                               OnChanged="SyncFromDigioAsync" />
-
+                                               OnChanged="SyncFromDigioAsync" Inline="true" />
+                                    <div class="id-cell" style="grid-row:4">
                                 @* ---------- Bureau check ---------- *@
                                 @* Offered only once both identifiers exist — a bureau pull keyed on
                                    nothing would be a wasted call, and on a half-typed PAN a wrong one. *@
@@ -279,53 +284,13 @@ else
                                     <p class="inline-error" role="alert">@cibilNotice</p>
                                 }
 
-                                <div class="panel-divider"></div>
-
-                                <div class="scan-row">
-                                    <label class="scan-drop">
-                                        <span>@ScanLabel("PAN card scan", party.PanScanPath)</span>
-                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
-                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.PanScan))" />
-                                    </label>
-                                    <label class="scan-drop">
-                                        <span>@ScanLabel("Aadhaar scan", party.AadhaarScanPath)</span>
-                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
-                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AadhaarScan))" />
-                                    </label>
+                                    </div>
                                 </div>
-
-                                <div class="field-grid">
-                                    <FormField Label="Aadhaar generated / downloaded on" For="aadhaar-genon">
-                                        <input id="aadhaar-genon" type="date" class="field-input"
-                                               @bind="party.AadhaarGeneratedOn" />
-                                        @if (AadhaarStale(party))
-                                        {
-                                            <span class="field-caption field-caption-warn">Masked Aadhaar is more than @AadhaarFreshnessDays days old — request a freshly generated copy.</span>
-                                        }
-                                    </FormField>
-                                </div>
-
-                                <label class="scan-check">
-                                    <input type="checkbox" @bind="party.AddressChangedSinceAadhaar" />
-                                    <span>Current address differs from Aadhaar — attach proof</span>
-                                </label>
-                                @if (party.AddressChangedSinceAadhaar)
-                                {
-                                    <label class="scan-drop">
-                                        <span>@ScanLabel("Address proof", party.AddressProofPath)</span>
-                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
-                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AddressProof))" />
-                                    </label>
-                                }
-                                @if (_uploadError is not null)
-                                {
-                                    <p class="inline-error" role="alert">@_uploadError</p>
-                                }
                             </div>
                         </div>
 
-                        <div class="panel">
-                            <div class="panel-header"><span class="panel-title">Gates</span></div>
+                        <div class="panel cd-side">
+                            <div class="panel-header"><span class="panel-title">Gates &amp; documents</span></div>
                             <div class="panel-body">
                                 <div class="gate gate-@DedupeClass(party.DedupeStatus)">
                                     <span class="gate-label">Dedupe check</span>
@@ -403,6 +368,49 @@ else
                                         <p class="inline-error" role="alert">@_captureError</p>
                                     }
                                 </div>
+
+                                <div class="panel-divider"></div>
+
+                                <div class="scan-row">
+                                    <label class="scan-drop">
+                                        <span>@ScanLabel("PAN card scan", party.PanScanPath)</span>
+                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.PanScan))" />
+                                    </label>
+                                    <label class="scan-drop">
+                                        <span>@ScanLabel("Aadhaar scan", party.AadhaarScanPath)</span>
+                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AadhaarScan))" />
+                                    </label>
+                                </div>
+
+                                <div class="field-grid">
+                                    <FormField Label="Aadhaar generated / downloaded on" For="aadhaar-genon">
+                                        <input id="aadhaar-genon" type="date" class="field-input"
+                                               @bind="party.AadhaarGeneratedOn" />
+                                        @if (AadhaarStale(party))
+                                        {
+                                            <span class="field-caption field-caption-warn">Masked Aadhaar is more than @AadhaarFreshnessDays days old — request a freshly generated copy.</span>
+                                        }
+                                    </FormField>
+                                </div>
+
+                                <label class="scan-check">
+                                    <input type="checkbox" @bind="party.AddressChangedSinceAadhaar" />
+                                    <span>Current address differs from Aadhaar — attach proof</span>
+                                </label>
+                                @if (party.AddressChangedSinceAadhaar)
+                                {
+                                    <label class="scan-drop">
+                                        <span>@ScanLabel("Address proof", party.AddressProofPath)</span>
+                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
+                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AddressProof))" />
+                                    </label>
+                                }
+                                @if (_uploadError is not null)
+                                {
+                                    <p class="inline-error" role="alert">@_uploadError</p>
+                                }
                             </div>
                         </div>
                     </div>
