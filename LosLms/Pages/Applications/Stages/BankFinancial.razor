@@ -805,7 +805,7 @@ else
                     _bank.PennyDropStatus = verified && result.Bool("fuzzy_match_result") == true ? "Matched" : "NotMatched";
                     _bank.PennyDropCheckedAt = DateTime.UtcNow;
                     _pennyDropNote = verified
-                        ? $"Name at bank: {result.Str("beneficiary_name_with_bank") ?? "—"} · KYC name: {kycName ?? "—"}"
+                        ? $"Name at bank: {DigioKyc.MaskName(result.Str("beneficiary_name_with_bank")) ?? "—"} · KYC name: {DigioKyc.MaskName(kycName) ?? "—"}"
                         : result.Str("error_msg") ?? "Bank could not verify this account.";
                     break;
                 default: // Paused or Failed: nothing verified, status untouched
@@ -819,7 +819,8 @@ else
                 db.VerificationEvidence.Add(new VerificationEvidence
                 {
                     CompanyId = _application.CompanyId, ApplicationId = ApplicationId, Subject = "BANK_ACCOUNT",
-                    Verdict = _bank.PennyDropStatus == "Matched" ? "Verified" : "Mismatch", Summary = "Penny drop: " + (_bank.PennyDropStatus == "Matched" ? "name matches" : "name not matched or account not verified"),
+                    Verdict = _bank.PennyDropStatus == "Matched" ? "Verified" : "Mismatch", Summary = "Penny drop: " + (_bank.PennyDropStatus == "Matched" ? "name matches" : "name not matched or account not verified")
+                        + (DigioKyc.MaskName(result.Str("beneficiary_name_with_bank")) is { } bankName ? $" (Name at bank: {bankName})" : ""),
                     Environment = result.Environment ?? "Sandbox", CreatedAt = DateTime.UtcNow,
                 });
                 await db.SaveChangesAsync();

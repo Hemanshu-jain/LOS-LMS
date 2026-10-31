@@ -428,7 +428,10 @@ public sealed class DigioKycTests : IDisposable
     public async Task Vpa_ALowNameScore_IsMismatch_AndASecondDifferentCheckIsHeldByTheVerificationLock()
     {
         _digio.On = (_, _, _) => (HttpStatusCode.OK, """{"customer_name":"SOMEONE ELSE","status":"available","fuzzy_match_score":20}""");
-        Assert.Equal("Mismatch", (await Kyc().VerifyVpaAsync(1, "A1", "raj@okbank", "Raj Kumar", null)).Verdict);
+        var first = await Kyc().VerifyVpaAsync(1, "A1", "raj@okbank", "Raj Kumar", null);
+        Assert.Equal("Mismatch", first.Verdict);
+        Assert.Contains("(Bank name: S*** E***)", first.Message); // the officer sees WHY, without the full name being stored
+        Assert.DoesNotContain("SOMEONE", first.Message);
 
         var again = await Kyc().VerifyVpaAsync(1, "A1", "other@okbank", "Raj Kumar", null); // a result is on file: only an Admin's re-check allows another
         Assert.Null(again.Verdict);
@@ -505,6 +508,25 @@ public sealed class DigioKycTests : IDisposable
         Assert.Equal(15.00m, Assert.Single(db.ApiUsageLogs.IgnoreQueryFilters().Where(l => l.ApiCode == DigioRates.UanVerify && l.IsSuccess)).UnitRate);
     }
 
+    [Theory]
+    [InlineData("Mismatch", "Checked on")]
+    [InlineData("AcceptedMismatch", "Checked on")]
+    [InlineData("Verified", "Verified on")]
+    [InlineData(null, "Verified on")]
+    public void TheLockLabel_SaysCheckedOn_WhenTheVerdictWasNotAVerification(string? verdict, string expectedStart)
+    {
+        var status = new LockStatus(true, new DateTime(2026, 10, 29, 12, 0, 0, DateTimeKind.Utc), false, verdict);
+
+        Assert.StartsWith(expectedStart, status.Reason);
+    }
+
+    [Fact]
+    public void MaskName_KeepsOnlyTheFirstLetterOfEachWord()
+    {
+        Assert.Equal("T*** N***", DigioKyc.MaskName("Test  Name"));
+        Assert.Null(DigioKyc.MaskName(" "));
+    }
+
     [Fact]
     public async Task Uan_KeepsAnEmployerTheOfficerTyped_AndFlagsADifferentName()
     {
@@ -514,6 +536,7 @@ public sealed class DigioKycTests : IDisposable
         var o = await Kyc().VerifyUanAsync(1, "A1", PartyId(), "100123456789", "Raj Kumar", null);
 
         Assert.Equal("Mismatch", o.Verdict);
+        Assert.Contains("(Name on record: P*** S***)", o.Message);
         using var read = Anonymous();
         Assert.Equal("My Own Co", read.Parties.IgnoreQueryFilters().Single().EmployerName);
     }

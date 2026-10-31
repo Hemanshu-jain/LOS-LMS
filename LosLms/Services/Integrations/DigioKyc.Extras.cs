@@ -56,8 +56,8 @@ public sealed partial class DigioKyc
         var matched = score ?? (name is null ? 0 : NameScore(name, holderName));
         var (verdict, summary) = status switch
         {
-            "available" when matched >= 70 => ("Verified", $"UPI id exists; holder name match {matched}"),
-            "available" => ("Mismatch", $"UPI id exists but the holder name does not match (score {matched})"),
+            "available" when matched >= 70 => ("Verified", $"UPI id exists; holder name match {matched}{BankName(name)}"),
+            "available" => ("Mismatch", $"UPI id exists but the holder name does not match (score {matched}){BankName(name)}"),
             _ => ("Failed", "UPI id not verified: " + Cut(r.Str("status_description") ?? status, 150)),
         };
         return await RecordApplicationEvidenceAsync(companyId, applicationId, null, "UPI_VPA", verdict, summary, requestId, r, fingerprint, matched);
@@ -127,12 +127,18 @@ public sealed partial class DigioKyc
         }
 
         var (verdict, summary) = score >= 60
-            ? ("Verified", $"UAN found, {history.Count} employment record(s); member name match {score}")
-            : ("Mismatch", $"UAN found, {history.Count} employment record(s), but the member name does not match (score {score})");
+            ? ("Verified", $"UAN found, {history.Count} employment record(s); member name match {score}{BankName(memberName, "Name on record")}")
+            : ("Mismatch", $"UAN found, {history.Count} employment record(s), but the member name does not match (score {score}){BankName(memberName, "Name on record")}");
         return await RecordApplicationEvidenceAsync(companyId, applicationId, partyId, "UAN", verdict, summary, requestId, r, fingerprint, score);
     }
 
     // ---- shared by the above ----
+
+    /// <summary>"T*** N***": the first letter of each word only, so the officer sees WHY a name did not match without the full name being kept in the summary.</summary>
+    public static string? MaskName(string? name) =>
+        string.IsNullOrWhiteSpace(name) ? null : string.Join(' ', name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[..1] + "***"));
+
+    private static string BankName(string? name, string label = "Bank name") => MaskName(name) is { } m ? $" ({label}: {m})" : "";
 
     private static string FieldsNote(string what, DigioResult r) =>
         Cut(what + " Fields: " + (r.Data is { ValueKind: JsonValueKind.Object } o ? string.Join(", ", o.EnumerateObject().Select(x => x.Name).Take(15)) : "not an object"), 300);
