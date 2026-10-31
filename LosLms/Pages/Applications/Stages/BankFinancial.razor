@@ -120,20 +120,26 @@ else
                                             }
                                         </FormField>
 
-                                        @if (_bank.BankBranch is { Length: > 0 } branch)
+                                        @* The IFSC directory text is long: both boxes wrap and span the full row so nothing is cut off. *@
+                                        @if (_bank.BankBranch is { Length: > 0 } || _bank.BankAddress is { Length: > 0 })
                                         {
-                                            <FormField Label="Branch" For="bf-branch">
-                                                <div id="bf-branch" class="resolved-bank">@branch</div>
-                                                <span class="field-caption">Auto-fetched via IFSC.</span>
-                                            </FormField>
-                                        }
+                                            <div class="field-wide">
+                                                @if (_bank.BankBranch is { Length: > 0 } branch)
+                                                {
+                                                    <FormField Label="Branch" For="bf-branch">
+                                                        <div id="bf-branch" class="resolved-bank is-multiline">@branch</div>
+                                                        <span class="field-caption">Auto-fetched via IFSC.</span>
+                                                    </FormField>
+                                                }
 
-                                        @if (_bank.BankAddress is { Length: > 0 } bankAddress)
-                                        {
-                                            <FormField Label="Branch address" For="bf-bankaddress">
-                                                <div id="bf-bankaddress" class="resolved-bank is-multiline">@bankAddress</div>
-                                                <span class="field-caption">Auto-fetched via IFSC.</span>
-                                            </FormField>
+                                                @if (_bank.BankAddress is { Length: > 0 } bankAddress)
+                                                {
+                                                    <FormField Label="Branch address" For="bf-bankaddress">
+                                                        <div id="bf-bankaddress" class="resolved-bank is-multiline">@bankAddress</div>
+                                                        <span class="field-caption">Auto-fetched via IFSC.</span>
+                                                    </FormField>
+                                                }
+                                            </div>
                                         }
 
                                         <FormField Label="Account type" For="bf-acctype">

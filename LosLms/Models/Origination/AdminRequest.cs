@@ -90,6 +90,12 @@ public class AdminRequest
     /// <summary>Lets funds be released although the Digio agreement-signed / mandate-registered gate is not met.</summary>
     public const string DigioReleaseBypass = "DigioReleaseBypass";
 
+    /// <summary>
+    /// An officer's RCU findings submitted for an Admin to decide. Approving it only acknowledges the submission: the Admin sets the
+    /// outcome (Recommended / Not recommended) on the Reports (RCU) screen, which staff cannot do.
+    /// </summary>
+    public const string RcuReview = "RcuReview";
+
     // ---- Statuses ----
 
     public const string Pending = "Pending";
@@ -106,6 +112,7 @@ public class AdminRequest
         Reject => "Reject application",
         SanctionApproval => "Sanction approval",
         DigioReleaseBypass => "Release without signed agreement / mandate",
+        RcuReview => "RCU outcome for review",
         _ => requestType,
     };
 }

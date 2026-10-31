@@ -52,6 +52,9 @@ public static class LookupKind
     public const string Scheme = "Scheme";
     public const string RcuVendor = "RcuVendor";
 
+    /// <summary>The lender's own bank accounts money is disbursed from: Name = bank and label, Code = account no. / IFSC. Not seeded.</summary>
+    public const string DisbursementAccount = "DisbursementAccount";
+
     /// <summary>Every kind, so a seeder can walk them.</summary>
     public static readonly string[] All = { SourcingChannel, Scheme, RcuVendor };
 

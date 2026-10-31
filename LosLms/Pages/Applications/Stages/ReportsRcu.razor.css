@@ -561,3 +561,12 @@ select.field-input {
     padding: 9px 16px;
     z-index: 80;
 }
+
+/* "Send for approval" sits under the outcome table with its explanation beside it. */
+.rcu-submit-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}

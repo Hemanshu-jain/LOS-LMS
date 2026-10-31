@@ -13,7 +13,7 @@
    A switched-off product shows nothing. Consent is recorded automatically on every request (signed application / DigiLocker journey). *@
 @if (_loaded && _settings is not null && (_settings.PanVerify || _settings.DigiLocker || _settings.Aml || _settings.AadhaarMask))
 {
-    <div class="dg-panel">
+    <div class="dg-panel @(Inline ? "is-inline" : null)">
         <div class="dg-panel-head"><strong>Digio checks</strong></div>
 
         @if (PartyId == 0)
@@ -90,6 +90,9 @@
 @code {
     [Parameter, EditorRequired] public int CompanyId { get; set; }
     [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+    /// <summary>Lays the rows straight into the parent's grid (right-hand column) so each check lines up with its input.</summary>
+    [Parameter] public bool Inline { get; set; }
+
     [Parameter] public int PartyId { get; set; }
     [Parameter] public string? FullName { get; set; }
     [Parameter] public string? Pan { get; set; }

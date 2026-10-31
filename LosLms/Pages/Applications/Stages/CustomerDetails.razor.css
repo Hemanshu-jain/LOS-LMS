@@ -71,7 +71,7 @@
 
 /* ---------- Shell ---------- */
 .stepper-band {
-    padding: 12px 14px;
+    padding: 6px 14px;
     border-bottom: 1px solid #dcdcdc;
     background: #fbfbfb;
 }
@@ -93,10 +93,10 @@
 .stage-main {
     flex: 1;
     min-width: 280px;
-    padding: 16px;
+    padding: 12px 16px;
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 10px;
 }
 
 .stage-title {
@@ -164,7 +164,7 @@
 .field-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px 14px;
+    gap: 8px 14px;
     width: 100%;
 }
 
@@ -211,6 +211,18 @@ select.field-input {
     flex-wrap: wrap;
 }
 
+/* Photo on the left, the eight fields in two rows of four beside it. */
+.personal-layout > .field-grid {
+    flex: 1 1 520px;
+    width: auto;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px 14px;
+}
+
+@media (min-width: 1100px) {
+    .personal-layout > .field-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
 .photo-block {
     flex: none;
     display: flex;
@@ -219,8 +231,8 @@ select.field-input {
 }
 
 .photo-frame {
-    width: 88px;
-    height: 104px;
+    width: 76px;
+    height: 88px;
     border: 1px dashed #bdbdbd;
     background: #f7f7f7;
     display: flex;
@@ -247,7 +259,7 @@ select.field-input {
 
 .upload-button {
     height: 24px;
-    width: 88px;
+    width: 76px;
     border: 1px solid #c4c4c4;
     background: #f1f1f1;
     font-size: 9.5px;
@@ -278,6 +290,72 @@ select.field-input {
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+}
+
+/* ---------- Identity + checks (left) and gates / documents (right) ---------- */
+.cd-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 12px;
+    align-items: start;
+}
+
+.cd-main .panel { flex: none; min-width: 0; }
+
+.id-grid {
+    display: grid;
+    grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.4fr);
+    column-gap: 14px;
+    align-items: center;
+}
+
+/* No Digio checks switched on for this company: the identity column takes the whole panel. */
+.id-grid:not(:has(.dg-panel)) { grid-template-columns: minmax(0, 1fr); }
+
+.id-head {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #4d4d4d;
+    padding-bottom: 6px;
+}
+
+.id-cell {
+    grid-column: 1;
+    min-height: 40px;
+    padding: 4px 0;
+    border-top: 1px solid #eceef1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+/* Gates side by side, then the documents: a two-column grid keeps the column short. */
+.cd-side .panel-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+}
+
+.cd-side .panel-body > .panel-divider,
+.cd-side .panel-body > .scan-row,
+.cd-side .panel-body > .field-grid,
+.cd-side .panel-body > .scan-check,
+.cd-side .panel-body > .scan-drop,
+.cd-side .panel-body > .inline-error,
+.cd-side .panel-body > .field-caption { grid-column: 1 / -1; }
+
+.cd-side .panel-body > .scan-check { margin-top: 0; }
+
+@media (max-width: 1100px) {
+    .cd-main { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+    .id-grid { grid-template-columns: minmax(0, 1fr); }
+    .id-head, .id-cell { grid-row: auto !important; }
 }
 
 /* ---------- Identity / Gates panels ---------- */

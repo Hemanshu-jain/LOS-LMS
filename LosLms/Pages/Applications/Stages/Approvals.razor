@@ -302,6 +302,14 @@ else
                                         </span>
                                     </div>
                                 </div>
+
+                                @if (_sanctionPending && _decision.ApproverDate is null)
+                                {
+                                    <div>
+                                        <button type="button" class="send-back-cancel" @onclick="ResendForApprovalAsync">Send for approval again</button>
+                                        <span class="field-caption">Re-notifies the Admin Inbox; the re-send is noted on the request.</span>
+                                    </div>
+                                }
                             </div>
                         </Panel>
                     }
@@ -1080,6 +1088,13 @@ else
     /// recorded as recommender) and raises a Sanction-approval request; the file is parked until an
     /// Admin decides it. This is what stops a file at Approvals rather than letting the officer sanction.
     /// </summary>
+    private async Task ResendForApprovalAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var sent = await GateCheckService.ResendRequestAsync(db, Notifier, ApplicationId, AdminRequest.SanctionApproval, Tenant.UserId);
+        await ShowToastAsync(sent ? "Sent to the Admin Inbox again" : "Nothing is waiting for approval");
+    }
+
     private Task SendForApprovalAsync() => SerializedAsync(SendForApprovalCoreAsync);
 
     private async Task SendForApprovalCoreAsync()
