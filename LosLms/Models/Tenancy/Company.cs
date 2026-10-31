@@ -53,6 +53,14 @@ public class Company
     [MaxLength(20)] public string? GrievanceOfficerPhone { get; set; }
     [MaxLength(200)] public string? GrievanceOfficerEmail { get; set; }
 
+    /// <summary>Which loan agreement this company uses: <see cref="AgreementTemplates"/>. Null means the standard one.</summary>
+    [MaxLength(30)] public string? AgreementTemplate { get; set; }
+
+    /// <summary>The two arbitrators named in the hypothecation form's Agreement of Arbitration (name and address, free text).</summary>
+    [MaxLength(400)] public string? Arbitrator1 { get; set; }
+    [MaxLength(400)] public string? Arbitrator2 { get; set; }
+    public decimal? ArbitrationFee { get; set; }
+
     /// <summary>Who signs for the lender on the agreement (the signature image itself is kept with the Digio keys).</summary>
     [MaxLength(150)] public string? AuthorisedSignatoryName { get; set; }
     [MaxLength(100)] public string? AuthorisedSignatoryDesignation { get; set; }
@@ -151,4 +159,18 @@ public class Company
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>The loan agreement templates a company can choose in Settings → Company profile.</summary>
+public static class AgreementTemplates
+{
+    public const string Standard = "Standard";
+    public const string Hypothecation = "Hypothecation";
+
+    public static readonly string[] All = { Standard, Hypothecation };
+
+    public static string Label(string template) => template == Hypothecation ? "Hypothecation agreement (printed form)" : "Standard (LOS/LMS)";
+
+    /// <summary>Unknown or blank values mean the standard agreement, so an old row never breaks generation.</summary>
+    public static string Normalize(string? template) => template == Hypothecation ? Hypothecation : Standard;
 }

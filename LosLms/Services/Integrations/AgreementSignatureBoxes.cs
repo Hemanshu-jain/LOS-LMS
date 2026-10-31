@@ -11,4 +11,7 @@ public interface IAgreementSignatureBoxes
 {
     /// <summary>The boxes for a party type (Applicant, CoApplicant, Guarantor), or null when that party has none.</summary>
     IReadOnlyList<SignBox>? BoxesFor(string partyType);
+
+    /// <summary>The boxes for the agreement template the company issues (<see cref="LosLms.Models.AgreementTemplates"/>); implementations that do not tell templates apart keep the default.</summary>
+    IReadOnlyList<SignBox>? BoxesFor(string partyType, string? template) => BoxesFor(partyType);
 }

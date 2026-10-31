@@ -96,6 +96,25 @@
                         </FormField>
                     </div>
 
+                    @* Which agreement this company issues, and the arbitrators the hypothecation form names. *@
+                    <div class="field-grid">
+                        <FormField Label="Loan agreement template" For="cs-template">
+                            <select id="cs-template" class="field-input" @bind="_template">
+                                @foreach (var t in AgreementTemplates.All) { <option value="@t">@AgreementTemplates.Label(t)</option> }
+                            </select>
+                        </FormField>
+                        <FormField Label="Arbitrator 1 (name and address)" For="cs-arb1">
+                            <input id="cs-arb1" class="field-input" maxlength="400" @bind="_company.Arbitrator1" />
+                        </FormField>
+                        <FormField Label="Arbitrator 2 (name and address)" For="cs-arb2">
+                            <input id="cs-arb2" class="field-input" maxlength="400" @bind="_company.Arbitrator2" />
+                        </FormField>
+                        <FormField Label="Arbitration fee (₹)" For="cs-arbfee">
+                            <input id="cs-arbfee" type="number" min="0" step="1" class="field-input" @bind="_company.ArbitrationFee" />
+                        </FormField>
+                    </div>
+                    <p class="setup-note">The hypothecation form prints the two arbitrators and the fee on its Agreement of Arbitration page; anything left blank stays a blank line on the form.</p>
+
                     @* Legal identity: letterhead + Key Fact Statement of every loan agreement. *@
                     <p class="setup-note">These appear on the letterhead and Key Fact Statement of every loan agreement. Leave blank what does not apply; nothing is invented.</p>
                     <div class="field-grid">
@@ -440,11 +459,15 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
         _company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
+        _template = AgreementTemplates.Normalize(_company?.AgreementTemplate);
 
         // Also stamps SetupCompletedAt if the company already meets the bar, so a returning admin is
         // not shown the pending note or walkthrough by a stale null.
         _setupComplete = _company is not null && await CompanySetupState.IsCompleteAsync(db, companyId);
     }
+
+    /// <summary>The template choice, kept apart from the entity so a blank stored value shows as "Standard".</summary>
+    private string _template = AgreementTemplates.Standard;
 
     private static string? Trimmed(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
@@ -464,6 +487,10 @@
         stored.ContactEmail = _company.ContactEmail?.Trim();
         stored.ContactPhone = _company.ContactPhone?.Trim();
 
+        stored.AgreementTemplate = AgreementTemplates.Normalize(_template);
+        stored.Arbitrator1 = Trimmed(_company.Arbitrator1);
+        stored.Arbitrator2 = Trimmed(_company.Arbitrator2);
+        stored.ArbitrationFee = _company.ArbitrationFee;
         stored.RegisteredCity = Trimmed(_company.RegisteredCity);
         stored.Cin = Trimmed(_company.Cin);
         stored.RbiNbfcRegNo = Trimmed(_company.RbiNbfcRegNo);

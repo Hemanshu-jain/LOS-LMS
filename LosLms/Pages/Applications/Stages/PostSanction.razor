@@ -1210,6 +1210,9 @@ else
         List<Party> parties;
         SecurityDetail? security;
         Company? lender;
+        List<VehicleLoanCap> catalog;
+        List<LosLms.Models.Reference> references;
+        var photos = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         byte[]? lenderSignature = null;
         decimal? bounceCharge = null;
         var bounceGstPct = 0m;
@@ -1224,6 +1227,8 @@ else
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
 
             lender = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == _application.CompanyId);
+            catalog = await db.VehicleLoanCaps.AsNoTracking().Where(v => v.CompanyId == _application.CompanyId).ToListAsync();
+            references = await db.References.AsNoTracking().Where(r => r.ApplicationId == ApplicationId).OrderBy(r => r.Id).ToListAsync();
 
             var digio = await db.DigioSettings.AsNoTracking().Where(s => s.CompanyId == _application.CompanyId).FirstOrDefaultAsync();
             if (digio is not null)
@@ -1236,6 +1241,19 @@ else
             lenderSignature = string.IsNullOrWhiteSpace(key) ? null : await Files.ReadAllBytesAsync(key);
         }
 
+        // Party photographs for the printed form's proposal page (a missing or unreadable file just leaves the box empty).
+        foreach (var party in parties.Where(p => !string.IsNullOrWhiteSpace(p.PhotoPath)))
+        {
+            try
+            {
+                if (await Files.ReadAllBytesAsync(party.PhotoPath!) is { Length: > 0 } photo) { photos.TryAdd(party.PartyType, photo); }
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+            {
+                // leave the box empty
+            }
+        }
+
         // An agreement without the lender's signature is not a document we hand out: stop here rather than produce an unsigned one.
         if (lenderSignature is not { Length: > 0 } || lender is null)
         {
@@ -1246,8 +1264,13 @@ else
         var data = new AgreementData(
             lender, _application, _decision, parties, security, _charges, Schedule, FirstMonthEmi, NetDisbursement,
             _disbursement.TradeAdvance ?? 0m, _disbursement.ValueDate, _disbursement.FirstEmiDate, _disbursement.EmiDayOfMonth,
-            bounceCharge, bounceGstPct, DateOnly.FromDateTime(DateTime.Today), lenderSignature);
-        var bytes = LoanAgreementPdf.Build(data);
+            bounceCharge, bounceGstPct, DateOnly.FromDateTime(DateTime.Today), lenderSignature)
+        {
+            VehicleCatalog = catalog,
+            References = references,
+            PartyPhotos = photos,
+        };
+        var bytes = AgreementBuilder.Build(data);
 
         _disbursement.AgreementFilePath = await WriteGeneratedAsync(bytes, FriendlyName(DocumentNames.LoanAgreement));
         _disbursement.AgreementHash = DigioEsignService.Sha256(bytes);

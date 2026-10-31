@@ -27,6 +27,10 @@ public static class AgreementClauses
     /// <summary>First clause number of each of the three clause pages.</summary>
     public static readonly int[] PageStarts = { 1, 7, 13 };
 
+    /// <summary>Clause numbers other pages of the agreement refer to.</summary>
+    public const int RecoveryClause = 11;
+    public const int ElectronicExecutionClause = 18;
+
     public static IReadOnlyList<Clause> For(ClauseContext c)
     {
         var city = string.IsNullOrWhiteSpace(c.City) ? "the city of the Lender's registered office" : c.City.Trim();
@@ -34,7 +38,7 @@ public static class AgreementClauses
         {
             new(1, "Definitions and interpretation", new[]
             {
-                "In this Agreement, \"Lender\" means " + c.Lender + "; \"Borrower\" means each person named as a borrower, co-borrower or guarantor in the Parties section, jointly and severally; \"Loan\" means the facility sanctioned under this Agreement; \"Key Fact Statement\" means Schedule A; \"Repayment Schedule\" means Schedule B; \"EMI\" means the equated monthly instalment shown in the Repayment Schedule; and \"Security\" means the asset described in clause 7.",
+                "In this Agreement, \"Lender\" means " + c.Lender + "; \"Borrower\" means each person named as a borrower or co-borrower in the Parties section, jointly and severally; \"Guarantor\" means each person named there as a guarantor; \"Loan\" means the facility sanctioned under this Agreement; \"Key Fact Statement\" means Schedule A; \"Repayment Schedule\" means Schedule B; \"EMI\" means the equated monthly instalment shown in the Repayment Schedule; and \"Security\" means the asset described in clause 7.",
                 "Schedules A and B form part of this Agreement. Headings are for convenience only. A reference to a law includes that law as amended or replaced.",
             }),
             new(2, "The Loan and its disbursement", new[]
@@ -69,50 +73,55 @@ public static class AgreementClauses
                 c.SecurityParagraph,
                 "The Borrower shall keep the Security in good condition, shall not sell, transfer, lease or part with it, and shall not create any other charge on it, without the Lender's written consent, until the Loan is fully repaid and the Lender has released its charge.",
             }),
-            new(8, "Borrower's representations and covenants", new[]
+            new(8, "Guarantee", new[]
+            {
+                "Each person named in this Agreement as a Guarantor (a) unconditionally and irrevocably guarantees to the Lender the due and punctual payment of every amount the Borrower owes under this Agreement, including principal, interest, charges and costs, and the performance of all the Borrower's other obligations; and (b) agrees that, on the Borrower's default, the Lender may call on the Guarantor for payment without first proceeding against the Borrower or the Security.",
+                "The Guarantor's liability is co-extensive with the Borrower's. This is a continuing guarantee: it stays in force until every amount due has been paid in full and the Lender has given a written discharge, and it is not affected by any extension of time, indulgence, variation, or release of any Security that the Lender gives the Borrower, or by the death, insolvency or change in the constitution of the Borrower. A Guarantor is not a borrower and receives no part of the Loan.",
+            }),
+            new(9, "Borrower's representations and covenants", new[]
             {
                 "The Borrower declares that all information and documents given to the Lender are true, complete and not misleading, and that the Borrower has the capacity and authority to enter into this Agreement.",
                 "The Borrower shall (a) use the Loan only for the purpose for which it was sanctioned; (b) inform the Lender promptly of any change of address, contact details, employment or business; (c) allow the Lender to inspect the Security and the Borrower's relevant records on reasonable notice; and (d) comply with every law that applies to the Borrower and the Security.",
             }),
-            new(9, "Events of default", new[]
+            new(10, "Events of default", new[]
             {
                 "Each of the following is an event of default: (a) the Borrower fails to pay any EMI or other amount when due; (b) any statement or document given to the Lender is found to be false or misleading; (c) the Borrower breaches any other term of this Agreement and does not remedy it within the period the Lender allows; (d) the Security is lost, damaged beyond repair, sold or encumbered without consent; (e) the Borrower becomes insolvent, or any proceeding is started to attach the Borrower's property; (f) the Borrower dies, subject to the rights of the legal heirs and the guarantor; or (g) the Borrower is in default of any other facility from the Lender.",
             }),
-            new(10, "Consequences of default and recovery", new[]
+            new(11, "Consequences of default and recovery", new[]
             {
                 "On an event of default the Lender may, after giving the Borrower written notice and a reasonable period to remedy where the default can be remedied, (a) declare the whole outstanding amount payable immediately; (b) charge the penal charges shown in the Key Fact Statement or the sanction letter; and (c) enforce the Security in accordance with the law.",
                 "The Lender will follow the Reserve Bank of India's Fair Practices Code in recovery. The Lender will not use harassment, intimidation or undue pressure, will contact the Borrower only at reasonable hours, and will use only recovery agents who follow the Lender's code of conduct. Penal charges are levied only as a charge for default and not added to the interest rate.",
             }),
-            new(11, "Insurance", new[]
+            new(12, "Insurance", new[]
             {
                 "The Borrower shall keep the Security insured against the risks the Lender specifies for the full tenure, with the Lender's interest noted, and shall renew the policy before it expires. If the Borrower does not, the Lender may insure the Security and recover the premium from the Borrower.",
             }),
-            new(12, "Information sharing and consent", new[]
+            new(13, "Information sharing and consent", new[]
             {
                 "The Borrower consents to the Lender collecting, using and storing the Borrower's information, including Aadhaar-based and other KYC data as the law permits, for processing, servicing and recovering the Loan.",
                 "The Borrower authorises the Lender to share information about the Borrower and the Loan, including defaults, with credit information companies, the Central KYC Records Registry, regulators, auditors and the Lender's service providers and assignees, as the law requires or permits.",
             }),
-            new(13, "Assignment", new[]
+            new(14, "Assignment", new[]
             {
                 "The Lender may assign or securitise the Loan and the Security, or any part of them, without the Borrower's consent, and may disclose to the assignee any information about the Borrower and the Loan. The Borrower may not assign or transfer any right or obligation under this Agreement.",
             }),
-            new(14, "Notices", new[]
+            new(15, "Notices", new[]
             {
                 "A notice to the Borrower is validly given if sent to the address, mobile number or email recorded in this Agreement, or later notified in writing, and is treated as received on delivery, or on the next working day if sent electronically. A notice to the Lender must be sent to its registered office shown on the letterhead.",
             }),
-            new(15, "Grievance redressal", new[]
+            new(16, "Grievance redressal", new[]
             {
                 "A Borrower who has a complaint should first write to the Lender's grievance officer. " + c.GrievanceLine + " If the complaint is not resolved within thirty days, or the Borrower is not satisfied, the Borrower may approach the Reserve Bank of India's Integrated Ombudsman Scheme at cms.rbi.org.in.",
             }),
-            new(16, "Governing law and jurisdiction", new[]
+            new(17, "Governing law and jurisdiction", new[]
             {
                 "This Agreement is governed by the laws of India. The courts at " + city + " have jurisdiction over any dispute arising from it, without limiting the Lender's right to take action against the Borrower or the Security in any other competent forum, or to initiate proceedings under any law that allows recovery without going to court.",
             }),
-            new(17, "Electronic execution", new[]
+            new(18, "Electronic execution", new[]
             {
                 "The parties agree that this Agreement may be executed electronically, including by Aadhaar-based e-Sign, and that each electronic signature is valid and binding as a signature under the Information Technology Act, 2000, and may be proved by the signing records kept by the e-Sign service provider. The signed electronic copy is the original of this Agreement.",
             }),
-            new(18, "General", new[]
+            new(19, "General", new[]
             {
                 "This Agreement, the sanction letter and the schedules are the whole agreement between the parties on the Loan. A term may be changed only in writing signed by the Lender and the Borrower. If any term is held invalid, the rest remains in force. A delay by the Lender in using a right is not a waiver of it. Each Borrower has read, or has had read to them in a language they understand, and has understood this Agreement, and signs it voluntarily.",
             }),
