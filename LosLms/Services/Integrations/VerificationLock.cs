@@ -5,12 +5,14 @@ using Microsoft.EntityFrameworkCore;
 namespace LosLms.Services;
 
 /// <summary>Where one check stands. <see cref="Locked"/> = done and no re-check allowed (the button is disabled); <see cref="GrantOpen"/> = an Admin allowed one more run.</summary>
-public sealed record LockStatus(bool HasResult, DateTime? VerifiedOn, bool GrantOpen)
+public sealed record LockStatus(bool HasResult, DateTime? VerifiedOn, bool GrantOpen, string? Verdict = null)
 {
     public bool Locked => HasResult && !GrantOpen;
 
-    /// <summary>"Verified on 29 Oct 2026" when locked, else null (the button's disabled reason).</summary>
-    public string? Reason => Locked ? "Verified on " + (VerifiedOn is { } d ? d.ToLocalTime().ToString("d MMM yyyy") : "an earlier date") : null;
+    /// <summary>"Verified on 29 Oct 2026" when locked (or "Checked on ..." when the verdict was a mismatch: it was not verified), else null (the button's disabled reason).</summary>
+    public string? Reason => Locked
+        ? (Verdict is "Mismatch" or "Failed" or "AcceptedMismatch" ? "Checked on " : "Verified on ") + (VerifiedOn is { } d ? d.ToLocalTime().ToString("d MMM yyyy") : "an earlier date")
+        : null;
 
     public static readonly LockStatus Open = new(false, null, false);
 }
@@ -30,28 +32,31 @@ public static class VerificationLock
     {
         var evidence = await db.VerificationEvidence.IgnoreQueryFilters().AsNoTracking()
             .Where(e => e.CompanyId == companyId && e.ApplicationId == applicationId && e.PartyId == partyId && e.Subject == subject && Counts.Contains(e.Verdict))
-            .OrderByDescending(e => e.Id).Select(e => (DateTime?)e.CreatedAt).FirstOrDefaultAsync();
+            .OrderByDescending(e => e.Id).Select(e => new { e.CreatedAt, e.Verdict }).FirstOrDefaultAsync();
+        DateTime? when = evidence?.CreatedAt;
+        var verdict = evidence?.Verdict;
 
         // The penny drop predates evidence: an existing Matched / NotMatched on the bank row counts as done.
         if (evidence is null && subject == "BANK_ACCOUNT")
         {
             var bank = await db.BankDetails.IgnoreQueryFilters().AsNoTracking()
                 .Where(b => b.ApplicationId == applicationId && (b.PennyDropStatus == "Matched" || b.PennyDropStatus == "NotMatched"))
-                .Select(b => new { b.PennyDropCheckedAt }).FirstOrDefaultAsync();
+                .Select(b => new { b.PennyDropCheckedAt, b.PennyDropStatus }).FirstOrDefaultAsync();
             if (bank is not null)
             {
-                evidence = bank.PennyDropCheckedAt ?? DateTime.UtcNow;
+                when = bank.PennyDropCheckedAt ?? DateTime.UtcNow;
+                verdict = bank.PennyDropStatus == "Matched" ? "Verified" : "Mismatch";
             }
         }
 
-        if (evidence is null)
+        if (when is null)
         {
             return LockStatus.Open;
         }
 
         var open = await db.VerificationRechecks.IgnoreQueryFilters().AsNoTracking()
             .AnyAsync(g => g.CompanyId == companyId && g.ApplicationId == applicationId && g.PartyId == partyId && g.Subject == subject && g.UsedAt == null);
-        return new(true, evidence, open);
+        return new(true, when, open, verdict);
     }
 
     /// <summary>
