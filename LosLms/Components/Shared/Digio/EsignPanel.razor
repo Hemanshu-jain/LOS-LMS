@@ -59,6 +59,11 @@
 
 @if (_status == "Signed")
 {
+    @foreach (var s in _signers.Where(x => x.Status == "signed"))
+    {
+        <p class="dg-muted">Signed by @s.Name on @((s.SignedAt ?? s.UpdatedAt).ToLocalTime().ToString("d MMM yyyy, HH:mm")) via Aadhaar e-Sign</p>
+    }
+
     @if (_signedPath is { } signed)
     {
         <a class="file-link" href="@($"/files/{ApplicationId}/postsanction/{Path.GetFileName(signed)}")" target="_blank">✓ Signed agreement</a>

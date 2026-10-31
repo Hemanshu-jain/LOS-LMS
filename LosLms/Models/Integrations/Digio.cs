@@ -307,4 +307,7 @@ public class EsignSigner
     public string? FailureReason { get; set; }
 
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>When our refresh first saw this signer as signed (the page shows "Signed by ... on ...").</summary>
+    public DateTime? SignedAt { get; set; }
 }

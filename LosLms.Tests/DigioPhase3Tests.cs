@@ -68,6 +68,7 @@ public sealed class DigioPhase3Tests : IDisposable
         services.AddSingleton<DigioStatusNotifier>();
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
+        services.AddSingleton<IAgreementSignatureBoxes>(_boxes);
         services.AddScoped<DigioEsignService>();
         services.AddScoped<DigioNachService>();
         services.AddScoped<DigioCollect>();
@@ -225,6 +226,51 @@ public sealed class DigioPhase3Tests : IDisposable
 
         Assert.DoesNotContain("9000000001", text);
         Assert.Contains("gateway/login/", text);
+    }
+
+    [Fact]
+    public async Task VisibleSignatures_AreSentAsCustomCoordinatesPerSigner_AndBilledPerSignatory()
+    {
+        _boxes.Map["Applicant"] = [new SignBox(2, 90.5, 236, 259.7, 298)];
+        _boxes.Map["CoApplicant"] = [new SignBox(2, 340, 236, 509, 298)];
+        using var scope = _provider.CreateScope();
+
+        await scope.ServiceProvider.GetRequiredService<DigioEsignService>().SendAsync(1, "A1", "u1", "SMS");
+
+        using var body = JsonDocument.Parse(_digio.Calls.Single(c => c.Path == "/v2/client/document/uploadpdf").Body);
+        Assert.Equal("custom", body.RootElement.GetProperty("display_on_page").GetString());
+        var coords = body.RootElement.GetProperty("sign_coordinates");
+        Assert.Equal(90.5, coords.GetProperty("9000000001").GetProperty("2")[0].GetProperty("llx").GetDouble());
+        Assert.Equal(509, coords.GetProperty("9000000002").GetProperty("2")[0].GetProperty("urx").GetDouble());
+        Assert.Equal(2, Usage(DigioRates.EsignCoordinates)); // Rs 1.50 x 2 signatories
+    }
+
+    [Fact]
+    public async Task IfAnySignerHasNoKnownBox_DigioPlacesTheSignatures_AndNothingExtraIsBilled()
+    {
+        _boxes.Map["Applicant"] = [new SignBox(2, 90.5, 236, 259.7, 298)]; // the co-applicant has none
+
+        using var scope = _provider.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<DigioEsignService>().SendAsync(1, "A1", "u1", "SMS");
+
+        using var body = JsonDocument.Parse(_digio.Calls.Single(c => c.Path == "/v2/client/document/uploadpdf").Body);
+        Assert.False(body.RootElement.TryGetProperty("sign_coordinates", out _));
+        Assert.Equal("last", body.RootElement.GetProperty("display_on_page").GetString());
+        Assert.Equal(0, Usage(DigioRates.EsignCoordinates));
+    }
+
+    [Fact]
+    public async Task TheSignerRows_RememberWhenEachSigned_ForTheSignedByLine()
+    {
+        using var scope = _provider.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<DigioEsignService>().SendAsync(1, "A1", "u1", "SMS");
+        _digio.On("GET", "/v2/client/document/DID1", _ => Doc("DID1", "completed", "signed", "signed"));
+        _digio.Download = PdfV1;
+
+        await Webhook(scope, "doc.signed", "DID1", "completed");
+        await _provider.GetRequiredService<DigioBackgroundTasks>().WhenIdleAsync();
+
+        Assert.All(Signers(), s => Assert.NotNull(s.SignedAt));
     }
 
     [Fact]
@@ -429,6 +475,15 @@ public sealed class DigioPhase3Tests : IDisposable
     {
         public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
             throw new InvalidOperationException("Do not call GetAuthenticationStateAsync outside of the DI scope for a Razor component.");
+    }
+
+    private readonly FakeBoxes _boxes = new();
+
+    private sealed class FakeBoxes : IAgreementSignatureBoxes
+    {
+        public Dictionary<string, IReadOnlyList<SignBox>> Map { get; } = [];
+
+        public IReadOnlyList<SignBox>? BoxesFor(string partyType) => Map.GetValueOrDefault(partyType);
     }
 
     private static string Doc(string id, string status, params string[] signerStatuses) =>

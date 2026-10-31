@@ -165,6 +165,11 @@ public sealed class DigioWebhookService(
             return;
         }
 
+        // A completed agreement means every signer has signed: the rows say so (and when), whatever order the events arrived in.
+        var now = DateTime.UtcNow;
+        await db.EsignSigners.IgnoreQueryFilters().Where(x => x.CompanyId == companyId && x.DocumentId == docId && x.Status != "signed")
+            .ExecuteUpdateAsync(u => u.SetProperty(x => x.Status, "signed").SetProperty(x => x.FailureReason, (string?)null).SetProperty(x => x.UpdatedAt, now).SetProperty(x => x.SignedAt, now));
+
         // A credit is consumed per Aadhaar signer (customer, co-applicant, guarantor; our lender stamp is not a Digio signer), when they sign.
         // Documents sent before signers were recorded have no rows: those still cost one.
         var signerIds = await db.EsignSigners.IgnoreQueryFilters().Where(x => x.CompanyId == companyId && x.DocumentId == docId).Select(x => x.Id.ToString()).ToListAsync();

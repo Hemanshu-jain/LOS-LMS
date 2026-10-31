@@ -15,7 +15,8 @@ public sealed record EsignSendResult(bool Ok, string? Error, string? DocumentId 
 /// webhook / confirm does, in <see cref="DigioWebhookService"/>).
 /// </summary>
 public sealed class DigioEsignService(
-    IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, IFileStore files, DigioStatusNotifier notifier)
+    IDbContextFactory<LosDbContext> dbFactory, DigioClient digio, IFileStore files, DigioStatusNotifier notifier,
+    ApiBillingService billing, IAgreementSignatureBoxes? boxes = null)
 {
     public static readonly string[] PartyOrder = ["Applicant", "CoApplicant", "Guarantor"];
     private const int ExpireInDays = 10;
@@ -104,6 +105,15 @@ public sealed class DigioEsignService(
             body["customer_notification_mode"] = channel;
         }
 
+        // Visible signature placement (Digio's "custom" coordinates, Rs 1.50 per signatory). Only when EVERY signer's box is known and the price is set;
+        // otherwise Digio places the signature itself (display_on_page "last") and nothing extra is charged.
+        var coordinates = await CoordinatesAsync(db, parties.Select(p => (p.Party.PartyType, Identifier(p.Party, channel)!)).ToList());
+        if (coordinates is not null)
+        {
+            body["sign_coordinates"] = coordinates;
+            body["display_on_page"] = "custom";
+        }
+
         // ponytail: NO signature_verification. Digio's spec only says `signature_verification: object` and its sandbox rejected our guessed shape
         // (match_type / max_attempt / abort_on_fail missing). Plain Aadhaar e-sign until Digio gives the exact shape; VerificationRules below is kept
         // for that day (its field names are camelCase guesses and must be re-checked against a real sample first).
@@ -143,6 +153,14 @@ public sealed class DigioEsignService(
         }
 
         await db.SaveChangesAsync();
+        if (coordinates is not null)
+        {
+            for (var i = 0; i < parties.Count; i++)
+            {
+                await billing.RecordOnceAsync(companyId, DigioRates.EsignCoordinates, $"{docId}:coords:{i + 1}", applicationId);
+            }
+        }
+
         await RefreshSignersAsync(companyId, docId, result.Data);
         await notifier.NotifyAsync(applicationId);
         return new(true, null, docId);
@@ -236,6 +254,7 @@ public sealed class DigioEsignService(
 
             row.Status = status;
             row.UpdatedAt = DateTime.UtcNow;
+            if (status == "signed") { row.SignedAt ??= row.UpdatedAt; }
             row.FailureReason = status is "failed" ? RuleFailure(p) : null;
         }
 
@@ -243,6 +262,33 @@ public sealed class DigioEsignService(
     }
 
     // ---- helpers ----
+
+    /// <summary>
+    /// The sign_coordinates object per Digio's docs: { signerKey: { "page": [ { llx, lly, urx, ury } ] } }, keyed by the signer's identifier.
+    /// Null (nothing custom) unless every signer has a box and ESIGN_COORDINATES has an active price.
+    /// </summary>
+    private async Task<Dictionary<string, Dictionary<string, object[]>>?> CoordinatesAsync(LosDbContext db, List<(string PartyType, string Identifier)> signers)
+    {
+        if (boxes is null || signers.Count == 0 || !await db.ApiRates.AsNoTracking().AnyAsync(r => r.Code == DigioRates.EsignCoordinates && r.IsActive))
+        {
+            return null;
+        }
+
+        var result = new Dictionary<string, Dictionary<string, object[]>>();
+        foreach (var (partyType, identifier) in signers)
+        {
+            var mine = boxes.BoxesFor(partyType);
+            if (mine is not { Count: > 0 })
+            {
+                return null; // one signer without a known box: let Digio place all of them
+            }
+
+            result[identifier] = mine.GroupBy(b => b.Page.ToString())
+                .ToDictionary(g => g.Key, g => g.Select(b => (object)new { llx = b.Llx, lly = b.Lly, urx = b.Urx, ury = b.Ury }).ToArray());
+        }
+
+        return result;
+    }
 
     private sealed record Signer(Party Party);
 
