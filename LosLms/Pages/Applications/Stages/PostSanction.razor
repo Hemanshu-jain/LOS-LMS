@@ -1163,6 +1163,7 @@ else
         Company? lender;
         List<VehicleLoanCap> catalog;
         List<LosLms.Models.Reference> references;
+        var photos = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         byte[]? lenderSignature = null;
         decimal? bounceCharge = null;
         var bounceGstPct = 0m;
@@ -1191,6 +1192,19 @@ else
             lenderSignature = string.IsNullOrWhiteSpace(key) ? null : await Files.ReadAllBytesAsync(key);
         }
 
+        // Party photographs for the printed form's proposal page (a missing or unreadable file just leaves the box empty).
+        foreach (var party in parties.Where(p => !string.IsNullOrWhiteSpace(p.PhotoPath)))
+        {
+            try
+            {
+                if (await Files.ReadAllBytesAsync(party.PhotoPath!) is { Length: > 0 } photo) { photos.TryAdd(party.PartyType, photo); }
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or UnauthorizedAccessException)
+            {
+                // leave the box empty
+            }
+        }
+
         // An agreement without the lender's signature is not a document we hand out: stop here rather than produce an unsigned one.
         if (lenderSignature is not { Length: > 0 } || lender is null)
         {
@@ -1205,6 +1219,7 @@ else
         {
             VehicleCatalog = catalog,
             References = references,
+            PartyPhotos = photos,
         };
         var bytes = AgreementBuilder.Build(data);
 

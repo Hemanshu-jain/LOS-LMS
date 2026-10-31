@@ -429,9 +429,9 @@ public static class HypothecationAgreementPdf
                 col.Item().Height(84).PaddingTop(6).Row(r =>
                 {
                     r.ConstantItem(70);
-                    r.ConstantItem(86).Border(0.6f).AlignCenter().AlignMiddle().Text(l.Part(0)).FontSize(8.6f).AlignCenter();
+                    PhotoBox(r.ConstantItem(86), l.Part(0), cx.Data.PartyPhotos?.GetValueOrDefault("Guarantor"));
                     r.RelativeItem();
-                    r.ConstantItem(86).Border(0.6f).AlignCenter().AlignMiddle().Text(l.Part(1)).FontSize(8.6f).AlignCenter();
+                    PhotoBox(r.ConstantItem(86), l.Part(1), cx.Data.PartyPhotos?.GetValueOrDefault("Applicant"));
                     r.ConstantItem(70);
                 });
                 break;
@@ -692,6 +692,20 @@ public static class HypothecationAgreementPdf
                 });
             }
         });
+    }
+
+    /// <summary>The party's photograph when we hold one, otherwise the printed "Affix … Photo" box.</summary>
+    private static void PhotoBox(IContainer box, string caption, byte[]? photo)
+    {
+        var framed = box.Border(0.6f);
+        if (photo is { Length: > 0 })
+        {
+            framed.Padding(1).Image(photo).FitArea();
+        }
+        else
+        {
+            framed.AlignCenter().AlignMiddle().Text(caption).FontSize(8.6f).AlignCenter();
+        }
     }
 
     // ---------------------------------------------------------------- arbitration vehicle schedule

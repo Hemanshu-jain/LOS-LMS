@@ -135,6 +135,20 @@ public sealed class HypothecationAgreementTests
     }
 
     [Fact]
+    public void ProposalForm_PlacesThePartyPhotoWhenWeHaveOne()
+    {
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        var without = Data(false, 3);
+        var with = without with { PartyPhotos = new Dictionary<string, byte[]> { ["Applicant"] = png, ["Guarantor"] = png } };
+
+        var plain = HypothecationAgreementPdf.Build(without);
+        var photographed = HypothecationAgreementPdf.Build(with);
+
+        Assert.True(photographed.Length > plain.Length, "the photo is embedded");
+    }
+
+    [Fact]
     public void Dispatcher_BuildsTheTemplateTheCompanyChose()
     {
         QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;

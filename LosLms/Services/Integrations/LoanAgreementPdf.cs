@@ -37,6 +37,9 @@ public sealed record AgreementData(
 
     /// <summary>The application's references (printed on the hypothecation form's proposal page).</summary>
     public IReadOnlyList<LosLms.Models.Reference>? References { get; init; }
+
+    /// <summary>Party photographs by party type ("Applicant", "Guarantor"…), placed in the proposal form's photo boxes when present.</summary>
+    public IReadOnlyDictionary<string, byte[]>? PartyPhotos { get; init; }
 }
 
 /// <summary>Fixed geometry of the signature page, shared by the layout and by <see cref="LoanAgreementSignatureBoxes"/> (PDF points, origin bottom-left).</summary>
