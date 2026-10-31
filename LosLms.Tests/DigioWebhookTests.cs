@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -93,8 +93,8 @@ public sealed class DigioWebhookTests : IDisposable
         var d = Disbursement();
         Assert.Equal("Signed", d.AgreementEsignStatus);
         Assert.Equal(1, UsageRows());
-        Assert.Equal("App_Data/uploads/A1/postsanction/signed-DID123.pdf", d.SignedAgreementFilePath);
-        Assert.Equal(Pdf, _files.Saved["App_Data/uploads/A1/postsanction/signed-DID123.pdf"]);
+        Assert.EndsWith("_A1_Loan-Agreement-SIGNED.pdf", d.SignedAgreementFilePath);
+        Assert.Equal(Pdf, _files.Saved[d.SignedAgreementFilePath!]);
         Assert.Equal(1, _digio.Downloads); // not fetched again
     }
 

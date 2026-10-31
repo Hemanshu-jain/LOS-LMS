@@ -1353,12 +1353,12 @@ else
             schedule.Count, schedule.Sum(r => r.Emi));
 
         var bytes = DisbursementMemoPdf.Build(data);
-        _disbursement.DisbursementMemoFilePath = await WriteGeneratedAsync(bytes, "disbursement-memo");
+        _disbursement.DisbursementMemoFilePath = await WriteGeneratedAsync(bytes, FriendlyName(DocumentNames.DisbursementMemo));
         await SaveDisbursementAsync();
 
         using var stream = new MemoryStream(bytes);
         using var reference = new DotNetStreamReference(stream);
-        await JS.InvokeVoidAsync("downloadFileFromStream", DisbursementMemoPdf.FileNameFor(_application.Id), "application/pdf", reference);
+        await JS.InvokeVoidAsync("downloadFileFromStream", FriendlyName(DocumentNames.DisbursementMemo), "application/pdf", reference);
         await ShowToastAsync("Disbursement memo generated");
     }
 

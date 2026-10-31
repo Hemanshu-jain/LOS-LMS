@@ -255,8 +255,11 @@ public sealed class DigioWebhookService(
                 return false;
             }
 
-            var key = FileKey.Normalize(await files.SaveUploadAsync(applicationId, "postsanction", $"signed-{docId}.pdf", bytes));
             await using var db = await dbFactory.CreateDbContextAsync();
+            var app = await db.Applications.IgnoreQueryFilters().AsNoTracking().Where(a => a.Id == applicationId)
+                .Select(a => new { a.CustomerName, a.CreatedAt }).FirstOrDefaultAsync();
+            var name = app is null ? $"signed-{docId}.pdf" : DocumentNames.For(applicationId, app.CustomerName, app.CreatedAt, DocumentNames.LoanAgreementSigned);
+            var key = FileKey.Normalize(await files.SaveUploadAsync(applicationId, "postsanction", name, bytes));
             await db.Disbursements.IgnoreQueryFilters().Where(d => d.Id == disbursementId)
                 .ExecuteUpdateAsync(s => s.SetProperty(d => d.SignedAgreementFilePath, key));
             return true;
