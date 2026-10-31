@@ -42,6 +42,21 @@ public class Company
     [MaxLength(200)] public string? ContactEmail { get; set; }
     [MaxLength(20)] public string? ContactPhone { get; set; }
 
+    // ---- Legal / regulatory identity: printed on the letterhead and in the Key Fact Statement of every loan agreement ----
+
+    /// <summary>City of the registered office; the governing-law clause names its courts.</summary>
+    [MaxLength(100)] public string? RegisteredCity { get; set; }
+    [MaxLength(200)] public string? Website { get; set; }
+    [MaxLength(30)] public string? Cin { get; set; }
+    [MaxLength(40)] public string? RbiNbfcRegNo { get; set; }
+    [MaxLength(150)] public string? GrievanceOfficerName { get; set; }
+    [MaxLength(20)] public string? GrievanceOfficerPhone { get; set; }
+    [MaxLength(200)] public string? GrievanceOfficerEmail { get; set; }
+
+    /// <summary>Who signs for the lender on the agreement (the signature image itself is kept with the Digio keys).</summary>
+    [MaxLength(150)] public string? AuthorisedSignatoryName { get; set; }
+    [MaxLength(100)] public string? AuthorisedSignatoryDesignation { get; set; }
+
     // ---- Firm details (mirror Business.*; the source of truth pre-filled onto Approvals so the
     //      officer no longer retypes them per file — "approvals entered in backend only", #14) ----
 

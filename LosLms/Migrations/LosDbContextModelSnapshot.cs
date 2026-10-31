@@ -1382,11 +1382,23 @@ namespace LosLms.Migrations
                     b.Property<int>("AddressValidityDays")
                         .HasColumnType("int");
 
+                    b.Property<string>("AuthorisedSignatoryDesignation")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("AuthorisedSignatoryName")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
                     b.Property<int>("CibilMaxScore")
                         .HasColumnType("int");
 
                     b.Property<int>("CibilMinScore")
                         .HasColumnType("int");
+
+                    b.Property<string>("Cin")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
 
                     b.Property<string>("Code")
                         .HasMaxLength(3)
@@ -1418,6 +1430,18 @@ namespace LosLms.Migrations
                     b.Property<decimal>("FoirRiskDangerPct")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("GrievanceOfficerEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("GrievanceOfficerName")
+                        .HasMaxLength(150)
+                        .HasColumnType("varchar(150)");
+
+                    b.Property<string>("GrievanceOfficerPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<decimal>("GstPct")
                         .HasPrecision(5, 2)
@@ -1454,6 +1478,14 @@ namespace LosLms.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<string>("RbiNbfcRegNo")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("RegisteredCity")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<DateTime?>("SetupCompletedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1466,6 +1498,10 @@ namespace LosLms.Migrations
                     b.Property<string>("Vintage")
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.HasKey("Id");
 

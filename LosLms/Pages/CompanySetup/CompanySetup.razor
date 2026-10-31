@@ -96,6 +96,38 @@
                         </FormField>
                     </div>
 
+                    @* Legal identity: letterhead + Key Fact Statement of every loan agreement. *@
+                    <p class="setup-note">These appear on the letterhead and Key Fact Statement of every loan agreement. Leave blank what does not apply; nothing is invented.</p>
+                    <div class="field-grid">
+                        <FormField Label="Registered office city" For="cs-city">
+                            <input id="cs-city" class="field-input" maxlength="100" @bind="_company.RegisteredCity" />
+                        </FormField>
+                        <FormField Label="CIN" For="cs-cin">
+                            <input id="cs-cin" class="field-input" maxlength="30" @bind="_company.Cin" />
+                        </FormField>
+                        <FormField Label="RBI NBFC registration no." For="cs-rbi">
+                            <input id="cs-rbi" class="field-input" maxlength="40" @bind="_company.RbiNbfcRegNo" />
+                        </FormField>
+                        <FormField Label="Website" For="cs-web">
+                            <input id="cs-web" class="field-input" maxlength="200" @bind="_company.Website" />
+                        </FormField>
+                        <FormField Label="Grievance officer name" For="cs-go-name">
+                            <input id="cs-go-name" class="field-input" maxlength="150" @bind="_company.GrievanceOfficerName" />
+                        </FormField>
+                        <FormField Label="Grievance officer phone" For="cs-go-phone">
+                            <input id="cs-go-phone" class="field-input" maxlength="20" @bind="_company.GrievanceOfficerPhone" />
+                        </FormField>
+                        <FormField Label="Grievance officer email" For="cs-go-email">
+                            <input id="cs-go-email" type="email" class="field-input" maxlength="200" @bind="_company.GrievanceOfficerEmail" />
+                        </FormField>
+                        <FormField Label="Authorised signatory name" For="cs-sig-name">
+                            <input id="cs-sig-name" class="field-input" maxlength="150" @bind="_company.AuthorisedSignatoryName" />
+                        </FormField>
+                        <FormField Label="Authorised signatory designation" For="cs-sig-desig">
+                            <input id="cs-sig-desig" class="field-input" maxlength="100" @bind="_company.AuthorisedSignatoryDesignation" />
+                        </FormField>
+                    </div>
+
                     @* Firm details — the single source of truth pre-filled onto every application's
                        Approvals stage (#14), so an officer never retypes them per file. *@
                     <p class="setup-note">These firm details are pre-filled onto the Approvals stage of every application.</p>
@@ -404,6 +436,8 @@
         _setupComplete = _company is not null && await CompanySetupState.IsCompleteAsync(db, companyId);
     }
 
+    private static string? Trimmed(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
     private async Task SaveProfileAsync()
     {
         if (_company is null) { return; }
@@ -419,6 +453,16 @@
         stored.Address = _company.Address?.Trim();
         stored.ContactEmail = _company.ContactEmail?.Trim();
         stored.ContactPhone = _company.ContactPhone?.Trim();
+
+        stored.RegisteredCity = Trimmed(_company.RegisteredCity);
+        stored.Cin = Trimmed(_company.Cin);
+        stored.RbiNbfcRegNo = Trimmed(_company.RbiNbfcRegNo);
+        stored.Website = Trimmed(_company.Website);
+        stored.GrievanceOfficerName = Trimmed(_company.GrievanceOfficerName);
+        stored.GrievanceOfficerPhone = Trimmed(_company.GrievanceOfficerPhone);
+        stored.GrievanceOfficerEmail = Trimmed(_company.GrievanceOfficerEmail);
+        stored.AuthorisedSignatoryName = Trimmed(_company.AuthorisedSignatoryName);
+        stored.AuthorisedSignatoryDesignation = Trimmed(_company.AuthorisedSignatoryDesignation);
 
         // Firm details (#14) — pre-filled onto Approvals.
         stored.Constitution = _company.Constitution?.Trim();
