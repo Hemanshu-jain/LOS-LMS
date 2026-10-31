@@ -9,6 +9,7 @@
 @attribute [Authorize(Roles = TenantContext.AdminRoles)]
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject TenantContext Tenant
+@inject IFileStore Files
 
 @* Server-side enforcement, not a hidden nav link. AuthorizeRouteView refuses to instantiate this
    component for Staff and renders the access-denied card in Routes.razor instead — none of the code
@@ -145,6 +146,33 @@
                         <FormField Label="Authorised signatory designation" For="cs-sig-desig">
                             <input id="cs-sig-desig" class="field-input" maxlength="100" @bind="_company.AuthorisedSignatoryDesignation" />
                         </FormField>
+                    </div>
+
+                    @* The lender's signature: stamped on every loan agreement. *@
+                    <div class="sig-block" id="lender-signature">
+                        <span class="sub-block-label">Lender signature (stamped on every loan agreement)</span>
+                        @if (_sigPreview is not null)
+                        {
+                            <div class="sig-preview">
+                                <img src="@_sigPreview" alt="Saved lender signature" class="sig-thumb" />
+                                <div class="sig-actions">
+                                    <span class="setup-note">Saved signature</span>
+                                    <label class="setup-save sig-replace">Replace
+                                        <InputFile class="visually-hidden" accept=".png,.jpg,.jpeg" OnChange="UploadSignatureAsync" />
+                                    </label>
+                                    <button type="button" class="setup-cancel" @onclick="RemoveSignatureAsync">Remove</button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <label class="setup-save sig-replace">Upload signature image (PNG or JPG, up to 10 MB)
+                                <InputFile class="visually-hidden" accept=".png,.jpg,.jpeg" OnChange="UploadSignatureAsync" />
+                            </label>
+                            <p class="setup-note">Without it the loan agreement cannot be generated. A photo or scan of the signature on white paper works; it is resized automatically.</p>
+                        }
+                        @if (_sigError is not null) { <p class="inline-error" role="alert">@_sigError</p> }
+                        @if (_sigNotice is not null) { <p class="setup-note" role="status">@_sigNotice</p> }
                     </div>
 
                     @* Firm details — the single source of truth pre-filled onto every application's
@@ -460,10 +488,62 @@
         await using var db = await DbFactory.CreateDbContextAsync();
         _company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
         _template = AgreementTemplates.Normalize(_company?.AgreementTemplate);
+        if (_company is not null) { await LoadSignatureAsync(_company.Id); }
 
         // Also stamps SetupCompletedAt if the company already meets the bar, so a returning admin is
         // not shown the pending note or walkthrough by a stale null.
         _setupComplete = _company is not null && await CompanySetupState.IsCompleteAsync(db, companyId);
+    }
+
+    private string? _sigPreview, _sigError, _sigNotice;
+
+    private async Task LoadSignatureAsync(int companyId)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var bytes = await LenderSignatureImage.LoadAsync(db, Files, companyId);
+        _sigPreview = bytes is { Length: > 0 } ? "data:image/png;base64," + Convert.ToBase64String(bytes) : null;
+    }
+
+    private async Task UploadSignatureAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        _sigError = null;
+        _sigNotice = null;
+        if (_company is null) { return; }
+
+        try
+        {
+            await using var stream = e.File.OpenReadStream(LenderSignatureImage.MaxBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            await LenderSignatureImage.SaveAsync(db, Files, _company.Id, e.File.Name, buffer.ToArray());
+            await LoadSignatureAsync(_company.Id);
+            _sigNotice = "Signature saved.";
+        }
+        catch (InvalidDataException ex)
+        {
+            _sigError = ex.Message;
+        }
+        catch (IOException)
+        {
+            // OpenReadStream throws an IOException when the browser file is larger than the limit; any other I/O trouble is reported too.
+            _sigError = e.File.Size > LenderSignatureImage.MaxBytes
+                ? "The image is larger than 10 MB. Please choose a smaller file."
+                : "The signature could not be saved. Please try again.";
+        }
+    }
+
+    private async Task RemoveSignatureAsync()
+    {
+        _sigError = null;
+        _sigNotice = null;
+        if (_company is null) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await LenderSignatureImage.RemoveAsync(db, _company.Id);
+        _sigPreview = null;
+        _sigNotice = "Signature removed. Upload a new one before generating an agreement.";
     }
 
     /// <summary>The template choice, kept apart from the entity so a blank stored value shows as "Standard".</summary>

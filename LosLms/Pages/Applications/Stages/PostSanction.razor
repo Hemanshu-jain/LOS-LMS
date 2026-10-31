@@ -1257,7 +1257,7 @@ else
         // An agreement without the lender's signature is not a document we hand out: stop here rather than produce an unsigned one.
         if (lenderSignature is not { Length: > 0 } || lender is null)
         {
-            await ShowToastAsync("Upload the lender signature in SuperAdmin → Digio keys (or Settings) before generating the agreement.");
+            await ShowToastAsync("Upload the lender signature in Settings → Company Profile before generating the agreement.");
             return;
         }
 

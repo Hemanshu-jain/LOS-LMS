@@ -1,0 +1,9 @@
+
+
+/* Lender signature: thumbnail with Replace / Remove beside it. */
+.sig-block { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.sig-preview { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sig-thumb { max-width: 220px; max-height: 90px; border: 1px solid #d4d4d4; background: #fff; padding: 4px; }
+.sig-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sig-replace { cursor: pointer; position: relative; }
+.sig-replace ::deep input[type="file"] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
