@@ -170,18 +170,50 @@ public sealed class DigioEsignService(
         return new(true, null, docId);
     }
 
-    /// <summary>The signer's own signing link ("Open on this device"), read from Digio when needed so no token is stored.</summary>
-    public async Task<string?> SignerLinkAsync(int companyId, string docId, string identifier)
+    /// <summary>The document as Digio reports it (status and signers). Read-only; also used by the SuperAdmin masked view.</summary>
+    public Task<DigioResult> ReadDocumentAsync(int companyId, string docId) =>
+        digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null, "reading a document's signing status (UNSURE: no price in the quote)");
+
+    /// <summary>
+    /// The signer's own signing link ("Open on this device"). Only the signer who is NEXT in order (status requested) gets one. Digio does not return
+    /// a link for documents sent with notify_signers=false in our setup, so the link is built the documented way (the redirection approach):
+    /// {gateway}{docId}/{any txn id}/{signer identifier}?redirect_url=... , and Digio's own authentication_url is used when it does give one.
+    /// </summary>
+    public async Task<(string? Url, string? Why)> SignerLinkAsync(int companyId, string docId, string identifier, string returnBaseUrl)
     {
-        var doc = await digio.GetAsync(companyId, null, $"/v2/client/document/{Uri.EscapeDataString(docId)}", null, "reading a document's signing status (UNSURE: no price in the quote)");
+        var doc = await ReadDocumentAsync(companyId, docId);
         if (doc.Status != DigioStatus.Ok || doc.Data is not { } d || !d.TryGetProperty("signing_parties", out var parties) || parties.ValueKind != JsonValueKind.Array)
         {
-            return null;
+            return (null, "Digio could not be reached to check the signer. Try again.");
         }
 
-        return parties.EnumerateArray()
-            .Where(p => string.Equals(Str(p, "identifier"), identifier, StringComparison.OrdinalIgnoreCase) && Str(p, "status") == "requested")
-            .Select(p => Str(p, "authentication_url")).FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+        var party = parties.EnumerateArray().Where(p => string.Equals(Str(p, "identifier"), identifier, StringComparison.OrdinalIgnoreCase)).Select(p => (JsonElement?)p).FirstOrDefault();
+        if (party is null)
+        {
+            return (null, "Digio does not list this signer on the document.");
+        }
+
+        var status = Str(party.Value, "status");
+        if (status != "requested")
+        {
+            return (null, status switch
+            {
+                "signed" => "This signer has already signed.",
+                "sequenced" => "This signer is not next: the earlier signers must sign first.",
+                _ => $"This signer cannot sign now (Digio status: {status ?? "unknown"}).",
+            });
+        }
+
+        if (Str(party.Value, "authentication_url") is { Length: > 0 } given)
+        {
+            return (given, null);
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var requestId = await db.DigioRequests.IgnoreQueryFilters().Where(r => r.CompanyId == companyId && r.DigioId == docId).Select(r => r.Id).FirstOrDefaultAsync() ?? docId;
+        var gateway = DigioEndpoints.Gateway(digio.Credentials(companyId)?.Production == true);
+        var back = Uri.EscapeDataString($"{returnBaseUrl.TrimEnd('/')}/digio/return?r={requestId}");
+        return ($"{gateway}{Uri.EscapeDataString(docId)}/{requestId}/{Uri.EscapeDataString(identifier)}?redirect_url={back}", null);
     }
 
     /// <summary>Copies signing_parties[].status onto the per-signer rows (matched on identifier). Safe to call any number of times.</summary>

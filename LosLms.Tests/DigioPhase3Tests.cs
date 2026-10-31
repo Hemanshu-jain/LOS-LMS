@@ -184,6 +184,50 @@ public sealed class DigioPhase3Tests : IDisposable
     }
 
     [Fact]
+    public async Task SignerLink_IsBuiltTheDocumentedWay_ForTheNextSignerOnly()
+    {
+        using var scope = _provider.CreateScope();
+        var esign = scope.ServiceProvider.GetRequiredService<DigioEsignService>();
+        await esign.SendAsync(1, "A1", "u1", "DEVICE");
+        // Digio's reply carries no authentication_url (it does not, with notify_signers=false): the link is built from the redirection approach.
+        _digio.On("GET", "/v2/client/document/DID1", _ => Doc("DID1", "requested", "requested", "sequenced"));
+
+        var (url, why) = await esign.SignerLinkAsync(1, "DID1", "9000000001", "https://app.test");
+        Assert.Null(why);
+        var requestId = Disbursement().EsignRequestId;
+        Assert.StartsWith("https://ext.digio.in/#/gateway/login/DID1/", url);
+        Assert.Contains("/9000000001?redirect_url=", url);
+        Assert.Contains(Uri.EscapeDataString("https://app.test/digio/return?r="), url);
+
+        var (none, notNext) = await esign.SignerLinkAsync(1, "DID1", "9000000002", "https://app.test");
+        Assert.Null(none);
+        Assert.Contains("not next", notNext);
+    }
+
+    [Fact]
+    public async Task SignerLink_UsesDigiosOwnUrlWhenItGivesOne_AndExplainsASignedSigner()
+    {
+        using var scope = _provider.CreateScope();
+        var esign = scope.ServiceProvider.GetRequiredService<DigioEsignService>();
+        await esign.SendAsync(1, "A1", "u1", "DEVICE");
+        _digio.On("GET", "/v2/client/document/DID1", _ => """{"id":"DID1","signing_parties":[{"identifier":"9000000001","status":"requested","authentication_url":"https://ext.digio.in/x/own"},{"identifier":"9000000002","status":"signed"}]}""");
+
+        Assert.Equal("https://ext.digio.in/x/own", (await esign.SignerLinkAsync(1, "DID1", "9000000001", "https://app.test")).Url);
+        Assert.Contains("already signed", (await esign.SignerLinkAsync(1, "DID1", "9000000002", "https://app.test")).Why);
+    }
+
+    [Fact]
+    public void TheMaskedView_HidesTheSignerIdentifierInsideAGatewayLink()
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse("""{"authentication_url":"https://ext.digio.in/#/gateway/login/DID1/abc/9000000001"}""");
+
+        var text = DigioMasker.Mask(node)!.ToJsonString();
+
+        Assert.DoesNotContain("9000000001", text);
+        Assert.Contains("gateway/login/", text);
+    }
+
+    [Fact]
     public async Task ARejectedSigner_ShowsWhichRulesFailed_OnTheSignerRow()
     {
         using var scope = _provider.CreateScope();

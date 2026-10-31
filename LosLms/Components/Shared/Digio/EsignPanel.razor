@@ -8,6 +8,7 @@
 @inject DigioWebhookService Webhook
 @inject DigioStatusNotifier Notifier
 @inject IJSRuntime Js
+@inject NavigationManager Nav
 
 @* Loan-agreement e-Sign: one channel for the whole send, borrowers sign in order, one status row per signer. Lives on Post Sanction;
    re-reads its own data from the database, so a webhook (via DigioStatusNotifier) refreshes it without the page's help. *@
@@ -177,10 +178,10 @@
     private async Task OpenAsync(EsignSigner s)
     {
         _notice = null;
-        var url = await Esign.SignerLinkAsync(CompanyId, s.DocumentId, s.Identifier);
+        var (url, why) = await Esign.SignerLinkAsync(CompanyId, s.DocumentId, s.Identifier, Nav.BaseUri);
         if (url is null)
         {
-            _notice = "Digio did not give a signing link for this signer (it is only available while they are next in order).";
+            _notice = why;
             return;
         }
 
