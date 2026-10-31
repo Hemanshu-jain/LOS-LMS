@@ -77,6 +77,21 @@ public sealed class LoanAgreementTests
     public void DocumentNames_AreFileSafe(string? input, string expected) =>
         Assert.Equal(expected, DocumentNames.Safe(input, "Customer"));
 
+    // ---- clauses ----
+
+    [Fact]
+    public void Clauses_HaveAGuaranteeAndCrossReferencesPointAtTheRightClauses()
+    {
+        var clauses = AgreementClauses.For(new ClauseContext("Kishore Finance", "Nashik", "Security text.", "S. Kulkarni."));
+
+        Assert.Equal(Enumerable.Range(1, clauses.Count), clauses.Select(c => c.Number));
+        var guarantee = Assert.Single(clauses, c => c.Heading == "Guarantee");
+        Assert.Contains("continuing guarantee", string.Join(' ', guarantee.Paragraphs));
+        Assert.Contains("co-extensive", string.Join(' ', guarantee.Paragraphs));
+        Assert.Contains("recovery", clauses.Single(c => c.Number == AgreementClauses.RecoveryClause).Heading, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Electronic execution", clauses.Single(c => c.Number == AgreementClauses.ElectronicExecutionClause).Heading);
+    }
+
     // ---- masking ----
 
     [Fact]

@@ -210,7 +210,7 @@ public static class LoanAgreementPdf
                 b.Item().Text(t =>
                 {
                     t.Span($"({number}) {Show(p.FullName)}").SemiBold();
-                    t.Span($"  —  {RoleLabel(p.PartyType)} (\"the Borrower\"{(p.PartyType == "Applicant" ? "" : ", jointly and severally")})").FontColor(Muted);
+                    t.Span($"  —  {RoleLabel(p.PartyType)} ({PartyDefinition(p.PartyType)})").FontColor(Muted);
                 });
                 b.Item().Text($"Father / spouse: {Show(p.FatherSpouseName)}   ·   Date of birth: {DobAge(p.DateOfBirth, d.ExecutionDate)}");
                 b.Item().Text($"Address: {Address(p)}");
@@ -220,7 +220,7 @@ public static class LoanAgreementPdf
 
         c.Item().PaddingTop(4).Text(
             "The Borrower has asked the Lender for the loan described in the Key Fact Statement (Schedule A) and the Lender has agreed, on the terms and conditions below. "
-            + "Where there is more than one Borrower, each is liable jointly and severally.");
+            + "Where there is more than one Borrower, each is liable jointly and severally. A Guarantor guarantees the Borrower's obligations as clause 8 provides.");
     }
 
     // ---------------------------------------------------------------- pages 2-4
@@ -245,7 +245,7 @@ public static class LoanAgreementPdf
         c.Item().Height(AgreementLayout.TitleHeight).Text("SIGNATURE PAGE").FontSize(13).Bold();
         c.Item().Height(AgreementLayout.WitnessHeight).Text(
             "IN WITNESS WHEREOF the parties have executed this Agreement on the date written at the top of the first page. "
-            + "Each Borrower signs electronically using Aadhaar e-Sign, as clause 17 provides.").FontSize(9);
+            + $"Each Borrower and Guarantor signs electronically using Aadhaar e-Sign, as clause {AgreementClauses.ElectronicExecutionClause} provides.").FontSize(9);
 
         c.Item().Height(AgreementLayout.LenderBlockHeight).Column(l =>
         {
@@ -319,7 +319,7 @@ public static class LoanAgreementPdf
             K("Prepayment / foreclosure charges", AsPerSanction);
             K("Cooling-off / look-up period", AsPerSanction);
             K("Grievance redressal officer", GrievanceLine(d.Lender));
-            K("Recovery agents", "Recovery is carried out in line with the RBI Fair Practices Code (clause 10); agents follow the Lender's code of conduct.");
+            K("Recovery agents", $"Recovery is carried out in line with the RBI Fair Practices Code (clause {AgreementClauses.RecoveryClause}); agents follow the Lender's code of conduct.");
         });
 
         if (d.Charges.Count > 0)
@@ -409,6 +409,14 @@ public static class LoanAgreementPdf
     }
 
     private static string LenderName(Company c) => string.IsNullOrWhiteSpace(c.Name) ? "the Lender" : c.Name.Trim();
+
+    /// <summary>How the party is defined on page 1: a guarantor is "the Guarantor", never a borrower.</summary>
+    private static string PartyDefinition(string partyType) => partyType switch
+    {
+        "Guarantor" => "\"the Guarantor\"",
+        "CoApplicant" => "\"the Borrower\", jointly and severally",
+        _ => "\"the Borrower\"",
+    };
 
     private static string RoleLabel(string partyType) => partyType switch
     {
