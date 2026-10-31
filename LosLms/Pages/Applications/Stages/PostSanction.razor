@@ -349,6 +349,7 @@ else
                                                         <a class="file-link" href="@UrlFor(_disbursement.AgreementFilePath!)" target="_blank">✓ @agreement</a>
                                                     }
                                                 </div>
+                                                <span class="field-caption">@AgreementClauses.TemplateNotice</span>
                                                 <EsignPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" UserId="@Tenant.UserId" AgreementKey="@_disbursement.AgreementFilePath"
                                                             OnChanged="OnEsignChangedAsync" />
                                             </div>
@@ -1208,6 +1209,10 @@ else
 
         List<Party> parties;
         SecurityDetail? security;
+        Company? lender;
+        byte[]? lenderSignature = null;
+        decimal? bounceCharge = null;
+        var bounceGstPct = 0m;
         await using (var db = await DbFactory.CreateDbContextAsync())
         {
             parties = await db.Parties.AsNoTracking()
@@ -1217,19 +1222,34 @@ else
 
             security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
+
+            lender = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == _application.CompanyId);
+
+            var digio = await db.DigioSettings.AsNoTracking().Where(s => s.CompanyId == _application.CompanyId).FirstOrDefaultAsync();
+            if (digio is not null)
+            {
+                bounceCharge = digio.BounceChargeAmount;
+                bounceGstPct = digio.BounceChargeGstPct;
+            }
+
+            var key = digio?.LenderSignaturePath;
+            lenderSignature = string.IsNullOrWhiteSpace(key) ? null : await Files.ReadAllBytesAsync(key);
         }
 
-        byte[]? lenderSignature = null;
-        await using (var db = await DbFactory.CreateDbContextAsync())
+        // An agreement without the lender's signature is not a document we hand out: stop here rather than produce an unsigned one.
+        if (lenderSignature is not { Length: > 0 } || lender is null)
         {
-            var key = await db.DigioSettings.AsNoTracking().Where(s => s.CompanyId == _application.CompanyId)
-                .Select(s => s.LenderSignaturePath).FirstOrDefaultAsync();
-            lenderSignature = key is null ? null : await Files.ReadAllBytesAsync(key);
+            await ShowToastAsync("Upload the lender signature in SuperAdmin → Digio keys (or Settings) before generating the agreement.");
+            return;
         }
 
-        var bytes = LoanAgreementPdf.Build(_companyName, _application, _decision, FirstMonthEmi, parties, security, lenderSignature);
+        var data = new AgreementData(
+            lender, _application, _decision, parties, security, _charges, Schedule, FirstMonthEmi, NetDisbursement,
+            _disbursement.TradeAdvance ?? 0m, _disbursement.ValueDate, _disbursement.FirstEmiDate, _disbursement.EmiDayOfMonth,
+            bounceCharge, bounceGstPct, DateOnly.FromDateTime(DateTime.Today), lenderSignature);
+        var bytes = LoanAgreementPdf.Build(data);
 
-        _disbursement.AgreementFilePath = await WriteGeneratedAsync(bytes, "agreement");
+        _disbursement.AgreementFilePath = await WriteGeneratedAsync(bytes, FriendlyName(DocumentNames.LoanAgreement));
         _disbursement.AgreementHash = DigioEsignService.Sha256(bytes);
         await SaveDisbursementAsync();
         await ShowToastAsync("Agreement generated");
@@ -1257,9 +1277,11 @@ else
     }
 
     /// <summary>Writes generated PDF bytes to the guarded uploads folder, same shape as an upload.</summary>
-    private async Task<string> WriteGeneratedAsync(byte[] bytes, string kind)
+    private string FriendlyName(string docType) =>
+        DocumentNames.For(_application!.Id, _application.CustomerName, _application.CreatedAt, docType);
+
+    private async Task<string> WriteGeneratedAsync(byte[] bytes, string fileName)
     {
-        var fileName = $"{kind}-{Guid.NewGuid():N}.pdf";
         var savedPath = await Files.SaveUploadAsync(_application!.Id, "postsanction", fileName, bytes);
 
         return savedPath;
@@ -1273,9 +1295,9 @@ else
     /// </summary>
     private async Task<string> WriteWelcomeLetterAsync(byte[] bytes)
     {
-        var fileName = $"{SafeFileName(_application!.CustomerName)}-{DateTime.Today:yyyy-MM-dd}-welcomeletter.pdf";
+        var fileName = FriendlyName(DocumentNames.WelcomeLetter);
 
-        var savedPath = await Files.SaveUploadAsync(_application.Id, "postsanction", fileName, bytes);
+        var savedPath = await Files.SaveUploadAsync(_application!.Id, "postsanction", fileName, bytes);
 
         // A browsable archive of every welcome letter, outside the per-application upload tree.
         await Files.SaveAsync(Path.Combine("App_Data", "welcome-letters", fileName), bytes);

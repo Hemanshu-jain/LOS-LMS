@@ -19,7 +19,8 @@ public static class CamPdf
 {
     private static readonly CultureInfo IndianCulture = CultureInfo.GetCultureInfo("en-IN");
 
-    public static string FileNameFor(Application application) => $"CAM-{application.Id}.pdf";
+    public static string FileNameFor(Application application) =>
+        DocumentNames.For(application.Id, application.CustomerName, application.CreatedAt, DocumentNames.Cam);
 
     public static byte[] Build(Application application, CamCostBreakdown cam)
     {

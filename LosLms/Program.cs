@@ -169,6 +169,7 @@ builder.Services.AddScoped<LoanClosureService>();
 builder.Services.AddScoped<SettlementReconciler>();
 builder.Services.AddScoped<DigioWebhookService>();
 builder.Services.AddScoped<DigioEsignService>();
+builder.Services.AddSingleton<IAgreementSignatureBoxes, LoanAgreementSignatureBoxes>(); // where each borrower signs on the generated agreement
 builder.Services.AddScoped<DigioNachService>();
 builder.Services.AddScoped<DigioAsset>();
 builder.Services.AddScoped<ApiUsageReport>();
@@ -709,7 +710,8 @@ app.MapGet("/files/{applicationId}/{folder}/{name}", async (
     string folder,
     string name,
     IFileStore files,
-    IDbContextFactory<LosDbContext> dbFactory) =>
+    IDbContextFactory<LosDbContext> dbFactory,
+    HttpContext http) =>
 {
     // Requiring a signed-in user is not enough on its own. Without this check a user at company A
     // could read company B's Aadhaar and bank PDFs simply by holding a URL. Resolving the
@@ -733,7 +735,14 @@ app.MapGet("/files/{applicationId}/{folder}/{name}", async (
         return Results.NotFound();
     }
 
-    return stream is null ? Results.NotFound() : Results.Stream(stream, ContentTypeFor(Path.GetExtension(name)));
+    if (stream is null)
+    {
+        return Results.NotFound();
+    }
+
+    // Opens in the browser as before, but "Save as" proposes the file's own (descriptive) name.
+    http.Response.Headers.ContentDisposition = $"inline; filename=\"{name.Replace("\"", "")}\"";
+    return Results.Stream(stream, ContentTypeFor(Path.GetExtension(name)));
 }).RequireAuthorization();
 
 // Served without a download filename so PDFs render inline in an iframe; the UI's Download link
