@@ -422,11 +422,8 @@ else
                                         OnToggle="() => ToggleContact()">
                         <div class="field-grid">
                             <FormField Label="Mobile" For="contact-mobile" Required="true" Error="@ErrorFor("mobile")" Verified="party.MobileVerified">
-                                <div class="inline-input-row">
-                                    <input id="contact-mobile" type="tel" class="field-input" maxlength="10"
-                                           @bind="party.Mobile" @bind:after="AfterContactChanged" @onblur='() => Validate("mobile")' />
-                                    <button type="button" class="verify-button" @onclick='() => NotConfigured("mobile-verify", MobileVerifyUnavailable)'>Verify</button>
-                                </div>
+                                <input id="contact-mobile" type="tel" class="field-input" maxlength="10"
+                                       @bind="party.Mobile" @bind:after="AfterContactChanged" @onblur='() => Validate("mobile")' />
                             </FormField>
 
                             <FormField Label="Alternate mobile (optional)" For="contact-altmobile" Error="@ErrorFor("altMobile")">
@@ -555,7 +552,6 @@ else
     // sets a *Verified flag — a fake success here would be a compliance problem, not a shortcut.
     private const string PanOcrUnavailable = "Digio PAN verification is not switched on for this company. Enter and save manually.";
     private const string AadhaarOcrUnavailable = "Digio Aadhaar verification is not switched on for this company. Enter and save manually.";
-    private const string MobileVerifyUnavailable = "Mobile verification unavailable — SMS provider not configured.";
 
     private const long MaxUploadBytes = 5 * 1024 * 1024;
 
