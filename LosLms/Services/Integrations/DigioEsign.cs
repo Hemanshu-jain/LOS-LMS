@@ -107,7 +107,7 @@ public sealed class DigioEsignService(
 
         // Visible signature placement (Digio's "custom" coordinates, Rs 1.50 per signatory). Only when EVERY signer's box is known and the price is set;
         // otherwise Digio places the signature itself (display_on_page "last") and nothing extra is charged.
-        var coordinates = await CoordinatesAsync(db, parties.Select(p => (p.Party.PartyType, Identifier(p.Party, channel)!)).ToList());
+        var coordinates = await CoordinatesAsync(db, applicationId, parties.Select(p => (p.Party.PartyType, Identifier(p.Party, channel)!)).ToList());
         if (coordinates is not null)
         {
             body["sign_coordinates"] = coordinates;
@@ -267,17 +267,22 @@ public sealed class DigioEsignService(
     /// The sign_coordinates object per Digio's docs: { signerKey: { "page": [ { llx, lly, urx, ury } ] } }, keyed by the signer's identifier.
     /// Null (nothing custom) unless every signer has a box and ESIGN_COORDINATES has an active price.
     /// </summary>
-    private async Task<Dictionary<string, Dictionary<string, object[]>>?> CoordinatesAsync(LosDbContext db, List<(string PartyType, string Identifier)> signers)
+    private async Task<Dictionary<string, Dictionary<string, object[]>>?> CoordinatesAsync(LosDbContext db, string applicationId, List<(string PartyType, string Identifier)> signers)
     {
         if (boxes is null || signers.Count == 0 || !await db.ApiRates.AsNoTracking().AnyAsync(r => r.Code == DigioRates.EsignCoordinates && r.IsActive))
         {
             return null;
         }
 
+        // The agreement the company issues decides where each party signs (the standard agreement and the printed hypothecation form differ).
+        var template = await db.Companies.AsNoTracking()
+            .Where(c => db.Applications.IgnoreQueryFilters().Any(a => a.Id == applicationId && a.CompanyId == c.Id))
+            .Select(c => c.AgreementTemplate).FirstOrDefaultAsync();
+
         var result = new Dictionary<string, Dictionary<string, object[]>>();
         foreach (var (partyType, identifier) in signers)
         {
-            var mine = boxes.BoxesFor(partyType);
+            var mine = boxes.BoxesFor(partyType, template);
             if (mine is not { Count: > 0 })
             {
                 return null; // one signer without a known box: let Digio place all of them

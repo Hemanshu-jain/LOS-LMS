@@ -30,7 +30,14 @@ public sealed record AgreementData(
     decimal? BounceCharge,
     decimal BounceGstPct,
     DateOnly ExecutionDate,
-    byte[]? LenderSignature);
+    byte[]? LenderSignature)
+{
+    /// <summary>The company's vehicle catalog, used to split "Make Model" back into its two parts (hypothecation form).</summary>
+    public IReadOnlyList<VehicleLoanCap>? VehicleCatalog { get; init; }
+
+    /// <summary>The application's references (printed on the hypothecation form's proposal page).</summary>
+    public IReadOnlyList<LosLms.Models.Reference>? References { get; init; }
+}
 
 /// <summary>Fixed geometry of the signature page, shared by the layout and by <see cref="LoanAgreementSignatureBoxes"/> (PDF points, origin bottom-left).</summary>
 public static class AgreementLayout
@@ -70,6 +77,9 @@ public static class AgreementLayout
 public sealed class LoanAgreementSignatureBoxes : IAgreementSignatureBoxes
 {
     public IReadOnlyList<SignBox>? BoxesFor(string partyType) => AgreementLayout.BoxFor(partyType) is { } box ? new[] { box } : null;
+
+    public IReadOnlyList<SignBox>? BoxesFor(string partyType, string? template) =>
+        AgreementTemplates.Normalize(template) == AgreementTemplates.Hypothecation ? Agreements.HypothecationLayout.BoxesFor(partyType) : BoxesFor(partyType);
 }
 
 /// <summary>
@@ -119,10 +129,18 @@ public static class LoanAgreementPdf
             // Page 5 — signatures (fixed geometry, see AgreementLayout)
             document.Page(page => Frame(page, d, c => SignaturePage(c, d, parties), showEntire: true));
 
-            // Schedule A — Key Fact Statement, Schedule B — repayment schedule (any length)
-            document.Page(page => Frame(page, d, c => KeyFactStatement(c, d, kfs), showEntire: false));
-            document.Page(page => Frame(page, d, c => RepaymentSchedule(c, d), showEntire: false));
+            AddScheduleAB(document, d, kfs);
         });
+    }
+
+    /// <summary>Schedule A — Key Fact Statement and Schedule B — repayment schedule (any length), shared by every agreement template.</summary>
+    internal static void AddScheduleAB(IDocumentContainer document, AgreementData d, LoanKfs? kfs = null)
+    {
+        kfs ??= LoanKfs.Compute(d.Schedule, d.Decision.SanctionedAmount ?? 0m, d.NetDisbursed,
+            d.Charges.Where(c => !c.Waived).Sum(c => c.Amount + c.Gst), d.ValueDate);
+        var k = kfs;
+        document.Page(page => Frame(page, d, c => KeyFactStatement(c, d, k), showEntire: false));
+        document.Page(page => Frame(page, d, c => RepaymentSchedule(c, d), showEntire: false));
     }
 
     // ---------------------------------------------------------------- frame: letterhead + footer on every page
@@ -467,4 +485,16 @@ public static class LoanAgreementPdf
     private static string Money(decimal amount) => "₹" + Math.Round(amount, MidpointRounding.AwayFromZero).ToString("N0", Indian);
 
     private static string Money2(decimal amount) => amount.ToString("N2", Indian);
+}
+
+/// <summary>Builds the loan agreement in the template the company chose in Settings (the standard one unless it chose the printed hypothecation form).</summary>
+public static class AgreementBuilder
+{
+    public static byte[] Build(AgreementData d) =>
+        AgreementTemplates.Normalize(d.Lender.AgreementTemplate) == AgreementTemplates.Hypothecation
+            ? Agreements.HypothecationAgreementPdf.Build(d)
+            : LoanAgreementPdf.Build(d);
+
+    /// <summary>The download name of the generated agreement (same pattern for both templates).</summary>
+    public static string FileNameFor(Application application, string? applicantName = null) => LoanAgreementPdf.FileNameFor(application, applicantName);
 }

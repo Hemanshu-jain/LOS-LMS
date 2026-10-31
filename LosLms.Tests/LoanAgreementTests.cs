@@ -127,7 +127,7 @@ public sealed class LoanAgreementTests
 
     // ---- the document ----
 
-    private static AgreementData Data(bool worstCase, int partyCount = 3)
+    internal static AgreementData Data(bool worstCase, int partyCount = 3)
     {
         var company = new Company
         {

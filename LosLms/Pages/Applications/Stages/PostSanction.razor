@@ -1161,6 +1161,8 @@ else
         List<Party> parties;
         SecurityDetail? security;
         Company? lender;
+        List<VehicleLoanCap> catalog;
+        List<LosLms.Models.Reference> references;
         byte[]? lenderSignature = null;
         decimal? bounceCharge = null;
         var bounceGstPct = 0m;
@@ -1175,6 +1177,8 @@ else
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
 
             lender = await db.Companies.AsNoTracking().FirstOrDefaultAsync(c => c.Id == _application.CompanyId);
+            catalog = await db.VehicleLoanCaps.AsNoTracking().Where(v => v.CompanyId == _application.CompanyId).ToListAsync();
+            references = await db.References.AsNoTracking().Where(r => r.ApplicationId == ApplicationId).OrderBy(r => r.Id).ToListAsync();
 
             var digio = await db.DigioSettings.AsNoTracking().Where(s => s.CompanyId == _application.CompanyId).FirstOrDefaultAsync();
             if (digio is not null)
@@ -1197,8 +1201,12 @@ else
         var data = new AgreementData(
             lender, _application, _decision, parties, security, _charges, Schedule, FirstMonthEmi, NetDisbursement,
             _disbursement.TradeAdvance ?? 0m, _disbursement.ValueDate, _disbursement.FirstEmiDate, _disbursement.EmiDayOfMonth,
-            bounceCharge, bounceGstPct, DateOnly.FromDateTime(DateTime.Today), lenderSignature);
-        var bytes = LoanAgreementPdf.Build(data);
+            bounceCharge, bounceGstPct, DateOnly.FromDateTime(DateTime.Today), lenderSignature)
+        {
+            VehicleCatalog = catalog,
+            References = references,
+        };
+        var bytes = AgreementBuilder.Build(data);
 
         _disbursement.AgreementFilePath = await WriteGeneratedAsync(bytes, FriendlyName(DocumentNames.LoanAgreement));
         _disbursement.AgreementHash = DigioEsignService.Sha256(bytes);

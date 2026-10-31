@@ -1382,6 +1382,22 @@ namespace LosLms.Migrations
                     b.Property<int>("AddressValidityDays")
                         .HasColumnType("int");
 
+                    b.Property<string>("AgreementTemplate")
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<decimal?>("ArbitrationFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Arbitrator1")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<string>("Arbitrator2")
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
                     b.Property<string>("AuthorisedSignatoryDesignation")
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");

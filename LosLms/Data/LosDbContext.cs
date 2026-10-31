@@ -772,6 +772,7 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
     {
         modelBuilder.Entity<Company>(entity =>
         {
+            entity.Property(c => c.ArbitrationFee).HasPrecision(18, 2);
             entity.HasKey(c => c.Id);
 
             // The company code is the prefix of every application id, so it MUST be unique across
