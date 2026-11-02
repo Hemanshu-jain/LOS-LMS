@@ -307,10 +307,10 @@ public sealed class DigioCollectTests : IDisposable
     public void NothingButReceiptService_AssignsPaidOrPartPaid()
     {
         var root = AppContext.BaseDirectory;
-        while (root is not null && !Directory.Exists(Path.Combine(root, "LosLms", "Services"))) { root = Path.GetDirectoryName(root); }
+        while (root is not null && !Directory.Exists(Path.Combine(root, "src", "LosLms", "Services"))) { root = Path.GetDirectoryName(root); }
         var assign = new Regex("""Status\s*=(?!=)\s*"(Paid|PartPaid)"|"Paid"\s*:\s*"PartPaid"|\?\s*"Paid"\s*:""");
 
-        var offenders = Directory.EnumerateFiles(Path.Combine(root!, "LosLms"), "*.*", SearchOption.AllDirectories)
+        var offenders = Directory.EnumerateFiles(Path.Combine(root!, "src", "LosLms"), "*.*", SearchOption.AllDirectories)
             .Where(f => (f.EndsWith(".cs") || f.EndsWith(".razor")) && !f.Contains(Path.Combine("Migrations", "")) && !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)
                 && !f.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar) && Path.GetFileName(f) != "ReceiptService.cs")
             .Where(f => assign.IsMatch(File.ReadAllText(f))).ToList();

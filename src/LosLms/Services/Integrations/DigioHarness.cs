@@ -37,7 +37,7 @@ public static partial class DigioHarness
                 return Results.BadRequest("These are PRODUCTION keys. The harness only runs against sandbox keys.");
             }
 
-            var samples = Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "docs", "digio", "samples"));
+            var samples = Path.GetFullPath(Path.Combine(env.ContentRootPath, "..", "..", "docs", "digio", "samples"));
             Directory.CreateDirectory(samples);
             var run = Guid.NewGuid().ToString("N")[..8];
             var results = new List<object>();

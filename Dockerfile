@@ -6,13 +6,13 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 # Restore first, from the project files and lock files alone, so this layer is cached until a dependency changes.
 COPY Directory.Build.props ./
-COPY LosLms/LosLms.csproj LosLms/packages.lock.json LosLms/
-COPY LosLms.Licensing/LosLms.Licensing.csproj LosLms.Licensing/packages.lock.json LosLms.Licensing/
-RUN dotnet restore LosLms/LosLms.csproj --locked-mode
-COPY LosLms.Licensing LosLms.Licensing
-COPY LosLms LosLms
+COPY src/LosLms/LosLms.csproj src/LosLms/packages.lock.json src/LosLms/
+COPY src/LosLms.Licensing/LosLms.Licensing.csproj src/LosLms.Licensing/packages.lock.json src/LosLms.Licensing/
+RUN dotnet restore src/LosLms/LosLms.csproj --locked-mode
+COPY src/LosLms.Licensing src/LosLms.Licensing
+COPY src/LosLms src/LosLms
 # Native libraries for every OS ship in runtimes/; the container only runs linux-x64, so drop the rest (about 70 MB).
-RUN dotnet publish LosLms/LosLms.csproj -c Release -o /out --no-restore -p:UseAppHost=false \
+RUN dotnet publish src/LosLms/LosLms.csproj -c Release -o /out --no-restore -p:UseAppHost=false \
     && cd /out/runtimes && ls | grep -v '^linux-x64$' | xargs -r rm -rf
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0

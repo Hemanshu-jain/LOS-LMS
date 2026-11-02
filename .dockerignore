@@ -17,8 +17,7 @@ update-signing-private.pem
 *.pem
 .claude/
 docs/
-test-data/
-LosLms.Server/
-LosLms.Shell/
-LosLms.Tests/
-LosLms.LicenseTool/
+tests/
+src/LosLms.Server/
+src/LosLms.Shell/
+src/LosLms.LicenseTool/

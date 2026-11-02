@@ -16,7 +16,7 @@
     <Version>1.2.4</Version>
     <!-- The product logo as the exe's file icon in Explorer. The window/tray icon is read from the exe
          itself at runtime, so no separate app.ico file is shipped (keeps the folder clean). -->
-    <ApplicationIcon>..\branding\app.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\branding\app.ico</ApplicationIcon>
     <!-- Keep the single-file publish output to just the exe: no .pdb, no NuGet .xml doc files. -->
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>

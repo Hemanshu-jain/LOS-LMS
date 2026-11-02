@@ -435,7 +435,7 @@ try {
     Step '6/8 Import the saved-password vault (and bring the Aiven schema up to date)'
     if ($ownPublish) {
         Say '  Building the cloud LosLms (dotnet publish) ...'
-        $pub = Invoke-Native -Exe 'dotnet' -Arguments @('publish', (Join-Path $repoRoot 'LosLms\LosLms.csproj'), '-c', 'Release', '-o', $PublishDir, '--nologo', '-v', 'q')
+        $pub = Invoke-Native -Exe 'dotnet' -Arguments @('publish', (Join-Path $repoRoot 'src\LosLms\LosLms.csproj'), '-c', 'Release', '-o', $PublishDir, '--nologo', '-v', 'q')
         if ($pub.ExitCode -ne 0) { Fail "dotnet publish failed: $($pub.Out) $($pub.Err)" }
     }
     $dll = Join-Path $PublishDir 'LosLms.dll'

@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\LosLms\LosLms.csproj" />
+    <ProjectReference Include="..\..\src\LosLms\LosLms.csproj" />
   </ItemGroup>
 
 </Project>

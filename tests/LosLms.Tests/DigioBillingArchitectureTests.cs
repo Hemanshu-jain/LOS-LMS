@@ -17,7 +17,7 @@ public class DigioBillingArchitectureTests
             dir = dir.Parent;
         }
 
-        return Path.Combine(dir?.FullName ?? throw new InvalidOperationException("LosLms.sln not found"), "LosLms");
+        return Path.Combine(dir?.FullName ?? throw new InvalidOperationException("LosLms.sln not found"), "src", "LosLms");
     }
 
     /// <summary>The text between the parentheses that open at <paramref name="open"/>.</summary>

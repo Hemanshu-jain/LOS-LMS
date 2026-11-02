@@ -61,9 +61,9 @@ public sealed class UpdateSigningTests
 
     private static string RepoRoot()
     {
-        // tests run from LosLms.Tests/bin/<cfg>/net8.0 — the repo root is four levels up.
+        // tests run from tests/LosLms.Tests/bin/<cfg>/net8.0 — the repo root is five levels up.
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        for (var i = 0; i < 5 && dir is not null; i++)
+        for (var i = 0; i < 6 && dir is not null; i++)
         {
             if (File.Exists(Path.Combine(dir.FullName, "LosLms.sln")))
             {
