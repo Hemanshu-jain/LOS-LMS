@@ -1,0 +1,289 @@
+@inherits LayoutComponentBase
+@using LosLms.Data
+@using LosLms.Services
+@using Microsoft.EntityFrameworkCore
+@inject NavigationManager Navigation
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject UpdateNotificationService Updates
+@inject LicenseService License
+@inject TenantContext Tenant
+@inject ApiBillingService Billing
+
+@* Subscription freeze. Once the licence has expired the whole app is paused — this replaces every
+   screen with the renewal card. A SuperAdmin can paste a renewal key here; everyone else is told to
+   contact their admin. The /account pages use a different layout, so signing in to renew still works. *@
+@if (_onAccountPage && (License.IsFrozen || _apiAccess is { Allowed: false }))
+{
+    @* Sign in / Sign out must still work while the app is frozen or paused: both cards link to /account/logout,
+       and with the card replacing the page the sign-out never ran. *@
+    @Body
+}
+else if (License.IsFrozen)
+{
+    <div class="license-frozen">
+        <div class="license-card">
+            <h1>Subscription paused</h1>
+            <p>
+                This LOS/LMS subscription@(string.IsNullOrEmpty(_licClient) ? "" : $" for {_licClient}")
+                ended on <strong>@License.ExpiresUtc?.ToLocalTime().ToString("d MMM yyyy")</strong>.
+                The app stays paused until it is renewed — your data is safe and untouched.
+            </p>
+
+            @if (_role == "SuperAdmin")
+            {
+                <p class="license-hint">Paste the renewal key you were sent:</p>
+                <textarea class="license-key" rows="4" @bind="_renewKey" placeholder="Paste renewal key…"></textarea>
+                <button type="button" class="license-renew" disabled="@_renewing" @onclick="Renew">Renew subscription</button>
+                @if (_renewMessage is not null)
+                {
+                    <p class="license-msg">@_renewMessage</p>
+                }
+            }
+            else
+            {
+                <p class="license-hint">Please contact your administrator to renew the subscription.</p>
+            }
+
+            <a class="license-signout" href="/account/logout">Sign out</a>
+        </div>
+    </div>
+}
+else if (_apiAccess is { Allowed: false } && _onPayPage)
+{
+    @* The one page a paused company can still open (besides Sign out): where they pay the bill. *@
+    <div class="pay-frame">
+        <div class="pay-frame-bar"><span>Service paused — payment pending</span><a class="license-signout" href="/account/logout">Sign out</a></div>
+        @Body
+    </div>
+}
+else if (_apiAccess is { Allowed: false } paused)
+{
+    @* Postpaid API bill unpaid past the grace window: the company's whole app is paused until the vendor
+       records the payment (SuperAdmin → API Usage → Mark paid). SuperAdmin is never paused. *@
+    <div class="license-frozen">
+        <div class="license-card">
+            <h1>Service paused — payment pending</h1>
+            <p>@paused.Reason</p>
+            <p>Amount outstanding: <strong>₹@paused.AmountDue.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-IN"))</strong> (incl. GST).
+                Your data is safe and untouched.</p>
+            @if (paused.ClaimedAt is { } claimedAt)
+            {
+                <p class="license-hint">Payment submitted on @claimedAt.ToLocalTime().ToString("d MMM yyyy"), awaiting confirmation.</p>
+            }
+            else
+            {
+                <p class="license-hint">Pay the bill and tell us the reference; access resumes as soon as the payment is confirmed.</p>
+            }
+            <a class="license-renew" href="/billing/pay">Pay now</a>
+            <a class="license-signout" href="/account/logout">Sign out</a>
+        </div>
+    </div>
+}
+else
+{
+
+@* The app bar is the only chrome this layout owns. It replaces the hardcoded
+   "Credit Officer · Nashik West" chip that used to live inside the Applications Dashboard and
+   appeared nowhere else — so signing out was impossible from any of the eight stage screens. *@
+<AuthorizeView>
+    <Authorized>
+        <header class="app-bar">
+            <a class="app-brand" href="/applications">LOS/LMS</a>
+
+            @* The signed-in user's own company, centred — so the app reads as theirs, and someone with
+               two firms open in two tabs can tell them apart at a glance. Empty for a SuperAdmin (the
+               vendor), who belongs to no single company. *@
+            @if (!string.IsNullOrEmpty(_companyName))
+            {
+                <span class="app-company" title="@_companyName">@_companyName</span>
+            }
+
+            <a class="app-nav-link" href="/collections">Collections</a>
+
+            @* Cosmetic only. The page itself carries [Authorize(Roles = …)], so hiding the link is
+               convenience, not the control — Staff typing the URL still get the access-denied card. *@
+            <AuthorizeView Roles="@TenantContext.AdminRoles" Context="admin">
+                <Authorized>
+                    <a class="app-nav-link" href="/admin/inbox">Admin Inbox</a>
+                    <a class="app-nav-link" href="/settings">Settings</a>
+                </Authorized>
+            </AuthorizeView>
+
+            @* Vendor-only: jump back to the company picker to open a different company. *@
+            <AuthorizeView Roles="@TenantContext.SuperAdminRole" Context="sa">
+                <Authorized>
+                    <a class="app-nav-link" href="/system/digio">Digio keys</a>
+                    <a class="app-nav-link" href="/system/partner-apps">Partner apps</a>
+                    <a class="app-nav-link" href="/system/payment-details">Payment details</a>
+                    <a class="app-nav-link" href="/companies">Switch company</a>
+                </Authorized>
+            </AuthorizeView>
+
+            <div class="app-user">
+                <span class="app-user-name">@_displayName</span>
+                <span class="app-user-role">@_role</span>
+                <div class="app-avatar" role="img" aria-label="Signed-in user">
+                    <Icon Name="user" Size="14" />
+                </div>
+                <a class="app-signout" href="/account/logout">Sign out</a>
+            </div>
+        </header>
+    </Authorized>
+</AuthorizeView>
+
+@* Passive reminder for the SuperAdmin — the background check found a newer release. Installing it is
+   still a deliberate click-through to System Updates; this only surfaces that one exists. *@
+@if (_role is "SuperAdmin" or "Admin" && Updates.UpdateAvailable && !_updateDismissed)
+{
+    <div class="update-banner" role="status">
+        <span class="update-banner-text">
+            🔔 A new version (<strong>@Updates.LatestTag</strong>) is available.
+        </span>
+        <a class="update-banner-action" href="/system/updates">Review &amp; install →</a>
+        <button type="button" class="update-banner-dismiss" aria-label="Dismiss"
+                @onclick="() => _updateDismissed = true">🗙</button>
+    </div>
+}
+
+@* Approaching-expiry warning (the grace window before the freeze). Admin/SuperAdmin only — they renew. *@
+@if (_role is "SuperAdmin" or "Admin" && License.State == LicenseState.ExpiringSoon)
+{
+    <div class="license-banner" role="status">
+        ⚠️ Subscription ends in <strong>@License.DaysRemaining day@(License.DaysRemaining == 1 ? "" : "s")</strong>
+        (@License.ExpiresUtc?.ToLocalTime().ToString("d MMM yyyy")). Please renew to avoid interruption.
+    </div>
+}
+
+@* An API bill is unpaid and has reached its due date (shown from the due date, not before; see ApiAccess.ReminderVisible).
+   After the due date the app is paused and the pause screen takes over. Admins only — they pay. *@
+@if (_role == "Admin" && _apiAccess is { Allowed: true, DueDate: { } due } pending && pending.ReminderVisible(ApiBillingService.TodayIst()))
+{
+    <div class="license-banner" role="status">
+        ⚠️ API bill of <strong>₹@pending.AmountDue.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-IN"))</strong>
+        is due by <strong>@due.ToString("d MMM yyyy")</strong>. Unpaid after that, the app pauses.
+        <a href="/admin/api-usage">View bill →</a>
+        <a class="license-banner-pay" href="/billing/pay"><strong>Pay now →</strong></a>
+    </div>
+}
+
+@Body
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private string _displayName = string.Empty;
+    private string _role = string.Empty;
+    private string _companyName = string.Empty;
+    private bool _updateDismissed;
+    private ApiAccess? _apiAccess;
+    private bool _onPayPage;
+    private bool _onAccountPage;
+
+    private string _licClient = string.Empty;
+    private string _renewKey = string.Empty;
+    private string? _renewMessage;
+    private bool _renewing;
+
+    private void Renew()
+    {
+        _renewing = true;
+        var (ok, message) = License.ApplyRenewal(_renewKey);
+        _renewMessage = message;
+        _renewing = false;
+
+        if (ok)
+        {
+            // No longer frozen — reload to re-enter the app cleanly.
+            Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _licClient = License.Client ?? string.Empty;
+
+        if (AuthenticationState is null)
+        {
+            return;
+        }
+
+        var user = (await AuthenticationState).User;
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        _displayName = user.FindFirst(TenantContext.DisplayNameClaim)?.Value
+            ?? user.Identity.Name
+            ?? string.Empty;
+
+        // Most specific role wins — a SuperAdmin who also holds Staff should read as SuperAdmin.
+        _role = user.IsInRole(TenantContext.SuperAdminRole) ? "SuperAdmin"
+            : user.IsInRole(TenantContext.AdminRole) ? "Admin"
+            : user.IsInRole(TenantContext.StaffRole) ? "Staff"
+            : "No role";
+
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        _onPayPage = relative.StartsWith("billing/pay", StringComparison.OrdinalIgnoreCase);
+        _onAccountPage = relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase);
+
+        // No forced password change exists any more: the admin sets every password (including their own)
+        // and staff never change theirs, so there is nothing to redirect to here.
+
+        // Backstop for the first-run setup gate — the interactive-circuit half of the middleware in
+        // Program.cs, which never sees SignalR navigations. Same rule: a company-scoped user whose
+        // company setup is not complete is sent to Company Setup and can reach nothing else. SuperAdmin
+        // has no company and is exempt; so are the /account and /company-setup pages themselves.
+        var isSuperAdmin = user.IsInRole(TenantContext.SuperAdminRole);
+        var setupExempt = relative.StartsWith("account/", StringComparison.OrdinalIgnoreCase)
+            || relative.StartsWith("settings", StringComparison.OrdinalIgnoreCase)
+            || relative.StartsWith("company-setup", StringComparison.OrdinalIgnoreCase)
+            || _onPayPage;
+
+        if (!isSuperAdmin
+            && int.TryParse(user.FindFirst(TenantContext.CompanyIdClaim)?.Value, out var companyId))
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+
+            // The company name shown in the bar. One indexed lookup; refreshes on each navigation so a
+            // rename in Company Setup shows up without a re-login.
+            _companyName = await db.Companies
+                .Where(c => c.Id == companyId)
+                .Select(c => c.Name)
+                .FirstOrDefaultAsync() ?? string.Empty;
+
+            _apiAccess = await Billing.CheckAccessAsync(companyId);
+
+            if (!setupExempt && !await CompanySetupState.IsCompleteAsync(db, companyId))
+            {
+                Navigation.NavigateTo("/settings", forceLoad: true);
+            }
+        }
+        else if (isSuperAdmin)
+        {
+            // A SuperAdmin acting as a company shows that company's name in the bar, so the vendor always
+            // knows which company they're inside. Not acting (browsing the picker) shows no chip.
+            await Tenant.EnsureLoadedAsync();
+            if (Tenant.ActingCompanyId is int actingId)
+            {
+                await using var db = await DbFactory.CreateDbContextAsync();
+                _companyName = await db.Companies
+                    .Where(c => c.Id == actingId)
+                    .Select(c => c.Name)
+                    .FirstOrDefaultAsync() ?? string.Empty;
+            }
+            else
+            {
+                _companyName = string.Empty;
+            }
+        }
+    }
+}

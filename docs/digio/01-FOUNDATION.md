@@ -9,7 +9,7 @@ Code references are to the current repo (`LosLms/...`).
 
 | Piece | File | Keep / change |
 |---|---|---|
-| Credentials per company in the encrypted vault (`digio:{companyId}`) | `Services/Integrations/DigioClient.cs`, `Services/PasswordVault.cs` | **Keep** |
+| Credentials per company in the encrypted vault (`digio:{companyId}`) | `Services/Digio/DigioClient.cs`, `Services/Security/PasswordVault.cs` | **Keep** |
 | `PostAsync` gate: keys → `ApiBillingService.CheckAccessAsync` → Basic auth → meter | `DigioClient.cs` | **Extend** (see §2) |
 | Sandbox `https://ext.digio.in:444`, production `https://api.digio.in` | `DigioClient.cs` | **Keep** (matches Digio's environments page) |
 | Webhook `POST /webhooks/digio/{companyId}` + HMAC `X-Digio-Checksum` | `Program.cs` (~480–535) | **Change** response policy (§4) |
@@ -17,7 +17,7 @@ Code references are to the current repo (`LosLms/...`).
 | Rate card + usage log + monthly invoice + pause | `DigioRates.cs`, `ApiBillingService.cs`, `Models/Integrations/ApiBilling.cs` | **Keep**, add codes (§10) |
 | SuperAdmin keys page | `Pages/SuperAdmin/DigioKeys.razor` | **Extend** (§7) |
 | Penny drop, e-Sign dispatch | `BankFinancial.razor`, `EsignService.cs` | Migrate onto the foundation in Phases 2–3 |
-| Tests: checksum + signed-only-by-webhook | `LosLms.Tests/DigioTests.cs` | **Keep** and extend |
+| Tests: checksum + signed-only-by-webhook | `tests/LosLms.Tests/DigioTests.cs` | **Keep** and extend |
 
 ---
 
@@ -251,7 +251,7 @@ event (as e-Sign is today), **after confirming against Digio's invoice** which e
 ## 11. Test harness (no live network in tests, ever)
 
 - `FakeDigioHandler : HttpMessageHandler` registered via `IHttpClientFactory` in tests. It is driven by fixtures
-  in `LosLms.Tests/Fixtures/Digio/*.json`: **real sandbox responses captured in Phase 0, with PII masked**.
+  in `tests/LosLms.Tests/Fixtures/Digio/*.json`: **real sandbox responses captured in Phase 0, with PII masked**.
 - Webhook tests post fixture bodies with a computed HMAC through the real endpoint (`WebApplicationFactory`
   if available; otherwise test the handler + processor directly, as `DigioTests` does today).
 - State-machine tests per product: every legal transition, rejected backward transitions, duplicate events,

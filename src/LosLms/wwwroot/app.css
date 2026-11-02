@@ -1,0 +1,1248 @@
+﻿body {
+    margin: 0;
+}
+
+h1:focus {
+    outline: none;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid #e50000;
+}
+
+.validation-message {
+    color: #e50000;
+}
+
+/* Mandatory-field marker + "jump to the field" flash. Global (not scoped) because FormField is used
+   across many component-scoped stylesheets, and the flash class is added to an input by id from JS. */
+.form-field-required {
+    color: #c0392b;
+    margin-left: 2px;
+    font-weight: 700;
+}
+
+.field-flash {
+    animation: field-flash-kf 1.6s ease-out;
+    outline: 2px solid #c0392b !important;
+    outline-offset: 1px;
+    border-radius: 2px;
+}
+
+@keyframes field-flash-kf {
+    0%   { background-color: #fdecea; }
+    100% { background-color: transparent; }
+}
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+}
+
+    .blazor-error-boundary::after {
+        content: "An error has occurred."
+    }
+
+.darker-border-checkbox.form-check-input {
+    border-color: #929292;
+}
+
+/* ============================================================
+   Sign-in / sign-out / change-password
+   ------------------------------------------------------------
+   Global rather than scoped: three components in Pages/Account
+   share these rules, and scoped CSS would mean three copies.
+   Matches the dense, flat, hard-edged treatment the rest of the
+   app uses - same 1px borders, same type scale, no radius.
+   ============================================================ */
+.auth-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #eceef1;
+    padding: 24px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid #d8dbe1;
+    padding: 28px 28px 24px;
+}
+
+.auth-head {
+    margin-bottom: 22px;
+}
+
+.auth-system {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+}
+
+/* Scale contrast carries the hierarchy here - 22px against 10px and 11.5px. */
+.auth-title {
+    margin: 10px 0 4px;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.15;
+    color: #1a1f29;
+}
+
+.auth-sub {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #5b6472;
+}
+
+.auth-field {
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.auth-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #5b6472;
+}
+
+/* .field-input is scoped to the stage screens, so the auth pages need their own copy of it. */
+.auth-page .field-input {
+    height: 32px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d8dbe1;
+    background: #fafbfc;
+    font-size: 12.5px;
+    font-family: inherit;
+    padding: 0 9px;
+    color: #1a1f29;
+}
+
+.auth-page .field-input:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: -2px;
+    background: #fff;
+}
+
+/* Password field with an inline eye reveal. */
+.auth-password {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.auth-password .field-input {
+    padding-right: 44px;
+}
+
+/* Hide the browser's own password reveal control (Edge / WebView2 shows ::-ms-reveal), so only our
+   single eye button appears — never two side by side. */
+input[type=password]::-ms-reveal,
+input[type=password]::-ms-clear { display: none; }
+
+.auth-reveal {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #5b6b7f;
+    cursor: pointer;
+}
+
+.auth-reveal:hover,
+.auth-reveal.is-revealed { color: #1f3a5f; }
+
+.auth-reveal:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: 1px;
+    border-radius: 4px;
+}
+
+.auth-reveal svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Show the open eye by default; swap to the struck-through eye once the password is revealed. */
+.auth-reveal .reveal-eye-off { display: none; }
+.auth-reveal.is-revealed .reveal-eye { display: none; }
+.auth-reveal.is-revealed .reveal-eye-off { display: inline-block; }
+
+/* ---------------------------------------------------------------------------
+   File uploads — one consistent control everywhere.
+
+   Every file picker in the app is a styled <label> that wraps a hidden <InputFile>, so the browser's
+   raw "Choose File" button never shows. The stage screens carry component-scoped copies of these
+   rules; this is the global definition so Settings (which has no scoped CSS) and any label that only
+   set the class — like Post-sanction's dropzones — get the same look and the same hidden native input.
+   Global CSS reaches the <input> InputFile renders without needing ::deep.
+   --------------------------------------------------------------------------- */
+.upload-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    color: #3d3d3d;
+    background: #ebebeb;
+    border: 1px solid #9e9e9e;
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.upload-button:hover { background: #e0e0e0; }
+
+.upload-button input[type="file"],
+.dropzone input[type="file"],
+.other-target input[type="file"],
+.setup-import-file input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* First-run "create your administrator account" prompt on the sign-in page. */
+.auth-setup-prompt {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    background: #eef3fb;
+    border: 1px solid #cdddf3;
+    font-size: 12px;
+    color: #1f3a5f;
+}
+
+.auth-setup-prompt p { margin: 0 0 6px; }
+
+.auth-setup-link {
+    font-weight: 600;
+    color: #1f3a5f;
+    text-decoration: none;
+}
+
+.auth-setup-link:hover { text-decoration: underline; }
+
+.auth-hint {
+    font-size: 9.5px;
+    line-height: 1.4;
+    color: #93999a;
+    font-style: italic;
+}
+
+.auth-validation {
+    font-size: 10px;
+    color: #8a1f1f;
+}
+
+.auth-remember {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 4px 0 18px;
+    font-size: 11.5px;
+    color: #5b6472;
+    cursor: pointer;
+}
+
+.auth-submit {
+    width: 100%;
+    height: 34px;
+    border: 1px solid #1f3a5f;
+    background: #1f3a5f;
+    color: #fff;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.auth-submit:hover {
+    background: #172c48;
+}
+
+.auth-submit:focus-visible {
+    outline: 2px solid #1f3a5f;
+    outline-offset: 2px;
+}
+
+/* Quieter sibling of .auth-submit (e.g. Deny next to Allow). */
+.auth-submit-secondary {
+    margin-top: 8px;
+    background: #fff;
+    color: #1f3a5f;
+}
+
+.auth-submit-secondary:hover {
+    background: #eef1f5;
+}
+
+.auth-secondary {
+    display: block;
+    margin-top: 12px;
+    text-align: center;
+    font-size: 11px;
+    color: #5b6472;
+}
+
+/* ---- Error pages (Pages/Error.razor) ----------------------------------------
+   Reuse the auth card wholesale; these few rules only add the status-code display
+   and turn the primary <a> into the same block the sign-in button already is. */
+.auth-code {
+    display: block;
+    margin: 14px 0 2px;
+    font-size: 52px;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: -.02em;
+    color: #1f3a5f;
+}
+
+/* The action is a link, not a <button>, so give it the button box the class assumes. */
+a.auth-submit {
+    display: block;
+    box-sizing: border-box;
+    line-height: 34px;
+    text-align: center;
+    text-decoration: none;
+}
+
+.auth-error-actions {
+    margin-top: 20px;
+}
+
+.auth-error-actions .auth-secondary {
+    text-decoration: none;
+}
+
+.auth-meta {
+    margin: 18px 0 0;
+    font-size: 10px;
+    color: #8d8d8d;
+}
+
+.auth-meta code {
+    font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+    color: #5b6472;
+}
+
+/* ---- Connection overlay (App.razor #components-reconnect-modal) --------------
+   Blazor toggles .components-reconnect-{show,failed,rejected} on the modal when the
+   SignalR circuit drops. Default hidden; shown as a full-screen scrim + auth-style
+   card for any of those states. Each per-state block is hidden unless its state is
+   active, so one card serves all three messages. */
+#components-reconnect-modal {
+    display: none;
+}
+
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-rejected {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    /* A calm scrim, not a hard black — the app stays faintly visible behind it. */
+    background: rgba(26, 31, 41, .55);
+    padding: 24px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.reconnect-card {
+    width: 100%;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid #d8dbe1;
+    padding: 26px 28px 24px;
+    text-align: center;
+    box-shadow: 0 18px 48px rgba(26, 31, 41, .25);
+}
+
+.reconnect-eyebrow {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    margin-bottom: 16px;
+}
+
+.reconnect-spinner {
+    width: 30px;
+    height: 30px;
+    margin: 0 auto 16px;
+    border: 3px solid #d8dbe1;
+    border-top-color: #1f3a5f;
+    border-radius: 50%;
+    animation: reconnect-spin 0.8s linear infinite;
+}
+
+@keyframes reconnect-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* The spinner is progress; a closed (rejected) session is not progressing, so hide it there. */
+#components-reconnect-modal.components-reconnect-rejected .reconnect-spinner {
+    display: none;
+}
+
+.reconnect-title {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 600;
+    color: #1a1f29;
+}
+
+.reconnect-msg {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #5b6472;
+}
+
+/* Per-state visibility. Hidden by default; revealed only under the matching modal class. */
+.reconnect-when-show,
+.reconnect-when-failed,
+.reconnect-when-rejected {
+    display: none;
+}
+
+.components-reconnect-show .reconnect-when-show,
+.components-reconnect-failed .reconnect-when-failed,
+.components-reconnect-rejected .reconnect-when-rejected {
+    display: revert;
+}
+
+.reconnect-button {
+    /* no display here: the "when rejected" rules decide, so the Reload button only shows once the connection is truly closed */
+    margin-top: 18px;
+    box-sizing: border-box;
+    height: 34px;
+    line-height: 34px;
+    padding: 0 20px;
+    border: 1px solid #1f3a5f;
+    background: #1f3a5f;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.reconnect-button:hover {
+    background: #172c48;
+}
+
+/* ---- Unhandled-error bar (App.razor #blazor-error-ui) ----
+   Blazor flips this to display:block inline when a client error occurs. */
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 1001;
+    padding: 12px 20px;
+    background: #fff4d6;
+    color: #3d2a00;
+    border-top: 3px solid #b7791f;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, .25);
+}
+
+#blazor-error-ui .blazor-error-reload,
+#blazor-error-ui .blazor-error-reload:visited {
+    display: inline-block;
+    margin-left: 14px;
+    padding: 2px 12px;
+    border-radius: 4px;
+    background: #3d2a00;
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+#blazor-error-ui .blazor-error-reload:hover { background: #5c4100; }
+
+/* Same treatment the stage screens use for a blocking message, repeated globally for /account. */
+.auth-page .inline-error {
+    margin: 0 0 14px;
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 7px 9px;
+}
+
+/* A link inside an error / notice box takes the box's own colour (the browser default blue and visited purple clash with it). */
+.auth-page .inline-error a,
+.auth-page .inline-error a:visited,
+.auth-page .auth-notice a,
+.auth-page .auth-notice a:visited {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.not-authorised,
+.loading-note {
+    padding: 24px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 12px;
+    color: #5b6472;
+}
+
+/* ============================================================
+   Company Setup
+   ------------------------------------------------------------
+   Global rather than scoped: one shell page plus three tab
+   components share these, and scoped CSS would mean four copies.
+   Same dense, flat, hard-edged treatment as the stage screens.
+   ============================================================ */
+.setup-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #d8dbe1;
+}
+
+.setup-eyebrow {
+    display: block;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+}
+
+.setup-title {
+    margin: 4px 0 0;
+    font-size: 19px;
+    font-weight: 600;
+    color: #1a1f29;
+}
+
+.setup-back { font-size: 11px; color: #5b6472; text-decoration: none; }
+.setup-back:hover { color: #1a1f29; }
+
+.setup-tabs {
+    display: flex;
+    gap: 2px;
+    padding: 12px 16px 0;
+    flex-wrap: wrap;
+}
+
+.setup-tab {
+    border: 1px solid #d8dbe1;
+    border-bottom: none;
+    background: #f4f5f7;
+    font-family: inherit;
+    font-size: 11.5px;
+    color: #5b6472;
+    padding: 7px 14px;
+    cursor: pointer;
+}
+
+.setup-tab:hover { background: #eceef1; }
+
+.setup-tab.is-active {
+    background: #fff;
+    color: #1a1f29;
+    font-weight: 600;
+    border-top: 2px solid #1f3a5f;
+}
+
+.setup-note {
+    margin: 0 0 14px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #5b6472;
+}
+
+.setup-import {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    background: #f6f7f9;
+    border: 1px solid #e4e7eb;
+    border-radius: 4px;
+}
+
+.setup-import-file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #5b6472;
+}
+
+.setup-note.is-status { color: #1f3a5f; font-weight: 600; }
+
+.cap-change-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+
+.update-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 18px;
+    background: #fff8e6;
+    border-bottom: 1px solid #f0dfa8;
+    color: #6b5410;
+    font-size: 13px;
+}
+
+.update-banner-text { flex: 1; }
+
+.update-banner-action {
+    font-weight: 600;
+    color: #1f3a5f;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.update-banner-action:hover { text-decoration: underline; }
+
+.update-banner-dismiss {
+    border: 0;
+    background: transparent;
+    color: #6b5410;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 4px;
+}
+
+.setup-wide-field { margin-top: 12px; max-width: 620px; }
+
+.field-input.is-area { height: auto; padding: 7px 8px; line-height: 1.4; resize: vertical; }
+
+/* Grouped so the caps read as a different class of setting from the colour bands they are
+   frequently confused with. */
+.policy-group { margin-bottom: 20px; }
+
+.policy-group-title {
+    display: block;
+    margin-bottom: 9px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #eceef1;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+}
+
+.setup-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid #eceef1;
+}
+
+.setup-save {
+    height: 30px;
+    border: 1px solid #1f3a5f;
+    background: #1f3a5f;
+    color: #fff;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 0 16px;
+    cursor: pointer;
+}
+
+.setup-save:hover:not(:disabled) { background: #172c48; }
+.setup-save:disabled { border-color: #c9ccd2; background: #e4e6ea; color: #9aa0aa; cursor: not-allowed; }
+
+.setup-cancel {
+    height: 30px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #3d3d3d;
+    padding: 0 14px;
+    cursor: pointer;
+}
+
+.setup-danger {
+    height: 30px;
+    border: 1px solid #8a1f1f;
+    background: #8a1f1f;
+    color: #fff;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 0 14px;
+    cursor: pointer;
+}
+
+.setup-inline-add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid #d8dbe1;
+    background: #fafbfc;
+}
+
+.setup-inline-add .field-input { width: auto; min-width: 160px; }
+.setup-inline-label { font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #5b6472; }
+
+/* Amber, not red — an in-use vehicle being removed is a judgement call, not an error. */
+.setup-warn {
+    margin-bottom: 14px;
+    padding: 10px 12px;
+    border: 1px solid #7a4b06;
+    background: #fbe8c9;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: #7a4b06;
+}
+
+.setup-warn-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+/* A live credential on screen. Deliberately loud — it is shown once and cannot be recovered. */
+.setup-credential {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 7px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border: 1px solid #1f5c2a;
+    background: #d9ecd7;
+}
+
+.setup-credential-title { font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #1f5c2a; }
+.setup-credential-value { font-family: ui-monospace, Consolas, monospace; font-size: 15px; font-weight: 600; color: #1a1f29; background: #fff; border: 1px solid #1f5c2a; padding: 4px 10px; }
+.setup-credential-note { font-size: 10.5px; line-height: 1.45; color: #1f5c2a; max-width: 520px; }
+
+.status-pill {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    background: #eceef1;
+    color: #5b6472;
+}
+
+.status-pill.is-active { background: #d9ecd7; color: #1f5c2a; }
+.status-pill.is-inactive { background: #f8d7d7; color: #8a1f1f; }
+.status-pill.is-pending { background: #fbe8c9; color: #7a4b06; margin-left: 5px; }
+
+.row-action {
+    border: 1px solid #d8dbe1;
+    background: #fff;
+    font-family: inherit;
+    font-size: 10px;
+    color: #3d3d3d;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+
+.row-action:hover { background: #f4f5f7; }
+.row-action.is-danger { color: #8a1f1f; }
+.row-action.is-danger:hover { border-color: #8a1f1f; }
+
+.empty-row { padding: 16px 8px; text-align: center; font-size: 11.5px; color: #8d8d8d; }
+
+.app-nav-link {
+    margin-left: 18px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #c3c7cf;
+    text-decoration: none;
+}
+
+/* The app bar is space-between, so the free space has to be absorbed somewhere or the links drift
+   apart. Only the LAST link takes it — putting margin-right:auto on every one pushes each link to
+   its own share of the gap and scatters them across the bar. */
+.app-nav-link:last-of-type { margin-right: auto; }
+
+.app-nav-link:hover { color: #fff; }
+
+/* Company Setup page chrome + the field/table primitives.
+   The stage screens define .stage-page, .field-grid, .row-table and friends in SCOPED css, so none
+   of them reach this page. Rather than copy four stylesheets, the page opts into its own global
+   namespace and inherits the same visual language. */
+.company-setup {
+    background: #eceef1;
+    min-height: calc(100vh - 34px);
+    padding: 16px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.company-setup-card {
+    background: #fff;
+    border: 1px solid #d8dbe1;
+    padding-bottom: 20px;
+}
+
+.company-setup .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 14px 18px;
+    align-items: start;
+}
+
+.company-setup .field-input {
+    height: 29px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d8dbe1;
+    background: #fafbfc;
+    font-size: 12px;
+    font-family: inherit;
+    padding: 0 8px;
+    color: #1a1f29;
+}
+
+.company-setup .field-input:focus-visible { outline: 2px solid #1f3a5f; outline-offset: -2px; }
+
+.company-setup .field-caption {
+    display: block;
+    margin-top: 3px;
+    font-size: 9.5px;
+    line-height: 1.4;
+    color: #93999a;
+    font-style: italic;
+}
+
+.company-setup .table-scroll { overflow-x: auto; }
+
+.company-setup .row-table { width: 100%; border-collapse: collapse; min-width: 560px; }
+
+.company-setup .row-table th {
+    text-align: left;
+    padding: 7px 8px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #8d8d8d;
+    border-bottom: 1px solid #d4d4d4;
+    white-space: nowrap;
+}
+
+.company-setup .row-table tbody tr { border-bottom: 1px solid #eceef1; }
+.company-setup .row-table td { padding: 5px 8px; vertical-align: middle; font-size: 11.5px; color: #1a1f29; }
+.company-setup .row-table .align-right { text-align: right; }
+
+.company-setup .cell-input {
+    height: 26px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d8dbe1;
+    background: #fff;
+    font-size: 11.5px;
+    font-family: inherit;
+    padding: 0 6px;
+    color: #1a1f29;
+}
+
+.company-setup .cell-input.align-right { text-align: right; }
+
+.company-setup .add-row-button {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    color: #3d3d3d;
+    background: #ebebeb;
+    border: 1px solid #9e9e9e;
+    font-family: inherit;
+    padding: 4px 9px;
+    cursor: pointer;
+}
+
+.company-setup .add-row-button:hover { background: #e0e0e0; }
+
+.company-setup .inline-error {
+    margin: 0 0 12px;
+    font-size: 10.5px;
+    line-height: 1.45;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 7px 9px;
+}
+
+.company-setup .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    background: #1a1f29;
+    color: #fff;
+    font-size: 12px;
+    padding: 9px 16px;
+    z-index: 80;
+}
+
+.company-setup .loading-note,
+.company-setup .not-authorised { padding: 20px 16px; font-size: 12px; color: #5b6472; }
+
+/* ---- First-run setup: pending note + walkthrough overlay ---- */
+.setup-pending-note {
+    margin: 0 0 16px;
+    padding: 10px 14px;
+    border: 1px solid #e2c48a;
+    background: #fdf6e7;
+    border-radius: 4px;
+    font-size: 13px;
+    color: #7a4b06;
+}
+
+.walkthrough-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 26, 38, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+}
+
+.walkthrough-card {
+    width: 100%;
+    max-width: 460px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+    padding: 24px 26px;
+}
+
+.walkthrough-step-count {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #7d8695;
+}
+
+.walkthrough-title {
+    margin: 6px 0 10px;
+    font-size: 19px;
+    color: #1a1f29;
+}
+
+.walkthrough-body {
+    margin: 0 0 20px;
+    font-size: 14px;
+    line-height: 1.55;
+    color: #3a4150;
+}
+
+.walkthrough-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.walkthrough-nav {
+    display: flex;
+    gap: 8px;
+}
+
+.walkthrough-skip {
+    border: none;
+    background: none;
+    color: #7d8695;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.walkthrough-back {
+    height: 34px;
+    padding: 0 14px;
+    border: 1px solid #c3c9d2;
+    background: #fff;
+    color: #1a1f29;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.walkthrough-next {
+    height: 34px;
+    padding: 0 16px;
+    border: 1px solid #1f3a5f;
+    background: #1f3a5f;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.walkthrough-next:hover { background: #274a78; }
+
+/* Forgot-password disclosure on the login card. */
+.auth-forgot {
+    margin-top: 16px;
+    font-size: 13px;
+}
+.auth-forgot > summary {
+    cursor: pointer;
+    color: #1f3a5f;
+    font-weight: 600;
+    list-style: revert;
+}
+.auth-forgot > p {
+    margin: 8px 0 0;
+    color: #5b6472;
+    line-height: 1.5;
+}
+
+/* ---- System & updates page ----
+   Status-forward: the update state is a coloured hero, and licence + app address are supporting
+   cards. Each tone (ok / info / warn / danger / neutral) sets four custom properties the components
+   read, so one modifier class recolours the accent, tint, and status glyph together. */
+.sys-page { padding: 32px 16px; display: flex; justify-content: center; }
+
+.sys-shell {
+    width: 100%;
+    max-width: 760px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.sys-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.sys-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7d8695; }
+.sys-title { margin: 3px 0 0; font-size: 24px; color: #1a1f29; }
+.sys-back { font-size: 13px; color: #1f3a5f; text-decoration: none; white-space: nowrap; }
+.sys-back:hover { text-decoration: underline; }
+
+/* Tone tokens — the default is neutral; each modifier overrides them. */
+.sys-status {
+    --accent: #7d8695; --tint: #f6f7f9; --glyph-bg: #e6e9ee; --glyph-fg: #5b6470;
+    background: var(--tint);
+    border: 1px solid #e2e5ea;
+    border-left: 4px solid var(--accent);
+    border-radius: 10px;
+    padding: 20px 22px;
+}
+.sys-status--ok     { --accent: #2f7d3a; --tint: #f1f8f2; --glyph-bg: #d7ebd9; --glyph-fg: #1f5c2a; }
+.sys-status--info   { --accent: #1f3a5f; --tint: #eef2f8; --glyph-bg: #d6e2f2; --glyph-fg: #1f3a5f; }
+.sys-status--warn   { --accent: #b07a1e; --tint: #fdf7ec; --glyph-bg: #f2e2c2; --glyph-fg: #8a5a1f; }
+.sys-status--danger { --accent: #8a1f1f; --tint: #fdf3f3; --glyph-bg: #f4d6d6; --glyph-fg: #8a1f1f; }
+
+.sys-status-row { display: flex; align-items: center; gap: 14px; }
+.sys-status-glyph {
+    flex: 0 0 auto;
+    width: 40px; height: 40px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--glyph-bg); color: var(--glyph-fg);
+    font-size: 20px; font-weight: 700; line-height: 1;
+}
+.sys-status-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sys-status-headline { font-size: 16px; font-weight: 700; color: #1a1f29; }
+.sys-status-sub { font-size: 12.5px; color: #5b6470; }
+.sys-status-sub strong { color: #3a4150; }
+
+.sys-btn {
+    height: 36px; padding: 0 16px; border: 1px solid #c3c9d2; background: #fff;
+    color: #1a1f29; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+    text-decoration: none;
+}
+.sys-btn:hover { background: #f2f4f7; }
+.sys-btn.is-primary { background: #1f3a5f; border-color: #1f3a5f; color: #fff; }
+.sys-btn.is-primary:hover { background: #244675; }
+.sys-btn.is-danger { background: #8a1f1f; border-color: #8a1f1f; color: #fff; }
+.sys-btn.is-danger:hover { background: #a02525; }
+.sys-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.sys-inline { margin: 12px 0 0; font-size: 12.5px; color: #3a4150; }
+.sys-inline--danger { color: #8a1f1f; }
+.sys-inline--ok { color: #1f5c2a; }
+
+.sys-update { margin-top: 16px; border-top: 1px solid rgba(0,0,0,0.08); padding-top: 16px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.sys-notes { width: 100%; }
+.sys-notes-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #7d8695; }
+.sys-notes-body {
+    margin: 6px 0 0; padding: 10px 12px; background: #fff; border: 1px solid #dde2e9;
+    border-radius: 6px; font-size: 12.5px; white-space: pre-wrap; word-break: break-word;
+    max-height: 260px; overflow: auto;
+}
+.sys-confirm { width: 100%; padding: 12px 14px; background: #fdf2f2; border: 1px solid #e6b8b8; border-radius: 6px; }
+.sys-confirm p { margin: 0 0 10px; font-size: 12.5px; color: #5b2020; }
+.sys-confirm-actions { display: flex; gap: 8px; }
+
+/* Supporting cards */
+.sys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.sys-card {
+    background: #fff; border: 1px solid #e2e5ea; border-radius: 10px; padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.sys-card-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #7d8695; }
+.sys-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sys-card-title { margin: 0; font-size: 17px; color: #1a1f29; }
+.sys-card-body { margin: 4px 0 0; font-size: 12.5px; color: #3a4150; line-height: 1.5; }
+
+.sys-pill {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+    background: #e6e9ee; color: #5b6470;
+}
+.sys-pill--ok     { background: #d7ebd9; color: #1f5c2a; }
+.sys-pill--warn   { background: #f2e2c2; color: #8a5a1f; }
+.sys-pill--danger { background: #f4d6d6; color: #8a1f1f; }
+
+.sys-address { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.sys-address-field {
+    flex: 1; min-width: 200px; height: 36px; padding: 0 10px;
+    border: 1px solid #c3c9d2; border-radius: 6px; font-size: 13px; color: #1a1f29; background: #f9fafb;
+}
+
+/* Settings → "Usage & Updates" tab: one link per row, description underneath. */
+.tool-links { list-style: none; margin: 0; padding: 0; border: 1px solid #e4e7eb; }
+.tool-links li { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-top: 1px solid #e4e7eb; }
+.tool-links li:first-child { border-top: none; }
+.tool-links a { font-size: 13px; font-weight: 600; color: #1f3a5f; text-decoration: none; }
+.tool-links a:hover, .tool-links a:focus-visible { text-decoration: underline; }
+.tool-links span { font-size: 11px; color: #5b6472; }
+
+/* /link: second option, for people who arrived without a code. */
+.link-guide { margin-top: 22px; padding-top: 16px; border-top: 1px solid #d8dbe1; }
+.link-guide-title { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #1a1f29; }
+.link-guide a { color: #1f3a5f; font-size: 12px; }
+.link-guide a + a { margin-left: 14px; }
+
+/* A neutral confirmation line on the auth pages (e.g. "Your email address is confirmed"). */
+.auth-notice {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    background: #e8f1fb;
+    border: 1px solid #b9d3ee;
+    font-size: 12px;
+    color: #1f3a5f;
+}
+
+/* Digio UI kit (Components/Shared/Digio): one chip per honest state, the customer panel, diff row, evidence table. */
+.dg-chip { display: inline-block; padding: 1px 9px; border-radius: 9px; font-size: 11px; font-weight: 600; background: #eef1f5; color: #5b6472; vertical-align: middle; }
+.dg-ok { background: #e3f4e6; color: #1d6b2c; }
+.dg-bad { background: #f8d7d7; color: #8a1f1f; }
+.dg-warn { background: #fdf0d5; color: #8a5a1f; }
+.dg-info { background: #e1ebf8; color: #1f3a5f; }
+.dg-off { background: #eef1f5; color: #5b6472; }
+.dg-sandbox { background: #1f3a5f; color: #fff; margin-left: 4px; letter-spacing: .06em; }
+.dg-muted { color: #5b6472; font-size: 11.5px; margin: 4px 0; }
+.dg-panel { border: 1px solid #d8dbe1; padding: 10px 12px; margin: 8px 0; }
+.dg-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dg-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.dg-row > span:first-child { min-width: 56px; font-weight: 600; }
+/* Inline: the rows become cells of the parent's grid (column 2), one per input row on the left. */
+.dg-panel.is-inline { display: contents; }
+.dg-panel.is-inline > * { grid-column: 2; }
+.dg-panel.is-inline > .dg-panel-head { grid-row: 1; }
+.dg-panel.is-inline > .dg-row { margin: 0; min-height: 40px; border-top: 1px solid #eceef1; padding-top: 4px; }
+@media (max-width: 900px) { .dg-panel.is-inline > *, .dg-panel.is-inline > .dg-panel-head { grid-column: 1; grid-row: auto; } }
+.dg-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.dg-timeline { list-style: none; margin: 6px 0 0; padding: 0; font-size: 11.5px; color: #3a4553; }
+.dg-timeline span { color: #6b7686; margin-right: 6px; }
+.dg-diff { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; border: 1px solid #f0d9a8; background: #fdf7ec; font-size: 12px; }
+.dg-diff-field { font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: .05em; color: #8a5a1f; }
+.dg-consent { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; }
+.dg-evidence { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dg-evidence th, .dg-evidence td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e4e8ee; }
+.dg-evidence th { color: #5b6472; font-weight: 600; }
+
+/* Digio Phase 3: signer rows and the mandate steps */
+.dg-signers { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+.dg-signers th, .dg-signers td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #e4e8ee; }
+.dg-channel { max-width: 190px; }
+.dg-steps { display: flex; gap: 14px; list-style: none; padding: 0; margin: 8px 0; font-size: 12px; color: #8a93a0; }
+.dg-steps li::before { content: "○ "; }
+.dg-steps li.dg-step-on { color: #1d6b2c; font-weight: 600; }
+.dg-steps li.dg-step-on::before { content: "● "; }
+.dg-gate { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 16px; margin: 0 0 8px; background: #f8d7d7; border: 1px solid #e6b3b3; font-size: 12px; color: #8a1f1f; }
+.dg-gate .dg-muted { color: #7a4b06; }
+
+/* Digio Phase 4: RC check rows */
+.dg-rc { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
+.dg-rc li { padding: 3px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.dg-rc li span { color: #4a5666; }
+.dg-rc-ok strong { color: #1d6b2c; }
+.dg-rc-warn strong { color: #8a5a06; }
+.dg-rc-bad strong { color: #8a1f1f; }
+.dg-rc-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 4px 0 2px; }
+.dg-rc-box .dg-rc { flex-basis: 100%; }
+
+/* Loan account page (Phase 5) */
+.loan-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 12px 0 6px; }
+.loan-card { border: 1px solid #d8dee7; border-radius: 4px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; background: #fff; }
+.loan-card strong { font-size: 18px; color: #1d2733; }
+.loan-card.loan-bad { border-color: #e6b3b3; background: #fbeeee; }
+.loan-card.loan-bad strong { color: #8a1f1f; }
+.loan-label { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #6b7686; font-weight: 600; }
+.loan-h { font-size: 13px; margin: 18px 0 6px; color: #1d2733; }
+.loan-overdue td { background: #fbeeee; }
+.loan-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.loan-form .field-input { max-width: 190px; }
+.loan-page { min-height: 100vh; padding: 20px 24px 40px; background: #eef1f5; color: #1d2733; }
+.loan-sheet { max-width: 1040px; margin: 0 auto; padding: 18px 22px 26px; background: #fff; border: 1px solid #d8dee7; border-radius: 4px; }
+.loan-page .file-link { color: #1d4f91; }
+/* TG Transport portal record (Loan & Security) */
+.tg-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 4px 0 2px; }
+.tg-link { text-decoration: none; display: inline-block; }
+.tg-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }

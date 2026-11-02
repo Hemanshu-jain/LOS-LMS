@@ -1,0 +1,1604 @@
+using LosLms.Models;
+using LosLms.Services;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+
+namespace LosLms.Data;
+
+/// <summary>
+/// Entity Framework Core context for the central LOS/LMS SQLite database, and the Identity store.
+/// </summary>
+/// <remarks>
+/// PROVISIONAL SCHEMA — the two entities here exist to make the Applications Dashboard and
+/// Customer Details screens functional. The full schema is designed once all nine screens exist.
+///
+/// TENANT ISOLATION IS STRUCTURAL. The three global query filters at the top of
+/// <see cref="OnModelCreating"/> are the whole mechanism — no screen has to remember a
+/// <c>Where(x =&gt; x.CompanyId == ...)</c>, and forgetting one cannot leak another company's data.
+/// The tenant is snapshotted into plain fields at construction rather than read through a property
+/// chain, because EF parameterises a captured context field cleanly and a chain is fragile.
+/// </remarks>
+public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionKeyContext
+{
+    private readonly int? _companyId;
+    private readonly bool _isSuperAdmin;
+    private readonly bool _isAdmin;
+    private readonly bool _hasUser;
+
+    public LosDbContext(DbContextOptions<LosDbContext> options, TenantContext tenant)
+        : base(options)
+    {
+        _companyId = tenant.CompanyId;
+        // A SuperAdmin sees every company ONLY while not acting as one. The moment they pick a company
+        // (TenantContext.ActingCompanyId set, which also makes CompanyId that company), they are scoped to
+        // it exactly like a normal user — so every existing query filter narrows with no per-filter change.
+        _isSuperAdmin = tenant.IsSuperAdmin && tenant.ActingCompanyId is null;
+        _isAdmin = tenant.IsAdmin;
+        _hasUser = tenant.HasUser;
+    }
+
+    /// <summary>
+    /// The signed-in user is an Admin or SuperAdmin — the accounts with full authority over a
+    /// company's files. Snapshotted at construction like the tenant, so the stage gates can read one
+    /// flag off the context they already hold instead of every gate call threading a user through.
+    /// </summary>
+    public bool IsElevatedUser => _isSuperAdmin || _isAdmin;
+
+    public DbSet<Company> Companies => Set<Company>();
+
+    public DbSet<Branch> Branches => Set<Branch>();
+
+    public DbSet<VehicleLoanCap> VehicleLoanCaps => Set<VehicleLoanCap>();
+
+    public DbSet<LookupValue> LookupValues => Set<LookupValue>();
+
+    public DbSet<MigratedLoan> MigratedLoans => Set<MigratedLoan>();
+
+    public DbSet<SchemeChargeTemplate> SchemeChargeTemplates => Set<SchemeChargeTemplate>();
+
+    public DbSet<Application> Applications => Set<Application>();
+
+    public DbSet<Party> Parties => Set<Party>();
+
+    public DbSet<SecurityDetail> SecurityDetails => Set<SecurityDetail>();
+
+    public DbSet<Reference> References => Set<Reference>();
+
+    public DbSet<Viability> Viabilities => Set<Viability>();
+
+    public DbSet<BankDetail> BankDetails => Set<BankDetail>();
+
+    public DbSet<BankStatement> BankStatements => Set<BankStatement>();
+
+    public DbSet<BankStatementAnalysis> BankStatementAnalyses => Set<BankStatementAnalysis>();
+
+    public DbSet<CamCostBreakdown> CamCostBreakdowns => Set<CamCostBreakdown>();
+
+    public DbSet<IfscBankLookup> IfscBankLookups => Set<IfscBankLookup>();
+
+    public DbSet<ChecklistDocument> ChecklistDocuments => Set<ChecklistDocument>();
+
+    public DbSet<DocumentRemark> DocumentRemarks => Set<DocumentRemark>();
+
+    public DbSet<RcuInitiation> RcuInitiations => Set<RcuInitiation>();
+
+    public DbSet<RcuOutcome> RcuOutcomes => Set<RcuOutcome>();
+
+    public DbSet<RcuReport> RcuReports => Set<RcuReport>();
+
+    public DbSet<Classification> Classifications => Set<Classification>();
+
+    public DbSet<ExistingLoan> ExistingLoans => Set<ExistingLoan>();
+
+    public DbSet<BankingRecord> BankingRecords => Set<BankingRecord>();
+
+    public DbSet<EligibilityDecision> EligibilityDecisions => Set<EligibilityDecision>();
+
+    public DbSet<Business> Businesses => Set<Business>();
+
+    public DbSet<Partner> Partners => Set<Partner>();
+
+    public DbSet<Tvr> Tvrs => Set<Tvr>();
+
+    public DbSet<ApprovalDecision> ApprovalDecisions => Set<ApprovalDecision>();
+
+    public DbSet<Charge> Charges => Set<Charge>();
+
+    public DbSet<SendBackLog> SendBackLogs => Set<SendBackLog>();
+
+    public DbSet<Disbursement> Disbursements => Set<Disbursement>();
+
+    public DbSet<EnachMandate> EnachMandates => Set<EnachMandate>();
+
+    public DbSet<SecurityNachMandate> SecurityNachMandates => Set<SecurityNachMandate>();
+
+    public DbSet<DownPaymentRecord> DownPaymentRecords => Set<DownPaymentRecord>();
+
+    public DbSet<PostSanctionChecklist> PostSanctionChecklists => Set<PostSanctionChecklist>();
+
+    public DbSet<Pdd> Pdds => Set<Pdd>();
+
+    public DbSet<RejectionLog> RejectionLogs => Set<RejectionLog>();
+
+    public DbSet<AdminRequest> AdminRequests => Set<AdminRequest>();
+
+    public DbSet<ApiRate> ApiRates => Set<ApiRate>();
+
+    public DbSet<ApiUsageLog> ApiUsageLogs => Set<ApiUsageLog>();
+
+    public DbSet<DigioRequest> DigioRequests => Set<DigioRequest>();
+
+    public DbSet<DigioWebhookInbox> DigioWebhookInbox => Set<DigioWebhookInbox>();
+
+    public DbSet<VerificationEvidence> VerificationEvidence => Set<VerificationEvidence>();
+
+    public DbSet<DigioSettings> DigioSettings => Set<DigioSettings>();
+
+    public DbSet<EsignSigner> EsignSigners => Set<EsignSigner>();
+
+    public DbSet<VerificationRecheck> VerificationRechecks => Set<VerificationRecheck>();
+
+    public DbSet<LoanAccount> LoanAccounts => Set<LoanAccount>();
+
+    public DbSet<Instalment> Instalments => Set<Instalment>();
+
+    public DbSet<Presentation> Presentations => Set<Presentation>();
+
+    public DbSet<Receipt> Receipts => Set<Receipt>();
+
+    public DbSet<LoanCharge> LoanCharges => Set<LoanCharge>();
+
+    public DbSet<CollectionTask> CollectionTasks => Set<CollectionTask>();
+
+    public DbSet<SettlementCheck> SettlementChecks => Set<SettlementCheck>();
+
+    /// <summary>Encrypted admin-set passwords (PasswordVault). Not tenant-filtered.</summary>
+    public DbSet<CredentialVaultEntry> CredentialVault => Set<CredentialVaultEntry>();
+
+    /// <summary>ASP.NET Data Protection keys, kept here on the cloud host so a restart does not sign everyone out.</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
+    public DbSet<ApiInvoice> ApiInvoices => Set<ApiInvoice>();
+
+    public DbSet<PaymentDetails> PaymentDetails => Set<PaymentDetails>();
+
+    public DbSet<PartnerClient> PartnerClients => Set<PartnerClient>();
+
+    public DbSet<PartnerConnection> PartnerConnections => Set<PartnerConnection>();
+
+    public DbSet<PartnerToken> PartnerTokens => Set<PartnerToken>();
+
+    public DbSet<PartnerDeviceCode> PartnerDeviceCodes => Set<PartnerDeviceCode>();
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+
+        // Every child table has a required navigation to Application, which IS query-filtered, and EF
+        // warns that a required principal can be filtered away. Here that is the entire point: a child
+        // row belonging to another company must vanish along with the application that owns it.
+        // Configured here rather than at each registration so the design-time factory gets it too.
+        optionsBuilder.ConfigureWarnings(warnings => warnings.Ignore(
+            CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
+    }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        ConfigureTenancy(modelBuilder);
+
+        modelBuilder.Entity<Application>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+
+            // Explicit precision on money columns; EF warns without it.
+            entity.Property(a => a.LoanAmount).HasPrecision(18, 2);
+            entity.Property(a => a.ProcessingFee).HasPrecision(18, 2);
+            entity.Property(a => a.AdvanceEmi).HasPrecision(18, 2);
+
+            // Percentage, e.g. 13.25 — two decimal places is all a rate needs.
+            entity.Property(a => a.Roi).HasPrecision(5, 2);
+
+            entity.Property(a => a.CurrentStage).HasDefaultValue(1);
+            entity.Property(a => a.Status).HasDefaultValue("New");
+
+            // Restrict, not cascade: deleting an officer must never erase which files they held.
+            entity.HasOne(a => a.AssignedOfficerNavigation)
+                .WithMany()
+                .HasForeignKey(a => a.AssignedOfficerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Restrict, not cascade: deleting a company must be a deliberate act, never something
+            // that silently takes every loan file it owns with it.
+            entity.HasOne(a => a.Company)
+                .WithMany()
+                .HasForeignKey(a => a.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(a => a.CompanyId);
+
+            // No HasData here. Applications and all their child rows come from DemoSeedData at
+            // startup instead: they need Identity user ids that do not exist at migration time, and
+            // queue dates relative to today so the dashboard's ageing stays honest.
+        });
+
+        modelBuilder.Entity<Party>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+
+            entity.Property(p => p.MonthlyIncome).HasPrecision(18, 2);
+            entity.Property(p => p.DedupeStatus).HasDefaultValue("NotRun");
+
+            // One KYC record per party type per application.
+            entity.HasIndex(p => new { p.ApplicationId, p.PartyType }).IsUnique();
+
+            entity.HasOne(p => p.Application)
+                .WithMany(a => a.Parties)
+                .HasForeignKey(p => p.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SecurityDetail>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+
+            entity.Property(s => s.InvoiceValue).HasPrecision(18, 2);
+            entity.Property(s => s.AssessedValue).HasPrecision(18, 2);
+            entity.Property(s => s.Area).HasPrecision(18, 2);
+
+            // One security record per application.
+            entity.HasIndex(s => s.ApplicationId).IsUnique();
+
+            entity.HasOne(s => s.Application)
+                .WithOne()
+                .HasForeignKey<SecurityDetail>(s => s.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Reference>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+
+            // Many per application — no unique index here, unlike the other two.
+            entity.HasIndex(r => r.ApplicationId);
+
+            entity.HasOne(r => r.Application)
+                .WithMany()
+                .HasForeignKey(r => r.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Viability>(entity =>
+        {
+            // The DbSet is plural for convention's sake; the table is not.
+            entity.ToTable("Viability");
+
+            entity.HasKey(v => v.Id);
+
+            entity.Property(v => v.IncomeFreight).HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(v => v.IncomeSalary).HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(v => v.IncomeOther).HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(v => v.ExpenseHousehold).HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(v => v.ExpenseFuelDriver).HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(v => v.ExpenseExistingEmi).HasPrecision(18, 2).HasDefaultValue(0m);
+
+            entity.HasIndex(v => v.ApplicationId).IsUnique();
+
+            entity.HasOne(v => v.Application)
+                .WithOne()
+                .HasForeignKey<Viability>(v => v.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BankDetail>(entity =>
+        {
+            entity.HasKey(b => b.Id);
+            entity.Property(b => b.PennyDropStatus).HasDefaultValue("NotRun");
+
+            entity.HasIndex(b => b.ApplicationId).IsUnique();
+
+            entity.HasOne(b => b.Application)
+                .WithOne()
+                .HasForeignKey<BankDetail>(b => b.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BankStatement>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.ParsedStatus).HasDefaultValue("NotConfigured");
+
+            // Many per application — not unique, unlike the other three.
+            entity.HasIndex(s => s.ApplicationId);
+
+            entity.HasOne(s => s.Application)
+                .WithMany()
+                .HasForeignKey(s => s.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CamCostBreakdown>(entity =>
+        {
+            entity.ToTable("CamCostBreakdown");
+            entity.HasKey(c => c.Id);
+
+            foreach (var column in new[]
+            {
+                nameof(CamCostBreakdown.DraftExShowroomCost),
+                nameof(CamCostBreakdown.DraftBodyAccessories),
+                nameof(CamCostBreakdown.DraftInsuranceRegistration),
+                nameof(CamCostBreakdown.DraftMargin),
+                nameof(CamCostBreakdown.AppliedExShowroomCost),
+                nameof(CamCostBreakdown.AppliedBodyAccessories),
+                nameof(CamCostBreakdown.AppliedInsuranceRegistration),
+                nameof(CamCostBreakdown.AppliedMargin),
+            })
+            {
+                entity.Property<decimal?>(column).HasPrecision(18, 2);
+            }
+
+            entity.HasIndex(c => c.ApplicationId).IsUnique();
+
+            entity.HasOne(c => c.Application)
+                .WithOne()
+                .HasForeignKey<CamCostBreakdown>(c => c.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ChecklistDocument>(entity =>
+        {
+            // Entity is ChecklistDocument to avoid colliding with QuestPDF's Document; the table
+            // keeps the name the brief specifies.
+            entity.ToTable("Documents");
+            entity.HasKey(d => d.Id);
+
+            // One row per application, party and document type.
+            entity.HasIndex(d => new { d.ApplicationId, d.PartyType, d.DocumentType }).IsUnique();
+
+            entity.HasOne(d => d.Application)
+                .WithMany()
+                .HasForeignKey(d => d.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DocumentRemark>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.HasIndex(r => r.DocumentId);
+
+            entity.HasOne(r => r.Document)
+                .WithMany()
+                .HasForeignKey(r => r.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RcuInitiation>(entity =>
+        {
+            // Singular table name, as specified.
+            entity.ToTable("RcuInitiation");
+            entity.HasKey(i => i.Id);
+            entity.Property(i => i.Mode).HasDefaultValue("Screened");
+
+            entity.HasIndex(i => i.ApplicationId).IsUnique();
+
+            entity.HasOne(i => i.Application)
+                .WithOne()
+                .HasForeignKey<RcuInitiation>(i => i.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, not cascade: deleting an officer must never silently erase the audit trail
+            // of who approved an override.
+            entity.HasOne(i => i.OverrideApprover)
+                .WithMany()
+                .HasForeignKey(i => i.OverrideApproverOfficerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RcuOutcome>(entity =>
+        {
+            entity.HasKey(o => o.Id);
+            entity.Property(o => o.Status).HasDefaultValue("Pending");
+
+            entity.HasIndex(o => new { o.ApplicationId, o.PartyType }).IsUnique();
+
+            entity.HasOne(o => o.Application)
+                .WithMany()
+                .HasForeignKey(o => o.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(o => o.VerifiedBy)
+                .WithMany()
+                .HasForeignKey(o => o.VerifiedByOfficerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RcuReport>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.HasIndex(r => new { r.ApplicationId, r.SequenceNumber });
+
+            entity.HasOne(r => r.Application)
+                .WithMany()
+                .HasForeignKey(r => r.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Classification>(entity =>
+        {
+            // Singular table name, as specified.
+            entity.ToTable("Classification");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Psl).HasDefaultValue(Classification.PslNo);
+
+            entity.Property(c => c.RiskSharing).HasPrecision(5, 2);
+            entity.Property(c => c.PrioritySectorAmount).HasPrecision(18, 2);
+
+            entity.HasIndex(c => c.ApplicationId).IsUnique();
+
+            entity.HasOne(c => c.Application)
+                .WithOne()
+                .HasForeignKey<Classification>(c => c.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ExistingLoan>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+            entity.Property(l => l.Rtr).HasDefaultValue("Regular");
+
+            entity.Property(l => l.Sanctioned).HasPrecision(18, 2);
+            entity.Property(l => l.Pos).HasPrecision(18, 2);
+            entity.Property(l => l.Emi).HasPrecision(18, 2);
+            entity.Property(l => l.Roi).HasPrecision(5, 2);
+
+            entity.HasIndex(l => l.ApplicationId);
+
+            entity.HasOne(l => l.Application)
+                .WithMany()
+                .HasForeignKey(l => l.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BankingRecord>(entity =>
+        {
+            entity.HasKey(b => b.Id);
+
+            entity.Property(b => b.AvgBalance).HasPrecision(18, 2);
+            entity.Property(b => b.InwardPct).HasPrecision(5, 2);
+            entity.Property(b => b.OutwardPct).HasPrecision(5, 2);
+
+            entity.HasIndex(b => b.ApplicationId);
+
+            entity.HasOne(b => b.Application)
+                .WithMany()
+                .HasForeignKey(b => b.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EligibilityDecision>(entity =>
+        {
+            // Singular table name, matching Classification and RcuInitiation.
+            entity.ToTable("EligibilityDecision");
+            entity.HasKey(d => d.Id);
+
+            // Signed: the stored deviation is negative whenever a note was actually required.
+            entity.Property(d => d.NoteWrittenAtDeviationPct).HasPrecision(7, 2);
+
+            entity.HasIndex(d => d.ApplicationId).IsUnique();
+
+            entity.HasOne(d => d.Application)
+                .WithOne()
+                .HasForeignKey<EligibilityDecision>(d => d.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Business>(entity =>
+        {
+            // Singular table name, as specified.
+            entity.ToTable("Business");
+            entity.HasKey(b => b.Id);
+
+            entity.Property(b => b.Turnover).HasPrecision(18, 2);
+
+            entity.HasIndex(b => b.ApplicationId).IsUnique();
+
+            entity.HasOne(b => b.Application)
+                .WithOne()
+                .HasForeignKey<Business>(b => b.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Partner>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+
+            entity.Property(p => p.Shareholding).HasPrecision(5, 2);
+
+            entity.HasIndex(p => p.ApplicationId);
+
+            entity.HasOne(p => p.Application)
+                .WithMany()
+                .HasForeignKey(p => p.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Tvr>(entity =>
+        {
+            entity.ToTable("Tvr");
+            entity.HasKey(t => t.Id);
+
+            entity.HasIndex(t => t.ApplicationId).IsUnique();
+
+            entity.HasOne(t => t.Application)
+                .WithOne()
+                .HasForeignKey<Tvr>(t => t.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ApprovalDecision>(entity =>
+        {
+            entity.ToTable("ApprovalDecision");
+            entity.HasKey(d => d.Id);
+
+            entity.Property(d => d.SanctionedAmount).HasPrecision(18, 2);
+            entity.Property(d => d.SanctionedRoi).HasPrecision(5, 2);
+            entity.Property(d => d.SanctionConfirmed).HasDefaultValue(false);
+
+            entity.HasIndex(d => d.ApplicationId).IsUnique();
+
+            entity.HasOne(d => d.Application)
+                .WithOne()
+                .HasForeignKey<ApprovalDecision>(d => d.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, not cascade: removing a user must never quietly unsign a sanction.
+            entity.HasOne(d => d.Recommender)
+                .WithMany()
+                .HasForeignKey(d => d.RecommenderUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(d => d.Approver)
+                .WithMany()
+                .HasForeignKey(d => d.ApproverUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Charge>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+
+            entity.Property(c => c.Amount).HasPrecision(18, 2);
+            entity.Property(c => c.Gst).HasPrecision(18, 2);
+            entity.Property(c => c.Locked).HasDefaultValue(false);
+            entity.Property(c => c.Waived).HasDefaultValue(false);
+
+            entity.HasIndex(c => c.ApplicationId);
+
+            entity.HasOne(c => c.Application)
+                .WithMany()
+                .HasForeignKey(c => c.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SendBackLog>(entity =>
+        {
+            // Singular table name, as specified.
+            entity.ToTable("SendBackLog");
+            entity.HasKey(s => s.Id);
+
+            entity.HasIndex(s => s.ApplicationId);
+
+            entity.HasOne(s => s.Application)
+                .WithMany()
+                .HasForeignKey(s => s.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RejectionLog>(entity =>
+        {
+            // Singular table name, matching SendBackLog and RcuInitiation.
+            entity.ToTable("RejectionLog");
+            entity.HasKey(r => r.Id);
+
+            entity.HasIndex(r => r.ApplicationId);
+
+            entity.HasOne(r => r.Application)
+                .WithMany()
+                .HasForeignKey(r => r.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Disbursement>(entity =>
+        {
+            // Singular table name, as specified.
+            entity.ToTable("Disbursement");
+            entity.HasKey(d => d.Id);
+
+            entity.Property(d => d.TradeAdvance).HasPrecision(18, 2);
+            entity.Property(d => d.FirstEmiOverride).HasPrecision(18, 2);
+            entity.Property(d => d.EmiRoundedTo).HasPrecision(18, 2);
+            entity.Property(d => d.AgreementEsignStatus).HasDefaultValue("NotSent");
+            entity.Property(d => d.WelcomeSmsStatus).HasDefaultValue("NotSent");
+
+            entity.HasIndex(d => d.ApplicationId).IsUnique();
+
+            entity.HasOne(d => d.Application)
+                .WithOne()
+                .HasForeignKey<Disbursement>(d => d.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BankStatementAnalysis>(entity =>
+        {
+            entity.ToTable("BankStatementAnalyses");
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Status).HasDefaultValue(BankStatementAnalysis.NotConfigured);
+
+            // Reserved for a real provider's full response; unbounded text, nullable, never populated here.
+            entity.Property(a => a.RawResultJson).HasColumnType("longtext");
+
+            // Many per application — not unique. Inherits tenant isolation through the filtered
+            // Application, like every other child table.
+            entity.HasIndex(a => a.ApplicationId);
+
+            entity.HasOne(a => a.Application)
+                .WithMany()
+                .HasForeignKey(a => a.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EnachMandate>(entity =>
+        {
+            entity.ToTable("EnachMandate");
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.Status).HasDefaultValue("Pending");
+            entity.Property(m => m.NameMatchStatus).HasDefaultValue("NotRun");
+            entity.Property(m => m.ConfirmationAccepted).HasDefaultValue(false);
+
+            entity.HasIndex(m => m.ApplicationId).IsUnique();
+
+            entity.HasOne(m => m.Application)
+                .WithOne()
+                .HasForeignKey<EnachMandate>(m => m.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SecurityNachMandate>(entity =>
+        {
+            entity.ToTable("SecurityNachMandate");
+            entity.HasKey(m => m.Id);
+            entity.Property(m => m.Status).HasDefaultValue("Pending");
+            entity.Property(m => m.NameMatchStatus).HasDefaultValue("NotRun");
+            entity.Property(m => m.ConfirmationAccepted).HasDefaultValue(false);
+
+            entity.HasIndex(m => m.ApplicationId).IsUnique();
+
+            entity.HasOne(m => m.Application)
+                .WithOne()
+                .HasForeignKey<SecurityNachMandate>(m => m.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DownPaymentRecord>(entity =>
+        {
+            entity.ToTable("DownPaymentRecord");
+            entity.HasKey(d => d.Id);
+
+            entity.Property(d => d.AmountReceived).HasPrecision(18, 2);
+
+            entity.HasIndex(d => d.ApplicationId).IsUnique();
+
+            entity.HasOne(d => d.Application)
+                .WithOne()
+                .HasForeignKey<DownPaymentRecord>(d => d.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PostSanctionChecklist>(entity =>
+        {
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Flag).HasDefaultValue("Pending");
+
+            entity.HasIndex(c => c.ApplicationId);
+
+            entity.HasOne(c => c.Application)
+                .WithMany()
+                .HasForeignKey(c => c.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Pdd>(entity =>
+        {
+            entity.ToTable("Pdd");
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.Status).HasDefaultValue("Open");
+
+            entity.HasIndex(p => p.ApplicationId);
+
+            entity.HasOne(p => p.Application)
+                .WithMany()
+                .HasForeignKey(p => p.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, not cascade: deleting an officer must never erase who approved a waiver.
+            entity.HasOne(p => p.WaivedBy)
+                .WithMany()
+                .HasForeignKey(p => p.WaivedByOfficerId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<IfscBankLookup>(entity =>
+        {
+            entity.ToTable("IfscBankLookup");
+            entity.HasKey(i => i.IfscPrefix);
+
+            // PARTIAL LIST — twelve common prefixes, not the RBI-published dataset. See the remarks
+            // on IfscBankLookup; the real list is v2 scope.
+            entity.HasData(
+                new IfscBankLookup { IfscPrefix = "HDFC", BankName = "HDFC Bank" },
+                new IfscBankLookup { IfscPrefix = "ICIC", BankName = "ICICI Bank" },
+                new IfscBankLookup { IfscPrefix = "SBIN", BankName = "State Bank of India" },
+                new IfscBankLookup { IfscPrefix = "UTIB", BankName = "Axis Bank" },
+                new IfscBankLookup { IfscPrefix = "BARB", BankName = "Bank of Baroda" },
+                new IfscBankLookup { IfscPrefix = "PUNB", BankName = "Punjab National Bank" },
+                new IfscBankLookup { IfscPrefix = "KKBK", BankName = "Kotak Mahindra Bank" },
+                new IfscBankLookup { IfscPrefix = "YESB", BankName = "Yes Bank" },
+                new IfscBankLookup { IfscPrefix = "IDFB", BankName = "IDFC First Bank" },
+                new IfscBankLookup { IfscPrefix = "INDB", BankName = "IndusInd Bank" },
+                new IfscBankLookup { IfscPrefix = "CNRB", BankName = "Canara Bank" },
+                new IfscBankLookup { IfscPrefix = "UBIN", BankName = "Union Bank of India" });
+        });
+    }
+
+    /// <summary>
+    /// Companies, branches, and the three global query filters that make tenant isolation structural.
+    /// </summary>
+    /// <remarks>
+    /// Only three entities carry a filter. Everything else — Parties, Documents, Viability, RcuOutcomes
+    /// and the rest — is reachable only through an <see cref="Application"/> that has already been
+    /// filtered, so it inherits the isolation instead of repeating it. That inheritance is real but it
+    /// is a property of how the screens query: each stage page loads its application first and bails
+    /// out when the lookup returns null. Any future code that reaches a child table WITHOUT first
+    /// resolving its application would bypass this and must scope itself explicitly.
+    ///
+    /// <see cref="IfscBankLookup"/> is deliberately unfiltered: it is global reference data, not
+    /// anybody's property.
+    /// </remarks>
+    private void ConfigureTenancy(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Company>(entity =>
+        {
+            entity.Property(c => c.ArbitrationFee).HasPrecision(18, 2);
+            entity.HasKey(c => c.Id);
+
+            // The company code is the prefix of every application id, so it MUST be unique across
+            // companies. MySQL allows several NULLs under a unique index, so pre-existing rows added
+            // before the backfill coexist; once CompanyCodeSeeder has run, every row has a distinct code.
+            entity.HasIndex(c => c.Code).IsUnique();
+
+            // No query filter. A company row is only ever fetched by the id in the caller's own claim,
+            // and a SuperAdmin has to be able to enumerate every one of them.
+
+            // The tenant every pre-existing row belongs to. Seeded here rather than at runtime because
+            // it has to exist before the 128 seeded applications that reference it. CreatedAt is a
+            // fixed date, not DateTime.UtcNow — a moving value would make every migration regenerate.
+            entity.Property(c => c.FoirCapPct).HasPrecision(5, 2);
+            entity.Property(c => c.LtvCapPct).HasPrecision(5, 2);
+            entity.Property(c => c.FoirRiskCautionPct).HasPrecision(5, 2);
+            entity.Property(c => c.FoirRiskDangerPct).HasPrecision(5, 2);
+            entity.Property(c => c.LtvRiskCautionPct).HasPrecision(5, 2);
+            entity.Property(c => c.LtvRiskDangerPct).HasPrecision(5, 2);
+            entity.Property(c => c.GstPct).HasPrecision(5, 2);
+            entity.Property(c => c.NoteStaleTolerancePct).HasPrecision(5, 2);
+
+            // Every policy value below is the exact literal it replaced in code, so relocating them
+            // changed no behaviour. They are the defaults on the model too, which is what a company
+            // created later starts from.
+            // Ships with a BLANK name and no branches on purpose: a fresh install is a blank slate, so
+            // first-run setup is forced (SetupCompletedAt stays null until an Admin enters a real name
+            // and a branch). No place names, customer names or demo figures are baked into the build —
+            // only the policy-threshold defaults below, which the Policy Thresholds tab exists to confirm.
+            entity.HasData(new Company
+            {
+                Id = SeedCompanyId,
+                Name = string.Empty,
+                // A fixed, reserved code for the seed company so it never clashes with a generated one.
+                Code = "LOS",
+                SlaOverdueDays = 5,
+                FoirCapPct = 50m,
+                LtvCapPct = 85m,
+                FoirRiskCautionPct = 40m,
+                // Danger bands aligned to the hard caps (was 60/90) so the red signal fires at the
+                // point eligibility starts capping, not beyond it. See Company.FoirRiskDangerPct.
+                FoirRiskDangerPct = 50m,
+                LtvRiskCautionPct = 75m,
+                LtvRiskDangerPct = 85m,
+                GstPct = 18m,
+                CibilMinScore = 300,
+                CibilMaxScore = 900,
+                AddressValidityDays = 90,
+                NoteStaleTolerancePct = 0.5m,
+                MinimumReferences = 2,
+                CreatedAt = new DateTime(2026, 8, 11, 0, 0, 0, DateTimeKind.Utc),
+                UpdatedAt = new DateTime(2026, 8, 11, 0, 0, 0, DateTimeKind.Utc),
+            });
+        });
+
+        modelBuilder.Entity<Branch>(entity =>
+        {
+            entity.HasKey(b => b.Id);
+
+            entity.HasIndex(b => b.CompanyId);
+
+            entity.HasOne(b => b.Company)
+                .WithMany()
+                .HasForeignKey(b => b.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // No seeded branches. The client enters their own on the Branches tab during first-run
+            // setup — shipping "Nashik West" et al. would bake one deployment's places into every build.
+        });
+
+        modelBuilder.Entity<VehicleLoanCap>(entity =>
+        {
+            entity.HasKey(v => v.Id);
+
+            entity.Property(v => v.MaxLoanAmount).HasPrecision(18, 2);
+
+            // One cap per make/model/YEAR per company — the catalog is also the dropdown source, so a
+            // duplicate would render twice and leave the cap ambiguous. Year is in the key because a
+            // model's ceiling drops as it ages; without it one number would have to cover every
+            // model year at once.
+            entity.HasIndex(v => new { v.CompanyId, v.Make, v.Model, v.Year }).IsUnique();
+
+            entity.HasOne(v => v.Company)
+                .WithMany()
+                .HasForeignKey(v => v.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<LookupValue>(entity =>
+        {
+            entity.HasKey(l => l.Id);
+
+            // One value per name per kind per company — the list is also the dropdown source, so a
+            // duplicate would render twice. Kind is in the key because the same name could legitimately
+            // exist under two different kinds.
+            entity.HasIndex(l => new { l.CompanyId, l.Kind, l.Name }).IsUnique();
+
+            entity.HasOne(l => l.Company)
+                .WithMany()
+                .HasForeignKey(l => l.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SchemeChargeTemplate>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+
+            // Templates are looked up by scheme within a company when seeding a file's charges.
+            entity.HasIndex(t => new { t.CompanyId, t.Scheme });
+
+            entity.Property(t => t.Value).HasPrecision(18, 2);
+
+            entity.HasOne(t => t.Company)
+                .WithMany()
+                .HasForeignKey(t => t.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MigratedLoan>(entity =>
+        {
+            entity.HasKey(m => m.Id);
+
+            entity.HasIndex(m => m.CompanyId);
+
+            entity.Property(m => m.SanctionedAmount).HasPrecision(18, 2);
+            entity.Property(m => m.OutstandingAmount).HasPrecision(18, 2);
+
+            entity.HasOne(m => m.Company)
+                .WithMany()
+                .HasForeignKey(m => m.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AdminRequest>(entity =>
+        {
+            entity.ToTable("AdminRequest");
+            entity.HasKey(r => r.Id);
+
+            entity.Property(r => r.Status).HasDefaultValue(AdminRequest.Pending);
+
+            // The Inbox reads pending-first, so both columns are worth an index.
+            entity.HasIndex(r => new { r.ApplicationId, r.RequestType, r.Status });
+            entity.HasIndex(r => r.Status);
+
+            entity.HasOne(r => r.Application)
+                .WithMany()
+                .HasForeignKey(r => r.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Restrict, not cascade: removing a user must never erase who asked for a bypass or who
+            // granted it. That is the audit trail this table exists to be.
+            entity.HasOne(r => r.RequestedBy)
+                .WithMany()
+                .HasForeignKey(r => r.RequestedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(r => r.ReviewedBy)
+                .WithMany()
+                .HasForeignKey(r => r.ReviewedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ---- Provider API metering & postpaid billing ----
+        modelBuilder.Entity<ApiRate>(entity =>
+        {
+            entity.ToTable("ApiRate");
+            entity.Property(r => r.UnitRate).HasPrecision(18, 2);
+
+            // Global reference data (no company): seeded from the Digio quote, editable by the vendor.
+            entity.HasData(DigioRates.Seed);
+        });
+
+        modelBuilder.Entity<ApiUsageLog>(entity =>
+        {
+            entity.ToTable("ApiUsageLog");
+            entity.Property(l => l.UnitRate).HasPrecision(18, 2);
+
+            // The monthly report reads one company's rows in a date window.
+            entity.HasIndex(l => new { l.CompanyId, l.CreatedAt });
+
+            // Restrict, not cascade: deleting a company must never erase what we are owed for.
+            entity.HasOne(l => l.Company)
+                .WithMany()
+                .HasForeignKey(l => l.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Global (vendor-wide) payee details: one row, no company, so no tenant filter.
+        modelBuilder.Entity<PaymentDetails>().ToTable("PaymentDetails");
+
+        modelBuilder.Entity<ApiInvoice>(entity =>
+        {
+            entity.ToTable("ApiInvoice");
+            entity.Property(i => i.Subtotal).HasPrecision(18, 2);
+            entity.Property(i => i.Gst).HasPrecision(18, 2);
+            entity.Ignore(i => i.Total);
+            entity.Ignore(i => i.Reference);
+
+            // One bill per company per month — also what makes concurrent lazy generation safe.
+            entity.HasIndex(i => new { i.CompanyId, i.PeriodStart }).IsUnique();
+
+            entity.HasOne(i => i.Company)
+                .WithMany()
+                .HasForeignKey(i => i.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Partner OAuth ("Connect to LOS-LMS"). Deliberately NO tenant query filter: the token endpoints
+        // run with no signed-in user, so PartnerOAuthService scopes every query by company itself.
+        modelBuilder.Entity<PartnerClient>().ToTable("PartnerClient");
+
+        modelBuilder.Entity<PartnerConnection>(entity =>
+        {
+            entity.ToTable("PartnerConnection");
+            entity.HasIndex(c => new { c.CompanyId, c.RevokedAt });
+            entity.HasOne<PartnerClient>().WithMany().HasForeignKey(c => c.ClientId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Company>().WithMany().HasForeignKey(c => c.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<PartnerToken>(entity =>
+        {
+            entity.ToTable("PartnerToken");
+            entity.HasIndex(t => t.AccessHash).IsUnique();
+            entity.HasIndex(t => t.RefreshHash).IsUnique();
+            entity.HasOne<PartnerConnection>().WithMany().HasForeignKey(t => t.ConnectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PartnerDeviceCode>(entity =>
+        {
+            entity.ToTable("PartnerDeviceCode");
+            entity.HasIndex(d => d.UserCodeHash).IsUnique();
+            entity.HasIndex(d => d.ExpiresAt);
+            entity.HasOne<PartnerClient>().WithMany().HasForeignKey(d => d.ClientId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ApplicationUser>(entity =>
+        {
+            entity.HasIndex(u => u.CompanyId);
+
+            entity.HasOne(u => u.Company)
+                .WithMany()
+                .HasForeignKey(u => u.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ---- The filters ----
+        //
+        // Anonymous requests get a null _companyId. Application.CompanyId is non-nullable, so the
+        // comparison is never true and an unauthenticated query returns nothing at all. Failing
+        // closed is the point: a bug in the auth wiring shows up as an empty dashboard, not as a
+        // cross-tenant leak.
+        modelBuilder.Entity<Application>()
+            .HasQueryFilter(a => _isSuperAdmin || a.CompanyId == _companyId);
+
+        modelBuilder.Entity<Branch>()
+            .HasQueryFilter(b => _isSuperAdmin || b.CompanyId == _companyId);
+
+        modelBuilder.Entity<VehicleLoanCap>()
+            .HasQueryFilter(v => _isSuperAdmin || v.CompanyId == _companyId);
+
+        modelBuilder.Entity<LookupValue>()
+            .HasQueryFilter(l => _isSuperAdmin || l.CompanyId == _companyId);
+
+        modelBuilder.Entity<MigratedLoan>()
+            .HasQueryFilter(m => _isSuperAdmin || m.CompanyId == _companyId);
+
+        modelBuilder.Entity<SchemeChargeTemplate>()
+            .HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
+
+        modelBuilder.Entity<ApiUsageLog>()
+            .HasQueryFilter(l => _isSuperAdmin || l.CompanyId == _companyId);
+
+        // Digio foundation tables: company-scoped. The webhook processor and the reconciler have no user, so they bypass the
+        // filter on purpose and scope by an explicit CompanyId instead.
+        modelBuilder.Entity<DigioRequest>(entity =>
+        {
+            entity.ToTable("DigioRequest");
+            entity.HasIndex(r => new { r.CompanyId, r.DigioId }).IsUnique(); // NULL DigioIds do not collide
+            entity.HasIndex(r => new { r.CompanyId, r.ApplicationId });
+            entity.HasIndex(r => new { r.Status, r.LastPolledAt });          // the reconciler's "not final yet" scan
+            entity.HasQueryFilter(r => _isSuperAdmin || r.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<DigioWebhookInbox>(entity =>
+        {
+            entity.ToTable("DigioWebhookInbox");
+            entity.HasIndex(i => new { i.CompanyId, i.DigioEventId }).IsUnique(); // at-least-once delivery: a repeat is a no-op
+            entity.HasIndex(i => new { i.Status, i.NextAttemptAt });
+            entity.HasQueryFilter(i => _isSuperAdmin || i.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<VerificationEvidence>(entity =>
+        {
+            entity.ToTable("VerificationEvidence");
+            entity.Property(e => e.Score).HasPrecision(6, 2);
+            entity.HasIndex(e => new { e.CompanyId, e.ApplicationId, e.Subject });
+            entity.HasQueryFilter(e => _isSuperAdmin || e.CompanyId == _companyId);
+        });
+
+        // Servicing ledger (docs/digio/03): company-scoped; the collection scheduler and webhooks have no user and bypass the
+        // filter on purpose, scoping by an explicit CompanyId.
+        modelBuilder.Entity<LoanAccount>(entity =>
+        {
+            entity.ToTable("LoanAccount");
+            entity.HasIndex(a => a.ApplicationId).IsUnique();          // opened exactly once
+            entity.HasIndex(a => new { a.CompanyId, a.LoanAccountNo }).IsUnique();
+            entity.Property(a => a.Principal).HasPrecision(18, 2);
+            entity.Property(a => a.Roi).HasPrecision(6, 3);
+            entity.HasMany(a => a.Instalments).WithOne(i => i.LoanAccount).HasForeignKey(i => i.LoanAccountId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasQueryFilter(a => _isSuperAdmin || a.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<Instalment>(entity =>
+        {
+            entity.ToTable("Instalment");
+            entity.HasIndex(i => new { i.LoanAccountId, i.No }).IsUnique();
+            entity.HasIndex(i => new { i.Status, i.DueDate });
+            foreach (var p in new[] { nameof(Instalment.Emi), nameof(Instalment.Principal), nameof(Instalment.Interest), nameof(Instalment.PaidAmount) })
+            {
+                entity.Property(p).HasPrecision(18, 2);
+            }
+
+            entity.HasQueryFilter(i => _isSuperAdmin || i.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<Presentation>(entity =>
+        {
+            entity.ToTable("Presentation");
+            entity.HasIndex(p => new { p.InstalmentId, p.Attempt }).IsUnique();   // one row per attempt: a re-run of the scheduler cannot add a second
+            entity.HasIndex(p => new { p.CompanyId, p.DigioTxnId });
+            entity.HasIndex(p => new { p.Status, p.UpdatedAt });
+            entity.Property(p => p.Amount).HasPrecision(18, 2);
+            entity.HasQueryFilter(p => _isSuperAdmin || p.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<Receipt>(entity =>
+        {
+            entity.ToTable("Receipt");
+            entity.HasIndex(r => new { r.CompanyId, r.ReceiptNo }).IsUnique();
+            entity.HasIndex(r => r.PresentationId).IsUnique();                      // a replayed success webhook cannot make a second receipt
+            entity.Property(r => r.Amount).HasPrecision(18, 2);
+            entity.HasQueryFilter(r => _isSuperAdmin || r.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<CollectionTask>(entity =>
+        {
+            entity.ToTable("CollectionTask");
+            entity.HasIndex(t => new { t.InstalmentId, t.Kind, t.Status });
+            entity.HasIndex(t => new { t.CompanyId, t.Status });
+            entity.HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<SettlementCheck>(entity =>
+        {
+            entity.ToTable("SettlementCheck");
+            entity.HasIndex(c => new { c.CompanyId, c.Cid });
+            entity.Property(c => c.DigioTotal).HasPrecision(18, 2);
+            entity.Property(c => c.OurTotal).HasPrecision(18, 2);
+            entity.HasQueryFilter(c => _isSuperAdmin || c.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<LoanCharge>(entity =>
+        {
+            entity.ToTable("LoanCharge");
+            entity.Property(c => c.Amount).HasPrecision(18, 2);
+            entity.Property(c => c.Gst).HasPrecision(18, 2);
+            entity.HasQueryFilter(c => _isSuperAdmin || c.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<VerificationRecheck>(entity =>
+        {
+            entity.ToTable("VerificationRecheck");
+            entity.HasIndex(g => new { g.CompanyId, g.ApplicationId, g.Subject });
+            entity.HasQueryFilter(g => _isSuperAdmin || g.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<EsignSigner>(entity =>
+        {
+            entity.ToTable("EsignSigner");
+            entity.HasIndex(s => new { s.CompanyId, s.ApplicationId, s.DocumentId });
+            entity.HasQueryFilter(s => _isSuperAdmin || s.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<DigioSettings>(entity =>
+        {
+            entity.ToTable("DigioSettings");
+            entity.Property(s => s.NachMaxMultiplier).HasPrecision(4, 2);
+            entity.Property(s => s.BounceChargeAmount).HasPrecision(18, 2);
+            entity.Property(s => s.BounceChargeGstPct).HasPrecision(5, 2);
+            entity.HasIndex(s => s.CompanyId).IsUnique();
+            entity.HasQueryFilter(s => _isSuperAdmin || s.CompanyId == _companyId);
+        });
+
+        modelBuilder.Entity<ApiInvoice>()
+            .HasQueryFilter(i => _isSuperAdmin || i.CompanyId == _companyId);
+
+        // The one deliberate exception, and it is narrow: when nobody is signed in the user filter is
+        // open, because Identity's own sign-in path calls FindByEmailAsync on this very context before
+        // a company can possibly be known. Email is a global identifier, so that lookup has to see
+        // every company. Nothing else is reachable while anonymous — the authorization fallback policy
+        // requires an authenticated user for every endpoint except the /account pages.
+        modelBuilder.Entity<ApplicationUser>()
+            .HasQueryFilter(u => !_hasUser || _isSuperAdmin || u.CompanyId == _companyId);
+
+        // ---- Child-table filters: isolation is structural, not conventional ----
+        //
+        // Every table below belongs to an Application and used to be isolated ONLY because the screens
+        // always resolved that Application (which IS filtered) first — a convention a future query could
+        // silently break, leaking another company's PII. Filtering each child through its own
+        // Application navigation makes the guarantee independent of how the query is written: a direct
+        // `db.Parties.Where(...)` that never touches Applications is now scoped just the same. The
+        // `_isSuperAdmin` short-circuit matches the parent filters (and the seeding tenant, which is
+        // SuperAdmin), so cross-company administration and startup seeding are unaffected. A companion
+        // test (tests/LosLms.Tests/TenantIsolationTests) asserts this holds across every DbSet.
+        modelBuilder.Entity<Party>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<SecurityDetail>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Reference>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Viability>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankDetail>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankStatement>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankStatementAnalysis>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<CamCostBreakdown>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<ChecklistDocument>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RcuInitiation>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RcuOutcome>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RcuReport>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Classification>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<ExistingLoan>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<BankingRecord>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<EligibilityDecision>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Business>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Partner>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Tvr>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<ApprovalDecision>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Charge>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<SendBackLog>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Disbursement>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<EnachMandate>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<SecurityNachMandate>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<DownPaymentRecord>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<PostSanctionChecklist>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<Pdd>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<RejectionLog>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<AdminRequest>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+
+        // DocumentRemark is a grandchild: it hangs off a ChecklistDocument, which hangs off the
+        // Application. Scope it through both hops.
+        modelBuilder.Entity<DocumentRemark>()
+            .HasQueryFilter(x => _isSuperAdmin || x.Document!.Application!.CompanyId == _companyId);
+    }
+
+    /// <summary>Id of the single company created by <c>HasData</c> and owned by every seeded row.</summary>
+    public const int SeedCompanyId = 1;
+
+    public override int SaveChanges()
+    {
+        StampTimestamps();
+        StampTenant();
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        StampTimestamps();
+        StampTenant();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Stamps the owning company onto every newly inserted tenant-scoped row, from the signed-in
+    /// user's claims.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than at each call site so it cannot be forgotten, and it overwrites whatever the
+    /// caller set — CompanyId is never accepted as input, from a form, a URL or anywhere else.
+    ///
+    /// A SuperAdmin has no company of their own, so rows they create keep whatever CompanyId was
+    /// assigned explicitly; that is the only path allowed to choose, and it exists so cross-company
+    /// administration is possible at all.
+    /// </remarks>
+    private void StampTenant()
+    {
+        if (_companyId is not { } companyId)
+        {
+            return;
+        }
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State != EntityState.Added)
+            {
+                continue;
+            }
+
+            switch (entry.Entity)
+            {
+                case Application application:
+                    application.CompanyId = companyId;
+                    break;
+                case Branch branch:
+                    branch.CompanyId = companyId;
+                    break;
+                case VehicleLoanCap cap:
+                    cap.CompanyId = companyId;
+                    break;
+                case ApplicationUser user:
+                    user.CompanyId = companyId;
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Maintains CreatedAt / UpdatedAt in application code rather than with a database trigger,
+    /// so the behaviour is visible and testable alongside the rest of the model.
+    /// </summary>
+    private void StampTimestamps()
+    {
+        var now = DateTime.UtcNow;
+
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified))
+            {
+                continue;
+            }
+
+            switch (entry.Entity)
+            {
+                case Company company:
+                    if (entry.State == EntityState.Added && company.CreatedAt == default)
+                    {
+                        company.CreatedAt = now;
+                    }
+
+                    company.UpdatedAt = now;
+                    break;
+
+                case VehicleLoanCap vehicleCap:
+                    if (entry.State == EntityState.Added && vehicleCap.CreatedAt == default)
+                    {
+                        vehicleCap.CreatedAt = now;
+                    }
+
+                    vehicleCap.UpdatedAt = now;
+                    break;
+
+                case Application application:
+                    if (entry.State == EntityState.Added && application.CreatedAt == default)
+                    {
+                        application.CreatedAt = now;
+                    }
+
+                    application.UpdatedAt = now;
+                    break;
+
+                case Party party:
+                    if (entry.State == EntityState.Added && party.CreatedAt == default)
+                    {
+                        party.CreatedAt = now;
+                    }
+
+                    party.UpdatedAt = now;
+                    break;
+
+                case SecurityDetail security:
+                    if (entry.State == EntityState.Added && security.CreatedAt == default)
+                    {
+                        security.CreatedAt = now;
+                    }
+
+                    security.UpdatedAt = now;
+                    break;
+
+                case Viability viability:
+                    if (entry.State == EntityState.Added && viability.CreatedAt == default)
+                    {
+                        viability.CreatedAt = now;
+                    }
+
+                    viability.UpdatedAt = now;
+                    break;
+
+                case BankDetail bank:
+                    if (entry.State == EntityState.Added && bank.CreatedAt == default)
+                    {
+                        bank.CreatedAt = now;
+                    }
+
+                    bank.UpdatedAt = now;
+                    break;
+
+                case CamCostBreakdown cam:
+                    if (entry.State == EntityState.Added && cam.CreatedAt == default)
+                    {
+                        cam.CreatedAt = now;
+                    }
+
+                    cam.UpdatedAt = now;
+                    break;
+
+                // References carry CreatedAt only — they are replaced wholesale, never updated.
+                case Reference reference:
+                    if (entry.State == EntityState.Added && reference.CreatedAt == default)
+                    {
+                        reference.CreatedAt = now;
+                    }
+
+                    break;
+
+                case RcuInitiation initiation:
+                    if (entry.State == EntityState.Added && initiation.CreatedAt == default)
+                    {
+                        initiation.CreatedAt = now;
+                    }
+
+                    initiation.UpdatedAt = now;
+                    break;
+
+                case RcuOutcome outcome:
+                    if (entry.State == EntityState.Added && outcome.CreatedAt == default)
+                    {
+                        outcome.CreatedAt = now;
+                    }
+
+                    outcome.UpdatedAt = now;
+                    break;
+
+                // Reports are insert-only rounds; an existing round is never rewritten except to
+                // attach its file, which does not change when the round was raised.
+                case RcuReport report:
+                    if (entry.State == EntityState.Added && report.CreatedAt == default)
+                    {
+                        report.CreatedAt = now;
+                    }
+
+                    break;
+
+                case ChecklistDocument document:
+                    if (entry.State == EntityState.Added && document.CreatedAt == default)
+                    {
+                        document.CreatedAt = now;
+                    }
+
+                    document.UpdatedAt = now;
+                    break;
+
+                // Remarks are append-only — CreatedAt is the log entry's date and never changes.
+                case DocumentRemark remark:
+                    if (entry.State == EntityState.Added && remark.CreatedAt == default)
+                    {
+                        remark.CreatedAt = now;
+                    }
+
+                    break;
+
+                case Classification classification:
+                    if (entry.State == EntityState.Added && classification.CreatedAt == default)
+                    {
+                        classification.CreatedAt = now;
+                    }
+
+                    classification.UpdatedAt = now;
+                    break;
+
+                case ExistingLoan existingLoan:
+                    if (entry.State == EntityState.Added && existingLoan.CreatedAt == default)
+                    {
+                        existingLoan.CreatedAt = now;
+                    }
+
+                    existingLoan.UpdatedAt = now;
+                    break;
+
+                case BankingRecord bankingRecord:
+                    if (entry.State == EntityState.Added && bankingRecord.CreatedAt == default)
+                    {
+                        bankingRecord.CreatedAt = now;
+                    }
+
+                    bankingRecord.UpdatedAt = now;
+                    break;
+
+                case EligibilityDecision decision:
+                    if (entry.State == EntityState.Added && decision.CreatedAt == default)
+                    {
+                        decision.CreatedAt = now;
+                    }
+
+                    decision.UpdatedAt = now;
+                    break;
+
+                case Business business:
+                    if (entry.State == EntityState.Added && business.CreatedAt == default)
+                    {
+                        business.CreatedAt = now;
+                    }
+
+                    business.UpdatedAt = now;
+                    break;
+
+                case Partner partner:
+                    if (entry.State == EntityState.Added && partner.CreatedAt == default)
+                    {
+                        partner.CreatedAt = now;
+                    }
+
+                    partner.UpdatedAt = now;
+                    break;
+
+                case Tvr tvr:
+                    if (entry.State == EntityState.Added && tvr.CreatedAt == default)
+                    {
+                        tvr.CreatedAt = now;
+                    }
+
+                    tvr.UpdatedAt = now;
+                    break;
+
+                case ApprovalDecision approval:
+                    if (entry.State == EntityState.Added && approval.CreatedAt == default)
+                    {
+                        approval.CreatedAt = now;
+                    }
+
+                    approval.UpdatedAt = now;
+                    break;
+
+                case Charge charge:
+                    if (entry.State == EntityState.Added && charge.CreatedAt == default)
+                    {
+                        charge.CreatedAt = now;
+                    }
+
+                    charge.UpdatedAt = now;
+                    break;
+
+                // Send-back entries are append-only — CreatedAt is when it happened, never rewritten.
+                case SendBackLog sendBack:
+                    if (entry.State == EntityState.Added && sendBack.CreatedAt == default)
+                    {
+                        sendBack.CreatedAt = now;
+                    }
+
+                    break;
+
+                // Rejections are a point in time, stamped on insert and never rewritten.
+                case RejectionLog rejection:
+                    if (entry.State == EntityState.Added && rejection.RejectedAt == default)
+                    {
+                        rejection.RejectedAt = now;
+                    }
+
+                    break;
+
+                case Disbursement disbursement:
+                    if (entry.State == EntityState.Added && disbursement.CreatedAt == default)
+                    {
+                        disbursement.CreatedAt = now;
+                    }
+
+                    disbursement.UpdatedAt = now;
+                    break;
+
+                case EnachMandate enach:
+                    if (entry.State == EntityState.Added && enach.CreatedAt == default)
+                    {
+                        enach.CreatedAt = now;
+                    }
+
+                    enach.UpdatedAt = now;
+                    break;
+
+                case SecurityNachMandate securityNach:
+                    if (entry.State == EntityState.Added && securityNach.CreatedAt == default)
+                    {
+                        securityNach.CreatedAt = now;
+                    }
+
+                    securityNach.UpdatedAt = now;
+                    break;
+
+                case DownPaymentRecord downPayment:
+                    if (entry.State == EntityState.Added && downPayment.CreatedAt == default)
+                    {
+                        downPayment.CreatedAt = now;
+                    }
+
+                    downPayment.UpdatedAt = now;
+                    break;
+
+                case PostSanctionChecklist checklistItem:
+                    if (entry.State == EntityState.Added && checklistItem.CreatedAt == default)
+                    {
+                        checklistItem.CreatedAt = now;
+                    }
+
+                    checklistItem.UpdatedAt = now;
+                    break;
+
+                case Pdd pdd:
+                    if (entry.State == EntityState.Added && pdd.CreatedAt == default)
+                    {
+                        pdd.CreatedAt = now;
+                    }
+
+                    pdd.UpdatedAt = now;
+                    break;
+
+                // Statements are insert-only; an existing row is never rewritten.
+                case BankStatement statement:
+                    if (entry.State == EntityState.Added)
+                    {
+                        if (statement.CreatedAt == default)
+                        {
+                            statement.CreatedAt = now;
+                        }
+
+                        if (statement.UploadedOn == default)
+                        {
+                            statement.UploadedOn = now;
+                        }
+                    }
+
+                    break;
+            }
+        }
+    }
+}

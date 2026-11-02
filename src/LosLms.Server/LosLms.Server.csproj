@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The single LOS/LMS executable. On first run it asks whether this computer is the host or a staff
+       client, then runs that role: the host sets up a bundled portable MySQL (localhost only), starts
+       the backend, opens the named Cloudflare tunnel at the fixed address, and shows the app locally; a
+       client just opens that same address. Published single-file, so the extracted folder is one clean
+       exe next to an app\ folder rather than a pile of DLLs. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>LOS-LMS</AssemblyName>
+    <RootNamespace>LosLms.Server</RootNamespace>
+    <Version>1.2.4</Version>
+    <!-- The product logo as the exe's file icon in Explorer. The window/tray icon is read from the exe
+         itself at runtime, so no separate app.ico file is shipped (keeps the folder clean). -->
+    <ApplicationIcon>..\..\branding\app.ico</ApplicationIcon>
+    <!-- Keep the single-file publish output to just the exe: no .pdb, no NuGet .xml doc files. -->
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyDebugSymbolFilesFromPackages>false</CopyDebugSymbolFilesFromPackages>
+    <CopyDocumentationFilesFromPackages>false</CopyDocumentationFilesFromPackages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LosLms.Shell\LosLms.Shell.csproj" />
+  </ItemGroup>
+
+  <!-- The named-tunnel token, baked in at publish from tunnel-token.txt (gitignored), so the operator
+       never pastes anything: the host just runs and connects at the fixed address. Absent property (dev
+       builds, or no tunnel-token.txt) = no baked token, and the host falls back to LAN-only unless a
+       server-config.json supplies one. Base64 so the token survives the build command unharmed. -->
+  <ItemGroup Condition="'$(TunnelToken)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>TunnelToken</_Parameter1>
+      <_Parameter2>$(TunnelToken)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- The client's public URL, baked at publish (base64). One build per client carries its own address,
+       so the same source produces client1.bhodhix.com, client2.bhodhix.com, … each fully separate. -->
+  <ItemGroup Condition="'$(HostedUrl)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>HostedUrl</_Parameter1>
+      <_Parameter2>$(HostedUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For the real "is MySQL actually accepting connections" readiness poll and the first-run
+         bootstrap DDL (create database + application user). -->
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
+    <!-- Windows DPAPI (ProtectedData) to encrypt the stored MySQL credential at rest. On .NET this
+         lives in a small official package rather than the BCL, even on Windows. -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

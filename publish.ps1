@@ -14,7 +14,7 @@
 #   LOS-LMS-v<version>-win-x64.zip        the whole app — send this to everyone
 #   LOS-LMS-Update-v<version>-win-x64.zip the in-app UPDATE artifact (backend only) + .sig
 
-# Per-client build (see deploy\NEW-CLIENT.md):
+# Per-client build (see docs\operations\NEW-CLIENT-ONBOARDING.md):
 #   .\publish.ps1                                                   # default client (bhodhix)
 #   .\publish.ps1 -Subdomain client1.bhodhix.com -TunnelTokenFile tunnel-tokens\client1.txt -Label client1 -SkipUpdateArtifact
 param(
@@ -27,8 +27,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root      = $PSScriptRoot
-$appProj   = Join-Path $root 'LosLms\LosLms.csproj'               # backend
-$exeProj   = Join-Path $root 'LosLms.Server\LosLms.Server.csproj' # the unified launcher
+$appProj   = Join-Path $root 'src\LosLms\LosLms.csproj'               # backend
+$exeProj   = Join-Path $root 'src\LosLms.Server\LosLms.Server.csproj' # the unified launcher
 $stage     = Join-Path $root 'publish\LOS-LMS'    # zip root: LOS-LMS.exe + app\
 $appFolder = Join-Path $stage 'app'
 $backend   = Join-Path $appFolder 'backend'
@@ -138,8 +138,8 @@ if ($vcCopied -lt 3) {
 Write-Host "VC++ runtime: bundled $vcCopied DLL(s) into mysql\bin (clean-PC fix for 0xC0000135)."
 
 # ---- Optional operator config template + read-me, inside app\ (top level stays just the exe + app\) ----
-Copy-Item -Path (Join-Path $root 'server-config.example.json') -Destination (Join-Path $appFolder 'server-config.example.json') -Force
-Copy-Item -Path (Join-Path $root 'READ-ME-FIRST.txt')          -Destination (Join-Path $appFolder 'READ ME FIRST.txt') -Force
+Copy-Item -Path (Join-Path $root 'deploy\client-package\server-config.example.json') -Destination (Join-Path $appFolder 'server-config.example.json') -Force
+Copy-Item -Path (Join-Path $root 'deploy\client-package\READ-ME-FIRST.txt')          -Destination (Join-Path $appFolder 'READ ME FIRST.txt') -Force
 
 # ZipFile, not Compress-Archive: Compress-Archive silently drops MySQL's deeply-nested files, leaving
 # a package with no database engine in it.

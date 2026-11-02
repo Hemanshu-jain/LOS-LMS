@@ -1,0 +1,379 @@
+using LosLms.Data;
+using LosLms.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+
+namespace LosLms.Services;
+
+/// <summary>Postpaid billing knobs. Bound from the <c>ApiBilling</c> config section.</summary>
+public sealed class ApiBillingOptions
+{
+    public const string Section = "ApiBilling";
+
+    /// <summary>Days after a month closes that the client has to pay before API use is paused.</summary>
+    public int GraceDays { get; set; } = 7;
+
+    /// <summary>GST added on top of the provider rates (Digio quotes are ex-GST).</summary>
+    public decimal GstPct { get; set; } = 18m;
+}
+
+/// <summary>One row of the monthly usage report: a single API at a single rate for a single company.</summary>
+public sealed record UsageLine(
+    int CompanyId, string ApiCode, string Name, string Product, decimal UnitRate, int Calls, int Failed, decimal Amount);
+
+/// <summary>Whether a company may call provider APIs right now, and if a bill is pending, which.</summary>
+/// <param name="ClaimedAt">When the customer said they had paid, if EVERY unpaid bill carries such a claim
+/// (latest one). Informational only: access stays as <paramref name="Allowed"/> says until Mark paid.</param>
+public sealed record ApiAccess(bool Allowed, string? Reason, DateOnly? DueDate, decimal AmountDue, DateTime? ClaimedAt = null)
+{
+    public static readonly ApiAccess Open = new(true, null, null, 0m);
+
+    /// <summary>
+    /// Whether the "bill due" banner (with its Pay now button) shows today: from the due date itself, never before it, so
+    /// the first week after a bill is generated is quiet. From the day after the due date the app is paused and the pause
+    /// screen carries the Pay now button, so the banner only ever shows on the due date.
+    /// </summary>
+    public bool ReminderVisible(DateOnly today) => Allowed && DueDate is { } due && due <= today;
+}
+
+/// <summary>
+/// Metering + postpaid billing for provider (Digio) API use. Every call is logged; each month closes
+/// into an invoice that the client must clear within the grace window or API use is paused until the
+/// vendor marks it paid. Month boundaries are India time — that is what the client's bill is read in.
+/// </summary>
+/// <remarks>
+/// Prepaid wallet is the planned successor: <see cref="CheckAccessAsync"/> is the single gate every
+/// provider call goes through, so a balance check slots in there without touching call sites.
+/// </remarks>
+public sealed class ApiBillingService(IDbContextFactory<LosDbContext> dbFactory, IOptions<ApiBillingOptions> options)
+{
+    private static readonly TimeSpan IstOffset = TimeSpan.FromMinutes(330);
+
+    private readonly ApiBillingOptions _opt = options.Value;
+
+    /// <summary>Today's date in India.</summary>
+    public static DateOnly TodayIst(DateTime? nowUtc = null) =>
+        DateOnly.FromDateTime((nowUtc ?? DateTime.UtcNow) + IstOffset);
+
+    private static DateOnly MonthOf(DateOnly d) => new(d.Year, d.Month, 1);
+
+    /// <summary>UTC instant at which the given India-time month begins.</summary>
+    private static DateTime MonthStartUtc(DateOnly month) =>
+        DateTime.SpecifyKind(month.ToDateTime(TimeOnly.MinValue) - IstOffset, DateTimeKind.Utc);
+
+    /// <summary>Records a provider call. Unknown codes throw — a typo must never bill nothing.</summary>
+    public async Task RecordAsync(
+        int companyId, string apiCode, bool success,
+        string? applicationId = null, string? providerRef = null, DateTime? nowUtc = null, decimal? unitRateOverride = null, string? detail = null)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var rate = await db.ApiRates.AsNoTracking().FirstOrDefaultAsync(r => r.Code == apiCode)
+            ?? throw new InvalidOperationException($"Unknown API code '{apiCode}'.");
+
+        db.ApiUsageLogs.Add(new ApiUsageLog
+        {
+            CompanyId = companyId,
+            ApiCode = apiCode,
+            ApplicationId = applicationId,
+            ProviderRef = providerRef,
+            IsSuccess = success,
+            UnitRate = unitRateOverride ?? rate.UnitRate,
+            Detail = detail,
+            CreatedAt = nowUtc ?? DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Records a successful call once per (company, code, provider reference): a redelivered webhook or a repeated poll finds the row and adds none.
+    /// Returns true when it recorded one.
+    /// </summary>
+    public async Task<bool> RecordOnceAsync(int companyId, string apiCode, string providerRef, string? applicationId = null)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        if (await db.ApiUsageLogs.IgnoreQueryFilters().AnyAsync(l => l.CompanyId == companyId && l.ApiCode == apiCode && l.ProviderRef == providerRef && l.IsSuccess))
+        {
+            return false;
+        }
+
+        await RecordAsync(companyId, apiCode, true, applicationId, providerRef);
+        return true;
+    }
+
+    /// <summary>Rs 1.00 up to 25 s; beyond that 1.00 x seconds / 25, rounded UP to the paisa (26 s = 1.04, 35 s = 1.40).</summary>
+    public static decimal VideoKycCharge(int seconds)
+    {
+        const decimal Base = 1.00m;
+        const int IncludedSeconds = 25;
+        return seconds <= IncludedSeconds ? Base : Math.Max(Base, Math.Ceiling(Base * seconds * 100m / IncludedSeconds) / 100m);
+    }
+
+    /// <summary>Bills one completed in-house Video KYC recording, once per recording id, on its real length. True when it recorded one.</summary>
+    public async Task<bool> RecordVideoKycAsync(int companyId, string applicationId, string recordingId, int seconds)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        if (await db.ApiUsageLogs.IgnoreQueryFilters().AnyAsync(l => l.CompanyId == companyId && l.ApiCode == DigioRates.VideoKycInhouse && l.ProviderRef == recordingId && l.IsSuccess))
+        {
+            return false;
+        }
+
+        await RecordAsync(companyId, DigioRates.VideoKycInhouse, true, applicationId, recordingId, null, VideoKycCharge(seconds), $"{seconds} s");
+        return true;
+    }
+
+    /// <summary>Usage for one India-time month, optionally narrowed to a company.</summary>
+    public async Task<IReadOnlyList<UsageLine>> UsageForMonthAsync(int? companyId, DateOnly month)
+    {
+        var from = MonthStartUtc(MonthOf(month));
+        var to = MonthStartUtc(MonthOf(month).AddMonths(1));
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var logs = db.ApiUsageLogs.AsNoTracking().Where(l => l.CreatedAt >= from && l.CreatedAt < to);
+        if (companyId is { } id)
+        {
+            logs = logs.Where(l => l.CompanyId == id);
+        }
+
+        var grouped = await logs
+            .GroupBy(l => new { l.CompanyId, l.ApiCode, l.UnitRate, l.Detail })
+            .Select(g => new
+            {
+                g.Key.CompanyId,
+                g.Key.ApiCode,
+                g.Key.UnitRate,
+                g.Key.Detail,
+                Calls = g.Count(l => l.IsSuccess),
+                Failed = g.Count(l => !l.IsSuccess),
+            })
+            .ToListAsync();
+
+        var rates = await db.ApiRates.AsNoTracking().ToDictionaryAsync(r => r.Code);
+
+        return grouped
+            .Select(g =>
+            {
+                rates.TryGetValue(g.ApiCode, out var r);
+                return new UsageLine(g.CompanyId, g.ApiCode, (r?.Name ?? g.ApiCode) + (g.Detail is { Length: > 0 } ? ", " + g.Detail : ""), r?.Product ?? "Other",
+                    g.UnitRate, g.Calls, g.Failed, g.Calls * g.UnitRate);
+            })
+            .OrderBy(u => u.CompanyId).ThenBy(u => u.Product).ThenBy(u => u.Name)
+            .ToList();
+    }
+
+    public decimal GstOn(decimal subtotal) => Math.Round(subtotal * _opt.GstPct / 100m, 2);
+
+    /// <summary>
+    /// Creates the invoice for every closed month that has billable usage and none yet. Idempotent and
+    /// deterministic (the due date derives from the month, not from when this ran), so it is safe to
+    /// call from anywhere, any number of times — no scheduler needed.
+    /// </summary>
+    public async Task EnsureInvoicesAsync(int? companyId, DateTime? nowUtc = null)
+    {
+        var now = nowUtc ?? DateTime.UtcNow;
+        var currentMonth = MonthOf(TodayIst(now));
+        var closedBefore = MonthStartUtc(currentMonth);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+
+        var logs = db.ApiUsageLogs.AsNoTracking().Where(l => l.IsSuccess && l.CreatedAt < closedBefore);
+        var existing = db.ApiInvoices.AsNoTracking().AsQueryable();
+        if (companyId is { } id)
+        {
+            logs = logs.Where(l => l.CompanyId == id);
+            existing = existing.Where(i => i.CompanyId == id);
+        }
+
+        var have = (await existing.Select(i => new { i.CompanyId, i.PeriodStart }).ToListAsync())
+            .Select(i => (i.CompanyId, i.PeriodStart)).ToHashSet();
+
+        // For one company (the hot path: every provider call) only months after its newest invoice can
+        // be missing, so don't rescan all history. Across companies "newest" isn't comparable — scan all.
+        var latest = companyId is null || have.Count == 0 ? (DateOnly?)null : have.Max(h => h.PeriodStart);
+        if (latest is { } l0)
+        {
+            var since = MonthStartUtc(l0.AddMonths(1));
+            logs = logs.Where(l => l.CreatedAt >= since);
+        }
+
+        var billable = (await logs.Select(l => new { l.CompanyId, l.CreatedAt, l.UnitRate }).ToListAsync())
+            .GroupBy(l => (l.CompanyId, Month: MonthOf(DateOnly.FromDateTime(l.CreatedAt + IstOffset))))
+            .Where(g => !have.Contains((g.Key.CompanyId, g.Key.Month)) && g.Key.Month < currentMonth);
+
+        foreach (var g in billable)
+        {
+            var subtotal = g.Sum(l => l.UnitRate);
+            db.ApiInvoices.Add(new ApiInvoice
+            {
+                CompanyId = g.Key.CompanyId,
+                PeriodStart = g.Key.Month,
+                Subtotal = subtotal,
+                Gst = GstOn(subtotal),
+                DueDate = g.Key.Month.AddMonths(1).AddDays(_opt.GraceDays),
+                GeneratedAt = now,
+            });
+        }
+
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Another request created the same invoice first (unique company+month) — that's fine.
+        }
+    }
+
+    /// <summary>Plain read — raising invoices is <see cref="EnsureInvoicesAsync"/>'s job, on the caller's clock.</summary>
+    public async Task<IReadOnlyList<ApiInvoice>> InvoicesAsync(int? companyId, int take = 12)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var q = db.ApiInvoices.AsNoTracking().AsQueryable();
+        if (companyId is { } id)
+        {
+            q = q.Where(i => i.CompanyId == id);
+        }
+
+        return await q.OrderByDescending(i => i.PeriodStart).ThenBy(i => i.CompanyId).Take(take).ToListAsync();
+    }
+
+    /// <summary>
+    /// The gate. Blocked once any invoice is unpaid past its due date; while one is merely unpaid the
+    /// company is still allowed (that is the grace window) and the pending bill is returned for a banner.
+    /// </summary>
+    public async Task<ApiAccess> CheckAccessAsync(int companyId, DateTime? nowUtc = null)
+    {
+        await EnsureInvoicesAsync(companyId, nowUtc);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var unpaid = (await db.ApiInvoices.AsNoTracking()
+                .Where(i => i.CompanyId == companyId && i.PaidAt == null)
+                .ToListAsync())
+            .OrderBy(i => i.DueDate)
+            .ToList();
+
+        if (unpaid.Count == 0)
+        {
+            return ApiAccess.Open;
+        }
+
+        var today = TodayIst(nowUtc);
+        var first = unpaid[0];
+        var due = unpaid.Sum(i => i.Total);
+        var claimedAt = unpaid.All(i => i.ClaimedAt is not null) ? unpaid.Max(i => i.ClaimedAt) : null;
+
+        return first.DueDate < today
+            ? new ApiAccess(false,
+                $"API usage is paused: the {first.PeriodStart:MMMM yyyy} bill was due {first.DueDate:d MMM yyyy}. " +
+                "It resumes once the payment is recorded.", first.DueDate, due, claimedAt)
+            : new ApiAccess(true, null, first.DueDate, due, claimedAt);
+    }
+
+    /// <summary>A company's unpaid bills, oldest first — what the payment page lists. Company-scoped.</summary>
+    public async Task<IReadOnlyList<ApiInvoice>> UnpaidInvoicesAsync(int companyId, DateTime? nowUtc = null)
+    {
+        await EnsureInvoicesAsync(companyId, nowUtc);
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return (await db.ApiInvoices.AsNoTracking().Where(i => i.CompanyId == companyId && i.PaidAt == null).ToListAsync())
+            .OrderBy(i => i.PeriodStart).ToList();
+    }
+
+    public enum ClaimResult { Recorded, Invalid, NotFound, AlreadyPaid }
+
+    /// <summary>
+    /// "I've paid": records who says they paid, with which UTR/reference and when. Changes nothing about access
+    /// (that is Mark paid's job). The invoice must belong to <paramref name="companyId"/> — another company's
+    /// id is simply NotFound. UTR is required; the paid-on date cannot be in the future (India time).
+    /// </summary>
+    public async Task<ClaimResult> SubmitClaimAsync(
+        int invoiceId, int companyId, string? utr, DateOnly paidOn, string? note, string claimedBy, DateTime? nowUtc = null)
+    {
+        var now = nowUtc ?? DateTime.UtcNow;
+        utr = utr?.Trim();
+        if (string.IsNullOrEmpty(utr) || utr.Length > 60 || paidOn > TodayIst(now) || (note?.Length ?? 0) > 200)
+        {
+            return ClaimResult.Invalid;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var invoice = await db.ApiInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId && i.CompanyId == companyId);
+        if (invoice is null)
+        {
+            return ClaimResult.NotFound;
+        }
+
+        if (invoice.PaidAt is not null)
+        {
+            return ClaimResult.AlreadyPaid;
+        }
+
+        invoice.ClaimUtr = utr;
+        invoice.ClaimPaidOn = paidOn;
+        invoice.ClaimNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        invoice.ClaimedBy = claimedBy.Length > 100 ? claimedBy[..100] : claimedBy;
+        invoice.ClaimedAt = now;
+        await db.SaveChangesAsync();
+        return ClaimResult.Recorded;
+    }
+
+    public async Task<PaymentDetails> GetPaymentDetailsAsync()
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        return await db.PaymentDetails.AsNoTracking().FirstOrDefaultAsync() ?? new PaymentDetails();
+    }
+
+    /// <summary>Saves the vendor's payee details. A null <paramref name="qrImage"/> keeps the saved QR.</summary>
+    public async Task SavePaymentDetailsAsync(PaymentDetails input, byte[]? qrImage, string? qrContentType, DateTime? nowUtc = null)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var row = await db.PaymentDetails.FirstOrDefaultAsync();
+        if (row is null)
+        {
+            row = new PaymentDetails();
+            db.PaymentDetails.Add(row);
+        }
+
+        row.UpiId = Clean(input.UpiId);
+        row.PayeeName = Clean(input.PayeeName);
+        row.BankName = Clean(input.BankName);
+        row.AccountNumber = Clean(input.AccountNumber);
+        row.Ifsc = Clean(input.Ifsc)?.ToUpperInvariant();
+        if (qrImage is not null)
+        {
+            row.QrImage = qrImage;
+            row.QrContentType = qrContentType;
+        }
+
+        row.UpdatedAt = nowUtc ?? DateTime.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// The upi://pay deep link for one bill (pa = payee UPI id, pn = payee name, am = total, tn = the invoice
+    /// reference, cu = INR), or null when no UPI id is set.
+    /// </summary>
+    public static string? UpiLink(PaymentDetails details, ApiInvoice invoice) =>
+        string.IsNullOrWhiteSpace(details.UpiId) ? null
+            : "upi://pay?pa=" + Uri.EscapeDataString(details.UpiId)
+              + "&pn=" + Uri.EscapeDataString(details.PayeeName ?? "")
+              + "&am=" + invoice.Total.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
+              + "&tn=" + Uri.EscapeDataString(invoice.Reference)
+              + "&cu=INR";
+
+    /// <summary>Vendor records a payment — this is what lifts the pause.</summary>
+    public async Task<bool> MarkPaidAsync(int invoiceId, string? note, DateTime? nowUtc = null)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var invoice = await db.ApiInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId);
+        if (invoice is null || invoice.PaidAt is not null)
+        {
+            return false;
+        }
+
+        invoice.PaidAt = nowUtc ?? DateTime.UtcNow;
+        invoice.PaymentNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        await db.SaveChangesAsync();
+        return true;
+    }
+}

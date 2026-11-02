@@ -14,9 +14,9 @@ Page text: `docs/digio/appendix/DIGIO-DOCS-TEXT.md`. Live docs (if the network a
 You are building the Digio integration for the LOS/LMS repo (.NET 8 Blazor Server, EF Core MySQL, multi-tenant NBFC
 loan origination, staff-only app). Read, in order: docs/digio/00-MASTER-PLAN.md, 01-FOUNDATION.md,
 02-FEATURES-BY-STAGE.md, 03-LMS-COLLECTIONS.md, 04-DIGIO-API-REFERENCE.md. Then read the current code you will touch:
-LosLms/Services/Integrations/DigioClient.cs, DigioRates.cs, EsignService.cs, DigiKycService.cs, BusinessKycService.cs,
-ApiBillingService.cs, LosLms/Program.cs (webhook ~480-535, CSP ~395-470), Data/LosDbContext.cs (query filters ~1000-1080),
-Pages/SuperAdmin/DigioKeys.razor, and LosLms.Tests/DigioTests.cs.
+src/LosLms/Services/Digio/DigioClient.cs, DigioRates.cs, EsignService.cs, DigiKycService.cs, BusinessKycService.cs,
+ApiBillingService.cs, src/LosLms/Program.cs (webhook ~480-535, CSP ~395-470), Data/LosDbContext.cs (query filters ~1000-1080),
+Pages/SuperAdmin/DigioKeys.razor, and tests/LosLms.Tests/DigioTests.cs.
 
 Hard rules (from 00 §2): never invent data; one door to Digio (DigioClient); server is the source of truth; webhooks
 always answer 200 and never block Digio's queue; idempotency id on every create; sandbox evidence never passes a gate
