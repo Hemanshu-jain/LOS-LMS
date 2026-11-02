@@ -42,7 +42,7 @@ public sealed class DigioWebhookTests : IDisposable
         {
             db.Database.EnsureCreated();
             db.Companies.Add(new Company { Id = 2, Name = "Other" });
-            db.Applications.Add(new Application { Id = "A1", CompanyId = 1 });
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, CurrentStage = 3 }); // approved to proceed: Digio calls are allowed
             db.SaveChanges();
             db.Disbursements.Add(new Disbursement { ApplicationId = "A1", AgreementEsignStatus = "Sent", EsignDocumentId = "DID123" });
             db.SaveChanges();

@@ -11,6 +11,8 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject TenantContext Tenant
 @inject AdminRequestNotifier Notifier
+
+<LiveWatch OnChange="RefreshAsync" FallbackSeconds="20" />
 @inject NavigationManager Navigation
 
 <PageTitle>Admin inbox · LOS/LMS</PageTitle>
@@ -160,6 +162,12 @@
             _companies = await db.Companies.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
         }
 
+        await LoadAsync(db);
+    }
+
+    private async Task RefreshAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
         await LoadAsync(db);
     }
 

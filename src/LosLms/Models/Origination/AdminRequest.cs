@@ -102,6 +102,12 @@ public class AdminRequest
     /// </summary>
     public const string DisbursementApproval = "DisbursementApproval";
 
+    /// <summary>
+    /// Raised automatically when Stages 1 and 2 are complete. The application stays at Stage 2 until an Admin approves it; only then does it
+    /// reach Verification, and until then no Digio call is made for it (<see cref="DigioClient"/> enforces that).
+    /// </summary>
+    public const string ProceedApproval = "ProceedApproval";
+
     // ---- Statuses ----
 
     public const string Pending = "Pending";
@@ -123,6 +129,7 @@ public class AdminRequest
         DigioReleaseBypass => "Release without signed agreement / mandate",
         RcuReview => "RCU outcome for review",
         DisbursementApproval => "Payment approval (disbursement)",
+        ProceedApproval => "Approval to proceed to Verification",
         _ => requestType,
     };
 }

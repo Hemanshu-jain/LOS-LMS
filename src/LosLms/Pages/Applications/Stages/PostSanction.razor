@@ -45,6 +45,8 @@ else
     <div class="stage-page">
         <div class="stage-card">
 
+            <LiveWatch ApplicationId="@ApplicationId" OnChange="OnLiveChangeAsync" />
+
             <StageSubHeader ApplicationId="@_application.Id"
                             BreadcrumbSuffix="@_application.Status"
                             SecondaryLabel="Disbursement memo"
@@ -1801,7 +1803,17 @@ else
     }
 
     /// <summary>Re-reads the payout state, the payee check, the history and the checklist from the database.</summary>
-    private async Task ReloadPayoutAsync(LosDbContext db)
+    /// <summary>Something was saved for this application (an Admin approved the payment, a mandate registered, an agreement was signed): show it now.</summary>
+    private async Task OnLiveChangeAsync()
+    {
+        if (_application is null) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await LoadDigioStateAsync(db);
+        await ReloadPayoutAsync(db, reloadChecklist: false); // never overwrite what the officer is typing in the checklist
+    }
+
+    private async Task ReloadPayoutAsync(LosDbContext db, bool reloadChecklist = true)
     {
         var stored = await db.Disbursements.AsNoTracking().FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
         if (stored is not null)
@@ -1823,8 +1835,12 @@ else
             }
         }
 
-        _checklist = await db.PostSanctionChecklists.AsNoTracking()
-            .Where(c => c.ApplicationId == ApplicationId).OrderBy(c => c.Id).ToListAsync();
+        if (reloadChecklist)
+        {
+            _checklist = await db.PostSanctionChecklists.AsNoTracking()
+                .Where(c => c.ApplicationId == ApplicationId).OrderBy(c => c.Id).ToListAsync();
+        }
+
         _events = await db.DisbursementEvents.AsNoTracking()
             .Where(e => e.ApplicationId == ApplicationId).OrderByDescending(e => e.Id).ToListAsync();
         _payee = await DisbursementWorkflow.PayeeCheckAsync(db, _application?.CompanyId ?? 0, ApplicationId, _disbursement, await IsProductionAsync());

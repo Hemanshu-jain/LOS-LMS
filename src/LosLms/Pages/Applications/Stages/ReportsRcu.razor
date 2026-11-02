@@ -41,6 +41,8 @@ else
     <div class="stage-page">
         <div class="stage-card">
 
+            <LiveWatch ApplicationId="@ApplicationId" OnChange="OnLiveChangeAsync" />
+
             <StageSubHeader ApplicationId="@_application.Id"
                             SecondaryLabel="Re-submit to vendor"
                             CompleteBlocked="CompleteBlocked"
@@ -576,6 +578,14 @@ else
 
         await Tenant.EnsureLoadedAsync();
         _isAdmin = Tenant.IsAdmin || Tenant.IsSuperAdmin;
+        _rcuPending = await db.AdminRequests.AsNoTracking()
+            .AnyAsync(r => r.ApplicationId == ApplicationId && r.RequestType == AdminRequest.RcuReview && r.Status == AdminRequest.Pending);
+    }
+
+    /// <summary>Something was saved for this application: show an Admin's decision on the RCU review at once, without touching the forms.</summary>
+    private async Task OnLiveChangeAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
         _rcuPending = await db.AdminRequests.AsNoTracking()
             .AnyAsync(r => r.ApplicationId == ApplicationId && r.RequestType == AdminRequest.RcuReview && r.Status == AdminRequest.Pending);
     }

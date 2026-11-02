@@ -36,7 +36,7 @@ public sealed class VerificationLockTests : IDisposable
         using (var db = Anonymous())
         {
             db.Database.EnsureCreated();
-            db.Applications.Add(new Application { Id = "A1", CompanyId = 1 });
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, CurrentStage = 3 }); // approved to proceed: Digio calls are allowed
             db.SaveChanges();
             db.Parties.Add(new Party { ApplicationId = "A1", PartyType = "Applicant", FullName = "Raj Kumar", Pan = Pan, DateOfBirth = new DateOnly(1990, 1, 1), Mobile = "9876543210" });
             db.DigioSettings.Add(new DigioSettings { CompanyId = 1, PanVerify = true, DigiLocker = true, AadhaarMask = true, Aml = true, Rc = true, Kyb = true });

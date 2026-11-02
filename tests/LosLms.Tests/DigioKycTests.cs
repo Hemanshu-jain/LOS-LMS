@@ -33,7 +33,7 @@ public sealed class DigioKycTests : IDisposable
         using (var db = Anonymous())
         {
             db.Database.EnsureCreated();
-            db.Applications.Add(new Application { Id = "A1", CompanyId = 1 });
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, CurrentStage = 3 }); // approved to proceed: Digio calls are allowed
             db.SaveChanges();
             db.Parties.Add(new Party { ApplicationId = "A1", PartyType = "Applicant", FullName = "Raj Kumar", Pan = "ABCPE1234F", DateOfBirth = new DateOnly(1990, 1, 1) });
             db.ApiRates.Add(new ApiRate { Code = DigioRates.AmlScreen, Name = "AML screening (test price)", Product = "DigiShield", UnitRate = 1m, IsActive = true });

@@ -41,7 +41,7 @@ public sealed class DigioAssetTests : IDisposable
         using (var db = Anonymous())
         {
             db.Database.EnsureCreated();
-            db.Applications.Add(new Application { Id = "A1", CompanyId = 1 });
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, CurrentStage = 3 }); // approved to proceed: Digio calls are allowed
             db.DigioSettings.Add(new DigioSettings { CompanyId = 1, Rc = true, Kyb = true });
             db.SaveChanges();
         }

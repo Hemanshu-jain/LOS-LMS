@@ -32,6 +32,9 @@ public sealed class DigioClientTests : IDisposable
         using (var db = Anonymous())
         {
             db.Database.EnsureCreated();
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, CurrentStage = 3 }); // approved to proceed: Digio calls are allowed
+            db.Applications.Add(new Application { Id = "WAITING", CompanyId = 1, CurrentStage = 2 }); // not yet approved by an Admin
+            db.SaveChanges();
         }
 
         var services = new ServiceCollection();
@@ -46,6 +49,23 @@ public sealed class DigioClientTests : IDisposable
         services.AddScoped<ApiBillingService>();
         services.AddScoped<DigioClient>();
         _provider = services.BuildServiceProvider();
+    }
+
+    [Fact]
+    public async Task NothingIsSentToDigio_ForAnApplicationAnAdminHasNotApproved()
+    {
+        var waiting = await Client().SendAsync(new DigioCall(1, HttpMethod.Post, "/x", new { }, ApplicationId: "WAITING", Free: "test call"));
+        Assert.Equal(DigioStatus.Paused, waiting.Status);
+        Assert.Contains("Admin", waiting.Error);
+        Assert.Equal(0, _digio.Calls);
+
+        var unknown = await Client().SendAsync(new DigioCall(1, HttpMethod.Post, "/x", new { }, ApplicationId: "NOPE", Free: "test call"));
+        Assert.Equal(DigioStatus.Paused, unknown.Status); // an application that cannot be found is never treated as approved
+        Assert.Equal(0, _digio.Calls);
+
+        var approved = await Client().SendAsync(new DigioCall(1, HttpMethod.Post, "/x", new { }, ApplicationId: "A1", Free: "test call"));
+        Assert.Equal(DigioStatus.Ok, approved.Status);
+        Assert.Equal(1, _digio.Calls);
     }
 
     private DigioClient Client(bool configured = true, bool production = false)

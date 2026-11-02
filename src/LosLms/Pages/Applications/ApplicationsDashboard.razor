@@ -13,6 +13,8 @@
 @inject TenantContext Tenant
 @inject AdminRequestNotifier Notifier
 
+<LiveWatch OnChange="LoadAsync" FallbackSeconds="20" />
+
 <PageTitle>Applications · LOS/LMS</PageTitle>
 
 @{

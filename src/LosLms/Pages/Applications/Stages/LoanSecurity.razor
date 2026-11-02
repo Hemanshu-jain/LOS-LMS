@@ -44,6 +44,8 @@ else
 
             @* The vehicle loan cap lives only here — this is where the vehicle and the amount are
                both set, and the file cannot leave Stage 2 until it clears or an Admin bypasses it. *@
+            <LiveWatch ApplicationId="@ApplicationId" OnChange="OnLiveChangeAsync" />
+
             <StageSubHeader ApplicationId="@_application.Id"
                             CompleteBlocked="false"
                             ExtraGate="_capGate"
@@ -51,6 +53,20 @@ else
                             OnGateChanged="RefreshCapGateAsync"
                             OnSaveDraft="SaveDraftAsync"
                             OnCompleteStage="CompleteStageAsync" />
+
+            @if (_waitingForApproval)
+            {
+                <div role="status" style="margin:8px 0;padding:10px 14px;background:#fff4d6;border:1px solid #f0dca8;color:#6b4e00;font-size:12.5px">
+                    <strong>Waiting for Admin approval.</strong> Stages 1 and 2 are complete and the file has gone to an Admin. Verification opens here
+                    by itself the moment it is approved. Until then no outside checks are run for this application.
+                </div>
+            }
+            else if (_approvalDenied is { } deniedWhy)
+            {
+                <div role="alert" style="margin:8px 0;padding:10px 14px;background:#fdecea;border:1px solid #f3c1bb;color:#8a1f14;font-size:12.5px">
+                    <strong>The Admin did not approve this file yet.</strong> @deniedWhy Fix what was asked, then complete Stage 2 again.
+                </div>
+            }
 
             <div class="stepper-band">
                 <StageStepper CurrentStep="2" MaxStep="@_application?.CurrentStage" ApplicationId="@ApplicationId" />
@@ -997,6 +1013,7 @@ else
             // another company's file must see it on that company's terms. Re-read per load, never
             // cached, so an edit in Company Setup takes effect immediately.
             _policy = await CompanyPolicyReader.ForApplicationAsync(db, ApplicationId);
+            (_waitingForApproval, _approvalDenied) = await StageApprovalService.StateAsync(db, ApplicationId);
 
             if (_application.CurrentStage < 2)
             {
@@ -1645,7 +1662,43 @@ else
             }
         }
         await PersistAsync(completeStage: true);
-        Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial");
+
+        // Stages 1 and 2 are done: the file goes to an Admin automatically. An Admin completing it needs no one else.
+        await Tenant.EnsureLoadedAsync();
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var outcome = await StageApprovalService.SubmitAsync(db, Notifier, ApplicationId, Tenant.UserId,
+            $"Stages 1 and 2 are complete for {_application?.CustomerName}. Approve to open Verification.");
+        if (outcome == StageApprovalService.Outcome.Approved)
+        {
+            Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial");
+            return;
+        }
+
+        await LoadApprovalStateAsync();
+        StateHasChanged();
+    }
+
+    private bool _waitingForApproval;
+    private string? _approvalDenied;
+
+    private async Task LoadApprovalStateAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        (_waitingForApproval, _approvalDenied) = await StageApprovalService.StateAsync(db, ApplicationId);
+        var stage = await db.Applications.AsNoTracking().Where(a => a.Id == ApplicationId).Select(a => a.CurrentStage).FirstOrDefaultAsync();
+        if (_application is not null && stage != _application.CurrentStage) { _application.CurrentStage = stage; }
+    }
+
+    /// <summary>A change was saved somewhere. If an Admin has just approved this file, open Verification at once; otherwise refresh the banner.</summary>
+    private async Task OnLiveChangeAsync()
+    {
+        var wasWaiting = _waitingForApproval;
+        await LoadApprovalStateAsync();
+        await RefreshCapGateAsync();
+        if (_application is { CurrentStage: >= StageApprovalService.VerificationStage } && wasWaiting)
+        {
+            Navigation.NavigateTo($"/applications/{ApplicationId}/bank-financial");
+        }
     }
 
     private readonly SemaphoreSlim _persistGate = new(1, 1);
@@ -1697,11 +1750,8 @@ else
         application.FirstEmiDate = _application.FirstEmiDate;
         application.EmiDayOfMonth = _application.EmiDayOfMonth;
 
-        if (completeStage)
-        {
-            // Never move an application backwards — see CustomerDetails for the same guard.
-            application.CurrentStage = Math.Max(application.CurrentStage, 3);
-        }
+        // Completing Stage 2 does NOT move the file on: it goes to an Admin for approval first (StageApprovalService), and approval is
+        // what advances CurrentStage to 3.
 
         // Security — both asset blocks are written every time, so nothing the officer typed under
         // the inactive toggle is lost.

@@ -42,7 +42,7 @@ public sealed class DigioEsignAndNachTests : IDisposable
         using (var db = Anonymous())
         {
             db.Database.EnsureCreated();
-            db.Applications.Add(new Application { Id = "A1", CompanyId = 1 });
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, CurrentStage = 3 }); // approved to proceed: Digio calls are allowed
             db.SaveChanges();
             db.Disbursements.Add(new Disbursement { ApplicationId = "A1", AgreementFilePath = Key });
             db.Parties.Add(new Party { ApplicationId = "A1", PartyType = "Applicant", FullName = "TEST APPLICANT", Mobile = "9000000001", Email = "a@example.com", DateOfBirth = new DateOnly(1990, 5, 1), Gender = "Male", Aadhaar = "123412341234" });

@@ -41,7 +41,7 @@ public sealed class DigioCollectTests : IDisposable
         using (var db = Anonymous())
         {
             db.Database.EnsureCreated();
-            db.Applications.Add(new Application { Id = "A1", CompanyId = 1 });
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, CurrentStage = 3 }); // approved to proceed: Digio calls are allowed
             db.SaveChanges();
             db.Parties.Add(new Party { ApplicationId = "A1", PartyType = "Applicant", FullName = "TEST APPLICANT" });
             db.EnachMandates.Add(new EnachMandate { ApplicationId = "A1", AccountNumber = "123456789012", DigioState = "Registered", Umrn = "UMRN0001", Status = "Registered" });

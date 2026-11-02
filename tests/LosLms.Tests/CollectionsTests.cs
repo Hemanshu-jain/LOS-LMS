@@ -35,7 +35,7 @@ public sealed class CollectionsTests : IDisposable
             db.Database.EnsureCreated();
             db.Users.Add(new ApplicationUser { Id = "officer-1", UserName = "officer", NormalizedUserName = "OFFICER", Email = "o@test.local", DisplayName = "Officer", CompanyId = 1 });
             db.SaveChanges();
-            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, AssignedOfficerId = "officer-1" });
+            db.Applications.Add(new Application { Id = "A1", CompanyId = 1, AssignedOfficerId = "officer-1", CurrentStage = 8 });
             db.SaveChanges();
             var account = new LoanAccount { CompanyId = 1, ApplicationId = "A1", LoanAccountNo = "A1", Principal = 100000, Tenure = 2, FirstEmiDate = new DateOnly(2026, 11, 5), EmiDay = 5, MandateId = 1 };
             account.Instalments.Add(new Instalment { CompanyId = 1, No = 1, DueDate = new DateOnly(2026, 11, 5), Emi = 5000, Status = "Presented" });
