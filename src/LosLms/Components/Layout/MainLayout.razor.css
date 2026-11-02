@@ -96,23 +96,53 @@
     outline-offset: 1px;
 }
 
+/* Unhandled-error bar. Dark brown text on light amber (about 12:1) so the message and the Reload action are readable.
+   Keep in step with the #blazor-error-ui rule in wwwroot/app.css (the same id is styled in both places). */
 #blazor-error-ui {
-    background: lightyellow;
+    background: #fff4d6;
+    color: #3d2a00;
+    border-top: 3px solid #b7791f;
     bottom: 0;
-    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.25);
     display: none;
     left: 0;
-    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    padding: 0.7rem 3rem 0.75rem 1.25rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
     position: fixed;
     width: 100%;
     z-index: 1000;
 }
 
+    #blazor-error-ui .reload,
+    #blazor-error-ui .reload:visited {
+        display: inline-block;
+        margin-left: 12px;
+        padding: 2px 12px;
+        border-radius: 4px;
+        background: #3d2a00;
+        color: #fff;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    #blazor-error-ui .reload:hover {
+        background: #5c4100;
+    }
+
+    #blazor-error-ui .reload:focus-visible,
+    #blazor-error-ui .dismiss:focus-visible {
+        outline: 2px solid #1f3a5f;
+        outline-offset: 2px;
+    }
+
     #blazor-error-ui .dismiss {
+        color: #3d2a00;
         cursor: pointer;
+        font-size: 1.1rem;
         position: absolute;
-        right: 0.75rem;
-        top: 0.5rem;
+        right: 1rem;
+        top: 0.55rem;
     }
 
 /* ---- Subscription licensing (freeze + expiry banner) ---- */
@@ -188,6 +218,39 @@ a.license-renew { display: block; box-sizing: border-box; text-align: center; te
     color: #ffe2b0;
     border-bottom: 1px solid #6b4a13;
     font-size: .92rem;
+    line-height: 1.45;
+    flex-wrap: wrap;
+    gap: 4px 8px;
 }
 
 .license-banner strong { color: #fff; }
+
+/* Links must be styled explicitly: the browser's default blue / visited purple is unreadable on this dark background. */
+.license-banner a,
+.license-banner a:visited {
+    color: #fff;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.license-banner a:hover { color: #ffe2b0; }
+
+.license-banner a:focus-visible {
+    outline: 2px solid #ffe2b0;
+    outline-offset: 2px;
+}
+
+/* The one action that matters ("Pay now") is a button, so it stands out from the plain "View bill" link. */
+.license-banner a.license-banner-pay,
+.license-banner a.license-banner-pay:visited {
+    padding: 3px 14px;
+    border-radius: 4px;
+    background: #ffe2b0;
+    color: #4a3410;
+    text-decoration: none;
+}
+
+.license-banner a.license-banner-pay strong { color: inherit; }
+
+.license-banner a.license-banner-pay:hover { background: #fff; color: #4a3410; }

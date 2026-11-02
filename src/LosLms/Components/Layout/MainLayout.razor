@@ -154,14 +154,15 @@ else
     </div>
 }
 
-@* Grace window: an API bill is unpaid but not yet overdue. Admins only — they pay. *@
-@if (_role == "Admin" && _apiAccess is { Allowed: true, DueDate: { } due } pending)
+@* An API bill is unpaid and has reached its due date (shown from the due date, not before; see ApiAccess.ReminderVisible).
+   After the due date the app is paused and the pause screen takes over. Admins only — they pay. *@
+@if (_role == "Admin" && _apiAccess is { Allowed: true, DueDate: { } due } pending && pending.ReminderVisible(ApiBillingService.TodayIst()))
 {
     <div class="license-banner" role="status">
         ⚠️ API bill of <strong>₹@pending.AmountDue.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("en-IN"))</strong>
         is due by <strong>@due.ToString("d MMM yyyy")</strong>. Unpaid after that, the app pauses.
         <a href="/admin/api-usage">View bill →</a>
-        <a href="/billing/pay"><strong>Pay now →</strong></a>
+        <a class="license-banner-pay" href="/billing/pay"><strong>Pay now →</strong></a>
     </div>
 }
 

@@ -27,6 +27,13 @@ public sealed record UsageLine(
 public sealed record ApiAccess(bool Allowed, string? Reason, DateOnly? DueDate, decimal AmountDue, DateTime? ClaimedAt = null)
 {
     public static readonly ApiAccess Open = new(true, null, null, 0m);
+
+    /// <summary>
+    /// Whether the "bill due" banner (with its Pay now button) shows today: from the due date itself, never before it, so
+    /// the first week after a bill is generated is quiet. From the day after the due date the app is paused and the pause
+    /// screen carries the Pay now button, so the banner only ever shows on the due date.
+    /// </summary>
+    public bool ReminderVisible(DateOnly today) => Allowed && DueDate is { } due && due <= today;
 }
 
 /// <summary>

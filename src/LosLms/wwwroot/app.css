@@ -481,19 +481,27 @@ a.auth-submit {
     inset: auto 0 0 0;
     z-index: 1001;
     padding: 12px 20px;
-    background: #1a1f29;
-    color: #fff;
+    background: #fff4d6;
+    color: #3d2a00;
+    border-top: 3px solid #b7791f;
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
-    font-size: 12.5px;
-    box-shadow: 0 -4px 20px rgba(26, 31, 41, .35);
+    font-size: 13px;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, .25);
 }
 
-#blazor-error-ui .blazor-error-reload {
+#blazor-error-ui .blazor-error-reload,
+#blazor-error-ui .blazor-error-reload:visited {
+    display: inline-block;
     margin-left: 14px;
+    padding: 2px 12px;
+    border-radius: 4px;
+    background: #3d2a00;
     color: #fff;
     font-weight: 600;
-    text-decoration: underline;
+    text-decoration: none;
 }
+
+#blazor-error-ui .blazor-error-reload:hover { background: #5c4100; }
 
 /* Same treatment the stage screens use for a blocking message, repeated globally for /account. */
 .auth-page .inline-error {
@@ -504,6 +512,16 @@ a.auth-submit {
     background: #f8d7d7;
     border: 1px solid #e6b3b3;
     padding: 7px 9px;
+}
+
+/* A link inside an error / notice box takes the box's own colour (the browser default blue and visited purple clash with it). */
+.auth-page .inline-error a,
+.auth-page .inline-error a:visited,
+.auth-page .auth-notice a,
+.auth-page .auth-notice a:visited {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
 }
 
 .not-authorised,
