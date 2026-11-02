@@ -268,6 +268,16 @@ else
                                                 </FormField>
                                             }
 
+                                            @* Secondary link directly under the dropdown row, not a form field,
+                                               so the row above stays unbroken. Same conditions as before. *@
+                                            @if (MatchedCap is null && !_addNewVehicle)
+                                            {
+                                                <div class="catalog-add-row">
+                                                    <button id="sec-addnew" type="button" class="catalog-add-link"
+                                                            @onclick="StartAddNewVehicle">Vehicle not in the list? Add it</button>
+                                                </div>
+                                            }
+
                                             @* A value recorded before the catalog existed, or after its
                                                row was removed. Shown, never silently dropped — it is
                                                real data about a real vehicle. *@
@@ -318,14 +328,7 @@ else
                                                written into the catalog as this vehicle's ceiling. *@
                                             @if (MatchedCap is null)
                                             {
-                                                @if (!_addNewVehicle)
-                                                {
-                                                    <FormField Label="Not listed?" For="sec-addnew">
-                                                        <button id="sec-addnew" type="button" class="add-row-button"
-                                                                @onclick="StartAddNewVehicle">＋ Add a vehicle not in the catalog</button>
-                                                    </FormField>
-                                                }
-                                                else
+                                                @if (_addNewVehicle)
                                                 {
                                                     <FormField Label="New make" For="sec-nm-make">
                                                         <input id="sec-nm-make" class="field-input" maxlength="80"

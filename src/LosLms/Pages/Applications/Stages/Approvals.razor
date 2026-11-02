@@ -974,9 +974,9 @@ else
 
     private string RcuStatusLabel => _rcuStatus switch
     {
-        RcuOutcomes.NotRecommended => "Not recommended",
-        RcuOutcomes.Recommended => "Recommended",
-        _ => "Pending",
+        RcuOutcomes.NotRecommended => "Rejected",
+        RcuOutcomes.Recommended => "Approved",
+        _ => "Pending approval",
     };
 
     private bool SanctionedBelowRequested =>
