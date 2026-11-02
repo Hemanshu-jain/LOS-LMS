@@ -643,7 +643,18 @@ app.Use(async (context, next) =>
     }
 
     var name = $"{kind}-{Guid.NewGuid():N}{extension}";
-    await context.RequestServices.GetRequiredService<IFileStore>().SaveUploadAsync(applicationId, partyType, name, bytes);
+    try
+    {
+        await context.RequestServices.GetRequiredService<IFileStore>().SaveUploadAsync(applicationId, partyType, name, bytes);
+    }
+    catch (Exception ex) when (ex is not OutOfMemoryException)
+    {
+        // The file store (cloud storage) failed. Say so plainly, with a body, so the camera shows a message instead of looking dead.
+        context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("PartyMedia")
+            .LogError(ex, "Camera upload for {ApplicationId}/{Party}/{Kind} could not be stored", applicationId, partyType, kind);
+        await RespondAsync(StatusCodes.Status502BadGateway, new { error = "The file could not be stored. Try again, or use Upload." });
+        return;
+    }
 
     if (kind == "videokyc")
     {

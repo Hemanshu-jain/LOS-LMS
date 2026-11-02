@@ -386,6 +386,9 @@
                            Title="Loan schemes" ItemNoun="scheme"
                            Description="Your loan products, or 'schemes' — each is a named lending programme with its own terms (for example CV-STD-2026 for a standard commercial-vehicle loan, or LAP-STD-2026 for a loan against property). What you list here fills the 'Scheme' dropdown on Loan & Security, so every application is tagged with the product it belongs to."
                            OnSaved="ShowToastAsync" />
+
+                @* Terms and default charges of the schemes above, on the same page. *@
+                <SchemeChargesTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
             }
 
             @if (_activeTab == ClassificationListsTab)
@@ -402,11 +405,6 @@
                            Title="End use of funds" ItemNoun="end use"
                            Description="What the borrower will use the money for. Offered as 'End use of funds' on Borrower Classification and printed on the CAM."
                            OnSaved="ShowToastAsync" />
-            }
-
-            @if (_activeTab == SchemeChargesTab)
-            {
-                <SchemeChargesTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
             }
 
             @if (_activeTab == RcuVendorTab)
@@ -454,7 +452,6 @@
     private const string VehicleTab = "Vehicle Loan Caps";
     private const string SourcingTab = "Sourcing Channels";
     private const string SchemeTab = "Schemes";
-    private const string SchemeChargesTab = "Scheme Charges";
     private const string ClassificationListsTab = "Classification Lists";
     private const string RcuVendorTab = "RCU Vendors";
     private const string DisbursementAccountsTab = "Disbursement Accounts";
@@ -462,7 +459,7 @@
     private const string ToolsTabName = "Usage & Updates";
 
     private static readonly string[] Tabs =
-        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, ClassificationListsTab, RcuVendorTab, DisbursementAccountsTab, UsersTab, ToolsTabName };
+        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, ClassificationListsTab, RcuVendorTab, DisbursementAccountsTab, UsersTab, ToolsTabName };
 
     private string _activeTab = ProfileTab;
     private Company? _company;

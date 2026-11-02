@@ -724,7 +724,7 @@ else
     /// <summary>
     /// The starter charge rows. The Processing fee is always pulled — its amount is whatever Stage 2
     /// recorded, so an application that never had one seeded shows zero rather than an invented figure.
-    /// The remaining rows come from the scheme's charge template (Settings → Scheme Charges) when one
+    /// The remaining rows come from the scheme's charge template (Settings → Schemes) when one
     /// is defined; otherwise the built-in three editable starting points are used.
     /// </summary>
     private async Task<List<Charge>> SeedChargesAsync(LosDbContext db)

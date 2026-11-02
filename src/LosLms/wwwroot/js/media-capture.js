@@ -61,11 +61,21 @@
         try {
             // Raw binary body to a dedicated middleware endpoint (handled before antiforgery, so no token
             // is needed). Content-Type marks it non-form so nothing tries to parse it as a form.
-            const res = await fetch(url, {
-                method: 'POST', body: blob, credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/octet-stream' },
-            });
-            if (!res.ok) { return { error: 'Upload failed (' + res.status + ').' }; }
+            // A stalled upload must end in a message, not an endless wait.
+            const abort = new AbortController();
+            const timer = setTimeout(() => abort.abort(), 60000);
+            let res;
+            try {
+                res = await fetch(url, {
+                    method: 'POST', body: blob, credentials: 'same-origin', signal: abort.signal,
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                });
+            } finally { clearTimeout(timer); }
+            if (!res.ok) {
+                let detail = '';
+                try { detail = (await res.json()).error || ''; } catch { /* no JSON body */ }
+                return { error: detail || ('Upload failed (' + res.status + ').') };
+            }
             return await res.json();
         } catch (e) {
             return { error: 'Upload failed: ' + (e && e.message ? e.message : e) };

@@ -1161,6 +1161,12 @@ else
             }
         }
         catch (JSException ex) { _captureError = CameraError(ex); }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Anything else (a dropped connection, an unreadable answer) must show a message, not freeze the page.
+            _captureError = "The photo could not be saved. Try again, or use Upload.";
+        }
+
         await CloseLivePhotoCameraAsync();
     }
 
