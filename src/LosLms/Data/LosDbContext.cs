@@ -59,6 +59,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
     public DbSet<SchemeChargeTemplate> SchemeChargeTemplates => Set<SchemeChargeTemplate>();
 
+    public DbSet<SchemeTerms> SchemeTerms => Set<SchemeTerms>();
+
     public DbSet<Application> Applications => Set<Application>();
 
     public DbSet<Party> Parties => Set<Party>();
@@ -889,6 +891,17 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<SchemeTerms>(entity =>
+        {
+            entity.HasKey(t => t.Id);
+            entity.HasIndex(t => new { t.CompanyId, t.Scheme }).IsUnique();
+            entity.Property(t => t.Amount).HasPrecision(18, 2);
+            entity.Property(t => t.Roi).HasPrecision(7, 3);
+            entity.Property(t => t.ProcessingFee).HasPrecision(18, 2);
+            entity.Property(t => t.AdvanceEmi).HasPrecision(18, 2);
+            entity.HasOne(t => t.Company).WithMany().HasForeignKey(t => t.CompanyId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<SchemeChargeTemplate>(entity =>
         {
             entity.HasKey(t => t.Id);
@@ -1053,6 +1066,9 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
             .HasQueryFilter(m => _isSuperAdmin || m.CompanyId == _companyId);
 
         modelBuilder.Entity<SchemeChargeTemplate>()
+            .HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
+
+        modelBuilder.Entity<SchemeTerms>()
             .HasQueryFilter(t => _isSuperAdmin || t.CompanyId == _companyId);
 
         modelBuilder.Entity<ApiUsageLog>()

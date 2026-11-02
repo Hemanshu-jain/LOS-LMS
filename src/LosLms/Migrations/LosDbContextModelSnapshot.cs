@@ -3821,6 +3821,49 @@ namespace LosLms.Migrations
                     b.ToTable("SchemeChargeTemplates");
                 });
 
+            modelBuilder.Entity("LosLms.Models.SchemeTerms", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("AdvanceEmi")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("ProcessingFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("Roi")
+                        .HasPrecision(7, 3)
+                        .HasColumnType("decimal(7,3)");
+
+                    b.Property<string>("Scheme")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<int?>("Tenure")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "Scheme")
+                        .IsUnique();
+
+                    b.ToTable("SchemeTerms");
+                });
+
             modelBuilder.Entity("LosLms.Models.SecurityDetail", b =>
                 {
                     b.Property<int>("Id")
@@ -5062,6 +5105,17 @@ namespace LosLms.Migrations
                 });
 
             modelBuilder.Entity("LosLms.Models.SchemeChargeTemplate", b =>
+                {
+                    b.HasOne("LosLms.Models.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("LosLms.Models.SchemeTerms", b =>
                 {
                     b.HasOne("LosLms.Models.Company", "Company")
                         .WithMany()

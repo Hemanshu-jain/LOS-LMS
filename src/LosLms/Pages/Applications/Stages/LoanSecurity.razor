@@ -118,7 +118,7 @@ else
                                 </FormField>
 
                                 <FormField Label="Scheme" For="ls-scheme">
-                                    <select id="ls-scheme" class="field-input" @bind="_application!.Scheme">
+                                    <select id="ls-scheme" class="field-input" @bind="_application!.Scheme" @bind:after="OnSchemeChangedAsync">
                                         <option value="">@BlankOption</option>
                                         @foreach (var o in _schemeOptions) { <option value="@o">@o</option> }
                                     </select>
@@ -1023,6 +1023,7 @@ else
             _application.Branch = OnlyChoice.IfBlank(_application.Branch, _branchOptions);
             _application.SourcingChannel = OnlyChoice.IfBlank(_application.SourcingChannel, _channelOptions);
             _application.Scheme = OnlyChoice.IfBlank(_application.Scheme, _schemeOptions);
+            _schemeTerms = await SchemeTermsService.ForAsync(db, _application.CompanyId, _application.Scheme);
 
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
@@ -1401,6 +1402,24 @@ else
     /// Re-evaluates the cap from the values currently on screen. Called on load, after the vehicle
     /// or the amount changes, and after an Admin decides a bypass.
     /// </summary>
+    /// <summary>The terms of the scheme currently selected, i.e. what the figures on screen started from.</summary>
+    private SchemeTerms? _schemeTerms;
+
+    /// <summary>
+    /// Choosing a scheme starts the loan terms from the scheme's (amount, tenure, ROI, processing fee, advance EMI). Anything the officer
+    /// has typed themselves is kept; only blanks and figures that still equal the previous scheme's are replaced.
+    /// </summary>
+    private async Task OnSchemeChangedAsync()
+    {
+        if (_application is null) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var next = await SchemeTermsService.ForAsync(db, _application.CompanyId, _application.Scheme);
+        SchemeTermsService.Apply(_application, _schemeTerms, next);
+        _schemeTerms = next;
+        await RefreshCapGateAsync();
+    }
+
     private async Task RefreshCapGateAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
