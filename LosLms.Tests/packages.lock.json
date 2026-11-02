@@ -22,6 +22,12 @@
           "Microsoft.TestPlatform.TestHost": "17.11.1"
         }
       },
+      "SQLitePCLRaw.lib.e_sqlite3": {
+        "type": "Direct",
+        "requested": "[2.1.12, )",
+        "resolved": "2.1.12",
+        "contentHash": "fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w=="
+      },
       "xunit": {
         "type": "Direct",
         "requested": "[2.9.2, )",
@@ -288,10 +294,11 @@
       },
       "MySqlConnector": {
         "type": "Transitive",
-        "resolved": "2.3.5",
-        "contentHash": "AmEfUPkFl+Ev6jJ8Dhns3CYHBfD12RHzGYWuLt6DfG6/af6YvOMyPz74ZPPjBYQGRJkumD2Z48Kqm8s5DJuhLA==",
+        "resolved": "2.6.1",
+        "contentHash": "MzNSfnHWBc0Mo3zVbYxG+556zuex9obs8NYtwcPCwFahel40e49stH+osjX4k/doEHp4LT/zTtGdax4nlGWhcw==",
         "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "7.0.1"
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.2",
+          "Microsoft.Extensions.Logging.Abstractions": "8.0.2"
         }
       },
       "Newtonsoft.Json": {
@@ -330,11 +337,6 @@
           "System.Memory": "4.5.3"
         }
       },
-      "SQLitePCLRaw.lib.e_sqlite3": {
-        "type": "Transitive",
-        "resolved": "2.1.6",
-        "contentHash": "2ObJJLkIUIxRpOUlZNGuD4rICpBnrBR5anjyfUFQep4hMOIeqW+XGQYzrNmHSVz5xSWZ3klSbh7sFR6UyDj68Q=="
-      },
       "SQLitePCLRaw.provider.e_sqlite3": {
         "type": "Transitive",
         "resolved": "2.1.6",
@@ -355,15 +357,15 @@
       },
       "System.Security.Cryptography.Pkcs": {
         "type": "Transitive",
-        "resolved": "8.0.1",
-        "contentHash": "CoCRHFym33aUSf/NtWSVSZa99dkd0Hm7OCZUxORBjRB16LNhIEOf8THPqzIYlvKM0nNDAPTRBa1FxEECrgaxxA=="
+        "resolved": "8.0.2",
+        "contentHash": "VWACYq0JGxi9sw3TonSSV4B2MfhYk5nhgOtp9wbrt5NFOtUetFqHkMZylcCwPX+117cBJH5EnIzIy6X4OKn/kA=="
       },
       "System.Security.Cryptography.Xml": {
         "type": "Transitive",
-        "resolved": "8.0.2",
-        "contentHash": "aDM/wm0ZGEZ6ZYJLzgqjp2FZdHbDHh6/OmpGfb7AdZ105zYmPn/83JRU2xLIbwgoNz9U1SLUTJN0v5th3qmvjA==",
+        "resolved": "8.0.5",
+        "contentHash": "vu85aidUbxTh39CXdo/4mgtDlBNQ0h6k7oq5RIBwV2V2QYbRvtY6XlV3ikwYIyLX/LyaOraVvoCVVYnjFbV4/w==",
         "dependencies": {
-          "System.Security.Cryptography.Pkcs": "8.0.1"
+          "System.Security.Cryptography.Pkcs": "8.0.2"
         }
       },
       "xunit.abstractions": {
@@ -412,8 +414,11 @@
           "LosLms.Licensing": "[1.0.0, )",
           "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore": "[8.0.11, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[8.0.11, )",
+          "MySqlConnector": "[2.6.1, )",
           "Pomelo.EntityFrameworkCore.MySql": "[8.0.3, )",
-          "QuestPDF": "[2026.7.2, )"
+          "QuestPDF": "[2026.7.2, )",
+          "System.Security.Cryptography.Pkcs": "[8.0.2, )",
+          "System.Security.Cryptography.Xml": "[8.0.5, )"
         }
       },
       "loslms.licensing": {

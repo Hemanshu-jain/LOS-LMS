@@ -31,6 +31,19 @@
     <PackageReference Include="QuestPDF" Version="2026.7.2" />
   </ItemGroup>
 
+  <!-- Security pins for TRANSITIVE dependencies flagged by the CI vulnerability scan (dotnet list package
+       vulnerable, include-transitive). Each is the lowest patched version on the same major line as the
+       app (.NET 8), so no EF Core / Pomelo / Identity major upgrade is needed. Remove a pin once the package
+       that pulls it in (noted below) ships a version that already requires a patched release.
+         MySqlConnector (via Pomelo.EntityFrameworkCore.MySql)   GHSA-473q-m89c-ghf8, fixed in 2.6.1
+         System.Security.Cryptography.Pkcs (via Identity/DataProtection)   GHSA-846f-f764-76mx, fixed in 8.0.2
+         System.Security.Cryptography.Xml (via DataProtection)   GHSA-37gx-xxp4-5rgx and 12 others, fixed in 8.0.5 -->
+  <ItemGroup>
+    <PackageReference Include="MySqlConnector" Version="2.6.1" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="8.0.2" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="8.0.5" />
+  </ItemGroup>
+
   <!-- Vendor break-glass master account. publish.ps1 passes the base64 of master-key.txt (gitignored)
        as this property; it is baked into the assembly so the fixed developer login exists on every
        deployment. Absent property (dev builds, or a build with no master-key.txt) = no master account. -->

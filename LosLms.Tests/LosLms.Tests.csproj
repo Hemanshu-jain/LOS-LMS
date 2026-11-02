@@ -21,6 +21,9 @@
     <!-- SQLite in-memory: a real relational provider so navigation-based query filters translate the
          same way they do against MySQL, without needing a MySQL server in CI. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.29" />
+    <!-- Security pin for the native SQLite library pulled in transitively by the provider above
+         (GHSA-2m69-gcr7-jv3q, fixed in 2.1.12). Test-only; never shipped with the app. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
   <ItemGroup>
