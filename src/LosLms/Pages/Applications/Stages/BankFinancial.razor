@@ -17,7 +17,7 @@
 @inject IHttpClientFactory HttpClientFactory
 @inject DigioClient Digio
 
-<PageTitle>Bank &amp; Financial · @ApplicationId</PageTitle>
+<PageTitle>Verification · @ApplicationId</PageTitle>
 
 @if (_loading)
 {
@@ -45,8 +45,12 @@ else
 
             @* No completion gate on this stage, matching Loan & Security.
                TODO: confirm with the client whether Stage 3 needs a real completion gate. *@
+            @* The KYC evidence gate (PAN verified, Aadhaar via DigiLocker, AML) lives here now, not at Stage 1. *@
             <StageSubHeader ApplicationId="@_application.Id"
                             CompleteBlocked="false"
+                            ExtraGate="_kycGate"
+                            GateSubjectKey="@_kycKey"
+                            OnGateChanged="RefreshKycGateAsync"
                             OnSaveDraft="SaveDraftAsync"
                             OnCompleteStage="CompleteStageAsync" />
 
@@ -61,7 +65,7 @@ else
 
                 <div class="stage-main">
                     <div class="stage-title">
-                        <span class="stage-title-text">STAGE 3 — BANK &amp; FINANCIAL</span>
+                        <span class="stage-title-text">STAGE 3 — VERIFICATION</span>
                         <span class="stage-title-of">Stage 3 of 8</span>
                     </div>
 
@@ -76,6 +80,11 @@ else
                     </div>
 
                     @* ---------- Tab 1: Bank details ---------- *@
+                    @if (_activeTab == VerificationTab)
+                    {
+                        <PartyVerification ApplicationId="@ApplicationId" OnChanged="RefreshKycGateAsync" />
+                    }
+
                     @if (_activeTab == BankTab)
                     {
                         <Panel Title="Bank details">
@@ -438,7 +447,21 @@ else
 
     private const string PennyDropUnavailable = "Unavailable — banking verification provider not configured";
 
-    private static readonly string[] Tabs = { BankTab, CamTab };
+    private const string VerificationTab = "Verification";
+    private static readonly string[] Tabs = { VerificationTab, BankTab, CamTab };
+
+    private GateResult _kycGate = GateResult.Clear;
+    private string? _kycKey;
+
+    private async Task RefreshKycGateAsync()
+    {
+        if (_application is null) { return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var production = Digio.Credentials(_application.CompanyId)?.Production == true;
+        _kycGate = await KycEvidenceCheck.GateAsync(db, ApplicationId, production);
+        _kycKey = _kycGate.CanAdvance ? null : KycEvidenceCheck.SubjectKeyFor(await KycEvidenceCheck.GapsAsync(db, ApplicationId, production));
+        await InvokeAsync(StateHasChanged);
+    }
     private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
 
     private static readonly string[] BankOptions =
@@ -461,7 +484,7 @@ else
 
     private Application? _application;
     private bool _loading = true;
-    private string _activeTab = BankTab;
+    private string _activeTab = VerificationTab;
 
     private BankDetail _bank = new();
     private List<BankStatement> _statements = new();
@@ -516,6 +539,10 @@ else
                 Navigation.NavigateTo(LoanStages.Path(ApplicationId, _application.CurrentStage));
                 return;
             }
+
+            var kycProduction = Digio.Credentials(_application.CompanyId)?.Production == true;
+            _kycGate = await KycEvidenceCheck.GateAsync(db, ApplicationId, kycProduction);
+            _kycKey = _kycGate.CanAdvance ? null : KycEvidenceCheck.SubjectKeyFor(await KycEvidenceCheck.GapsAsync(db, ApplicationId, kycProduction));
             _bank = await db.BankDetails.AsNoTracking()
                 .FirstOrDefaultAsync(b => b.ApplicationId == ApplicationId)
                 ?? new BankDetail { ApplicationId = ApplicationId };
@@ -1042,6 +1069,12 @@ else
         await using (var gateDb = await DbFactory.CreateDbContextAsync())
         {
             if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
+            {
+                return;
+            }
+
+            var production = Digio.Credentials(_application!.CompanyId)?.Production == true;
+            if (!(await KycEvidenceCheck.GateAsync(gateDb, ApplicationId, production)).CanAdvance)
             {
                 return;
             }

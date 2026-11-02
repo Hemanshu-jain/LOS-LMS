@@ -29,7 +29,7 @@ public static class LoanStages
     {
         "Customer Details",
         "Loan & Security",
-        "Bank & Financial",
+        "Verification",
         "Document Checklist",
         "Reports",
         "Eligibility",

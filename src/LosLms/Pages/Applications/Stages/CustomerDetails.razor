@@ -55,9 +55,6 @@ else
                disables it through StageSubHeader's own gate, and CompleteStageAsync re-guards server-side. *@
             <StageSubHeader ApplicationId="@_application.Id"
                             CompleteBlocked="false"
-                            ExtraGate="_kycGate"
-                            GateSubjectKey="@_kycKey"
-                            OnGateChanged="RefreshKycGateAsync"
                             OnSaveDraft="SaveDraftAsync"
                             OnCompleteStage="CompleteStageAsync" />
 
@@ -208,7 +205,7 @@ else
                         <div class="panel cd-identity">
                             <div class="panel-body">
                                 <div class="id-grid">
-                                    <div class="id-head" style="grid-row:1">Identity · OCR verify</div>
+                                    <div class="id-head" style="grid-row:1">Identity</div>
                                     <div class="id-cell" style="grid-row:2">
                                 <div class="identity-row">
                                     <FormField Label="PAN" For="identity-pan" Error="@ErrorFor("pan")">
@@ -217,17 +214,7 @@ else
                                                @oninput="e => party.Pan = Upper(e.Value)"
                                                @onblur='() => Validate("pan")' />
                                     </FormField>
-                                    @* The Digio panel below replaces this button when PAN verification is switched on for the company. *@
-                                    @if (!_digioPan)
-                                    {
-                                        <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "pan-ocr", PanOcrUnavailable)'>Verify OCR</button>
-                                    }
                                 </div>
-                                @if (!_digioPan && _notices.TryGetValue("pan-ocr", out var panNotice))
-                                {
-                                    <p class="field-caption" role="status">@panNotice</p>
-                                }
-
                                     </div>
                                     <div class="id-cell" style="grid-row:3">
                                 <div class="identity-row">
@@ -241,21 +228,8 @@ else
                                                @onblur='() => { _aadhaarFocused = false; Validate("aadhaar"); }' />
                                     </FormField>
                                     <button type="button" class="verify-button" @onclick="() => _aadhaarShown = !_aadhaarShown">@(_aadhaarShown ? "Hide" : "Show")</button>
-                                    @if (!_digioAadhaar)
-                                    {
-                                        <button type="button" class="verify-button" @onclick='() => VerifyKycAsync(party, "aadhaar-ocr", AadhaarOcrUnavailable)'>Verify OCR</button>
-                                    }
                                 </div>
-                                @if (!_digioAadhaar && _notices.TryGetValue("aadhaar-ocr", out var aadhaarNotice))
-                                {
-                                    <p class="field-caption" role="status">@aadhaarNotice</p>
-                                }
-
                                     </div>
-                                <PartyKycPanel CompanyId="_application.CompanyId" ApplicationId="@ApplicationId" PartyId="party.Id"
-                                               FullName="@party.FullName" Pan="@party.Pan" Dob="party.DateOfBirth" Mobile="@party.Mobile"
-                                               Individual="@(party.CustomerCategory is null || !party.CustomerCategory.Contains("Company", StringComparison.OrdinalIgnoreCase))"
-                                               OnChanged="SyncFromDigioAsync" Inline="true" />
                                     <div class="id-cell" style="grid-row:4">
                                 @* ---------- Bureau check ---------- *@
                                 @* Offered only once both identifiers exist — a bureau pull keyed on
@@ -290,7 +264,7 @@ else
                         </div>
 
                         <div class="panel cd-side">
-                            <div class="panel-header"><span class="panel-title">Gates &amp; documents</span></div>
+                            <div class="panel-header"><span class="panel-title">Gates</span></div>
                             <div class="panel-body">
                                 <div class="gate gate-@DedupeClass(party.DedupeStatus)">
                                     <span class="gate-label">Dedupe check</span>
@@ -324,93 +298,7 @@ else
                                     }
                                 }
 
-                                <div class="gate gate-@(string.IsNullOrWhiteSpace(party.VideoKycPath) ? "inactive" : "pass")">
-                                    <span class="gate-label">Video KYC</span>
-
-                                    @* Always rendered (hidden until active) so the camera code can find it by id. *@
-                                    <div class="capture-media @(_videoKycCameraOpen ? null : "is-hidden")">
-                                        <video id="@VideoKycCameraId" class="capture-video" autoplay playsinline muted></video>
-                                        @if (_videoRecording)
-                                        {
-                                            <span class="capture-rec">● REC</span>
-                                        }
-                                    </div>
-
-                                    @if (_videoKycCameraOpen)
-                                    {
-                                        <div class="capture-actions">
-                                            @if (!_videoRecording)
-                                            {
-                                                <button type="button" class="verify-button" @onclick="StartVideoKycAsync">Start recording</button>
-                                            }
-                                            else
-                                            {
-                                                <button type="button" class="verify-button" @onclick="() => StopVideoKycAsync(party)">Stop &amp; save</button>
-                                            }
-                                            <button type="button" class="row-action" @onclick="CloseVideoKycCameraAsync">Cancel</button>
-                                        </div>
-                                    }
-                                    else if (!string.IsNullOrWhiteSpace(party.VideoKycPath))
-                                    {
-                                        <span class="gate-note">Recorded · stored with the file</span>
-                                        <video class="capture-thumb" controls src="@FileUrl(party, party.VideoKycPath!)"></video>
-                                        <button type="button" class="verify-button is-block" @onclick="OpenVideoKycCameraAsync">Re-record</button>
-                                    }
-                                    else
-                                    {
-                                        <span class="gate-note">Not initiated · record a live KYC video</span>
-                                        <button type="button" class="verify-button is-block" @onclick="OpenVideoKycCameraAsync">
-                                            Start video KYC
-                                        </button>
-                                    }
-                                    @if (_captureError is not null)
-                                    {
-                                        <p class="inline-error" role="alert">@_captureError</p>
-                                    }
-                                </div>
-
-                                <div class="panel-divider"></div>
-
-                                <div class="scan-row">
-                                    <label class="scan-drop">
-                                        <span>@ScanLabel("PAN card scan", party.PanScanPath)</span>
-                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
-                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.PanScan))" />
-                                    </label>
-                                    <label class="scan-drop">
-                                        <span>@ScanLabel("Aadhaar scan", party.AadhaarScanPath)</span>
-                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
-                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AadhaarScan))" />
-                                    </label>
-                                </div>
-
-                                <div class="field-grid">
-                                    <FormField Label="Aadhaar generated / downloaded on" For="aadhaar-genon">
-                                        <input id="aadhaar-genon" type="date" class="field-input"
-                                               @bind="party.AadhaarGeneratedOn" />
-                                        @if (AadhaarStale(party))
-                                        {
-                                            <span class="field-caption field-caption-warn">Masked Aadhaar is more than @AadhaarFreshnessDays days old — request a freshly generated copy.</span>
-                                        }
-                                    </FormField>
-                                </div>
-
-                                <label class="scan-check">
-                                    <input type="checkbox" @bind="party.AddressChangedSinceAadhaar" />
-                                    <span>Current address differs from Aadhaar — attach proof</span>
-                                </label>
-                                @if (party.AddressChangedSinceAadhaar)
-                                {
-                                    <label class="scan-drop">
-                                        <span>@ScanLabel("Address proof", party.AddressProofPath)</span>
-                                        <InputFile class="visually-hidden" accept="image/*,application/pdf"
-                                                   OnChange="@(e => OnFileSelectedAsync(e, party, UploadKind.AddressProof))" />
-                                    </label>
-                                }
-                                @if (_uploadError is not null)
-                                {
-                                    <p class="inline-error" role="alert">@_uploadError</p>
-                                }
+                                <p class="field-caption">Video KYC, the PAN and Aadhaar scans and address proof are collected at Stage 3 — Verification.</p>
                             </div>
                         </div>
                     </div>
@@ -1427,12 +1315,6 @@ else
             {
                 return;
             }
-
-            var production = DigioApi.Credentials(_application!.CompanyId)?.Production == true;
-            if (!(await KycEvidenceCheck.GateAsync(gateDb, ApplicationId, production)).CanAdvance)
-            {
-                return;
-            }
         }
 
         // Fields are filled, so any remaining BlockedReason is the dedupe check — surface it as a toast
@@ -1712,13 +1594,8 @@ else
         entity.Pan = form.Pan;
         entity.Aadhaar = form.Aadhaar;
         entity.PhotoPath = form.PhotoPath;
-        entity.PanScanPath = form.PanScanPath;
-        entity.AadhaarScanPath = form.AadhaarScanPath;
-        entity.AddressProofPath = form.AddressProofPath;
-        entity.VideoKycPath = form.VideoKycPath;
-        entity.VideoKycSeconds = form.VideoKycSeconds;
-        entity.AadhaarGeneratedOn = form.AadhaarGeneratedOn;
-        entity.AddressChangedSinceAadhaar = form.AddressChangedSinceAadhaar;
+        // The scans, Aadhaar date, address proof and video KYC are collected at Stage 3 (Verification), which writes them straight
+        // to the party row. They are deliberately NOT copied here, or this page's auto-save would overwrite them with stale values.
 
         entity.Mobile = form.Mobile;
         entity.AltMobile = form.AltMobile;
