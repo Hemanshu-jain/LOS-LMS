@@ -43,6 +43,9 @@
     /// <summary>Blank make/model and registration year from a verified RC; the page fills only fields that are still empty.</summary>
     [Parameter] public EventCallback<RcFill> OnFill { get; set; }
 
+    /// <summary>Raised after a verification attempt finishes, so the page can re-read whether the RC is now verified.</summary>
+    [Parameter] public EventCallback OnVerified { get; set; }
+
     private bool _enabled;
     private string? _notice, _verdict, _applicant, _lender;
     private JsonElement? _response;
@@ -115,6 +118,8 @@
         {
             await OnFill.InvokeAsync(fill);
         }
+
+        await OnVerified.InvokeAsync();
     }
 
     private static string Mark(string state) => state switch { "ok" => "✓", "warn" => "!", _ => "✕" };

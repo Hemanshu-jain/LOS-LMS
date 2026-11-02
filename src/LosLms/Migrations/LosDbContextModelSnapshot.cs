@@ -1494,6 +1494,9 @@ namespace LosLms.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<bool>("PropertyEnabled")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("RbiNbfcRegNo")
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
@@ -1545,6 +1548,7 @@ namespace LosLms.Migrations
                             MinimumReferences = 2,
                             Name = "",
                             NoteStaleTolerancePct = 0.5m,
+                            PropertyEnabled = false,
                             SlaOverdueDays = 5,
                             UpdatedAt = new DateTime(2026, 8, 11, 0, 0, 0, 0, DateTimeKind.Utc)
                         });

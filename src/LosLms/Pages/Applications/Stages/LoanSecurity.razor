@@ -80,7 +80,7 @@ else
                                     class="loan-tab @(isActive ? "is-active" : null)"
                                     aria-selected="@isActive"
                                     @onclick="() => SelectTab(tab)">
-                                @tab
+                                @TabLabel(tab)
                                 @if (isStale && !isActive)
                                 {
                                     <span class="stale-dot" title="Loan terms changed since you last viewed this"></span>
@@ -192,17 +192,20 @@ else
                     @* ---------- Tab 2: Security details ---------- *@
                     @if (_activeTab == SecurityTab)
                     {
-                        <Panel Title="Security details">
+                        <Panel Title="@(ShowAssetToggle ? "Security details" : "Vehicle details")">
                             <Right>
-                                <div class="asset-toggle" role="group" aria-label="Asset type">
-                                    @foreach (var type in AssetTypes)
-                                    {
-                                        <button type="button"
-                                                class="@(_security.AssetType == type ? "is-active" : null)"
-                                                aria-pressed="@(_security.AssetType == type)"
-                                                @onclick="() => _security.AssetType = type">@type</button>
-                                    }
-                                </div>
+                                @if (ShowAssetToggle)
+                                {
+                                    <div class="asset-toggle" role="group" aria-label="Asset type">
+                                        @foreach (var type in AssetTypes)
+                                        {
+                                            <button type="button"
+                                                    class="@(_security.AssetType == type ? "is-active" : null)"
+                                                    aria-pressed="@(_security.AssetType == type)"
+                                                    @onclick="() => _security.AssetType = type">@type</button>
+                                        }
+                                    </div>
+                                }
                             </Right>
                             <ChildContent>
                                 <div class="security-layout">
@@ -397,7 +400,7 @@ else
                                                     <ChildContent>
                                                         <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
                                                                  Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
-                                                                 InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
+                                                                 InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" OnVerified="RefreshRcVerifiedAsync" />
                                                     </ChildContent>
                                                     <ErrorContent><span class="inline-error" role="alert">The RC check is unavailable right now.</span></ErrorContent>
                                                 </ErrorBoundary>
@@ -405,7 +408,7 @@ else
 
                                             <div style="grid-column: 1 / -1;">
                                                 <ErrorBoundary>
-                                                    <ChildContent><TgPortalPanel ApplicationId="@ApplicationId" /></ChildContent>
+                                                    <ChildContent><TgPortalPanel ApplicationId="@ApplicationId" RcVerified="_rcVerified" /></ChildContent>
                                                     <ErrorContent><span class="inline-error" role="alert">The TG portal record is unavailable right now.</span></ErrorContent>
                                                 </ErrorBoundary>
                                             </div>
@@ -843,6 +846,26 @@ else
 
     private static readonly string[] Tabs = { LoanTab, SecurityTab, ReferenceTab, ViabilityTab };
     private static readonly string[] AssetTypes = { "Vehicle", "Property" };
+
+    /// <summary>Property security is switched on per company by a SuperAdmin; off, the tab is simply "Vehicle Details".</summary>
+    private bool _propertyEnabled;
+
+    /// <summary>True when Digio has verified this vehicle's RC, which switches the manual TG portal check off.</summary>
+    private bool _rcVerified;
+
+    private bool ShowAssetToggle => _propertyEnabled || _security.AssetType == "Property";
+
+    private string TabLabel(string tab) => tab == SecurityTab ? (ShowAssetToggle ? "Security Details" : "Vehicle Details") : tab;
+
+    private async Task RefreshRcVerifiedAsync()
+    {
+        if (_application is null) { return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _rcVerified = await db.VerificationEvidence.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.CompanyId == _application.CompanyId && e.ApplicationId == ApplicationId && e.Subject == "VEHICLE_RC")
+            .OrderByDescending(e => e.Id).Select(e => e.Verdict).FirstOrDefaultAsync() == "Verified";
+        StateHasChanged();
+    }
     private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
 
     // Loaded per load from the company's editable list (Settings → Sourcing Channels), not hardcoded.
@@ -1024,6 +1047,10 @@ else
             _application.SourcingChannel = OnlyChoice.IfBlank(_application.SourcingChannel, _channelOptions);
             _application.Scheme = OnlyChoice.IfBlank(_application.Scheme, _schemeOptions);
             _schemeTerms = await SchemeTermsService.ForAsync(db, _application.CompanyId, _application.Scheme);
+            _propertyEnabled = await db.Companies.AsNoTracking().Where(c => c.Id == _application.CompanyId).Select(c => c.PropertyEnabled).FirstOrDefaultAsync();
+            _rcVerified = await db.VerificationEvidence.IgnoreQueryFilters().AsNoTracking()
+                .Where(e => e.CompanyId == _application.CompanyId && e.ApplicationId == ApplicationId && e.Subject == "VEHICLE_RC")
+                .OrderByDescending(e => e.Id).Select(e => e.Verdict).FirstOrDefaultAsync() == "Verified";
 
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
