@@ -49,7 +49,27 @@
 
                     @if (ApiBillingService.UpiLink(_details, i) is { } upi)
                     {
-                        <p><a class="pay-btn pay-primary" href="@upi">Pay @Money(i.Total) with UPI</a></p>
+                        @* A upi:// link does nothing on a PC (no program handles it), so the button opens a QR to scan with a phone. *@
+                        <p><button type="button" class="pay-btn pay-primary" aria-expanded="@f.ShowQr" @onclick="() => f.ShowQr = !f.ShowQr">
+                            @(f.ShowQr ? "Hide QR code" : $"Pay {Money(i.Total)} with UPI")</button></p>
+
+                        @if (f.ShowQr && UpiQr.DataUri(upi) is { } qr)
+                        {
+                            <div class="pay-qr-panel" role="region" aria-label="Pay by UPI">
+                                <img class="pay-qr-big" src="@qr" width="240" height="240"
+                                     alt="UPI QR code. Scan it to pay @Money(i.Total) to @(_details.PayeeName ?? _details.UpiId)" />
+                                <div class="pay-qr-steps">
+                                    <p class="pay-qr-amount">@Money(i.Total)</p>
+                                    <ol>
+                                        <li>Open any UPI app on your phone (Google Pay, PhonePe, Paytm, BHIM…).</li>
+                                        <li>Scan this code. The amount and the bill reference are already filled in.</li>
+                                        <li>Pay, then enter the UTR below and press <strong>I've paid</strong>.</li>
+                                    </ol>
+                                    @if (_details.UpiId is not null) { <p class="pay-muted">UPI ID: <code>@_details.UpiId</code></p> }
+                                    <p class="pay-muted">Paying from this phone? <a href="@upi">Open your UPI app</a></p>
+                                </div>
+                            </div>
+                        }
                     }
 
                     @if (i.ClaimedAt is { } at)
@@ -127,6 +147,12 @@
     .pay-where dt { color: #6b7686; }
     .pay-where dd { margin: 0; }
     .pay-qr { border: 1px solid #d8dee7; border-radius: 4px; object-fit: contain; background: #fff; }
+    .pay-qr-panel { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin: 4px 0 14px; padding: 16px; background: #f6f8fb; border: 1px solid #d8dee7; border-radius: 4px; }
+    .pay-qr-big { background: #fff; padding: 8px; border: 1px solid #b8c1cd; border-radius: 4px; max-width: 100%; height: auto; }
+    .pay-qr-steps { flex: 1; min-width: 240px; color: #1d2733; }
+    .pay-qr-amount { margin: 0 0 6px; font-size: 22px; font-weight: 700; color: #1d2733; }
+    .pay-qr-steps ol { margin: 0 0 8px; padding-left: 18px; line-height: 1.6; font-size: 13px; }
+    .pay-qr-steps a { color: #1f3a5f; font-weight: 600; }
     code { font-size: 12px; background: #f4f6f9; padding: 1px 5px; border-radius: 3px; word-break: break-all; }
 </style>
 
@@ -141,6 +167,7 @@
         public string Note { get; set; } = invoice.ClaimNote ?? "";
         public string? Message { get; set; }
         public string? Error { get; set; }
+        public bool ShowQr { get; set; }
     }
 
     private List<BillForm> _bills = [];
@@ -163,7 +190,7 @@
     {
         var invoices = _companyId is { } id ? await Billing.UnpaidInvoicesAsync(id) : [];
         _bills = invoices.Select(i => _bills.FirstOrDefault(b => b.Invoice.Id == i.Id) is { } keep
-            ? new BillForm(i) { Utr = keep.Utr, PaidOn = keep.PaidOn, Note = keep.Note, Message = keep.Message, Error = keep.Error }
+            ? new BillForm(i) { Utr = keep.Utr, PaidOn = keep.PaidOn, Note = keep.Note, Message = keep.Message, Error = keep.Error, ShowQr = keep.ShowQr }
             : new BillForm(i)).ToList();
     }
 

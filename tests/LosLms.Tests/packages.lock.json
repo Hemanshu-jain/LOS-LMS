@@ -308,6 +308,11 @@
           "MySqlConnector": "2.3.5"
         }
       },
+      "QRCoder": {
+        "type": "Transitive",
+        "resolved": "1.6.0",
+        "contentHash": "XmPA81eo+oRxBuyVdswsSkTGTE1d3thfF11Z1PdD7oB56A6HU4G4AAOdySmGRMb/cljwlFTMWUtosGEnwpS6GA=="
+      },
       "QuestPDF": {
         "type": "Transitive",
         "resolved": "2026.7.2",
@@ -413,6 +418,7 @@
           "Microsoft.AspNetCore.DataProtection.EntityFrameworkCore": "[8.0.11, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[8.0.11, )",
           "Pomelo.EntityFrameworkCore.MySql": "[8.0.3, )",
+          "QRCoder": "[1.6.0, )",
           "QuestPDF": "[2026.7.2, )"
         }
       },

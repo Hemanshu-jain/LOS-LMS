@@ -10,6 +10,15 @@ release description that the in-app updater shows. The version number lives in `
 Work merged to `main` since 1.2.4 (Digio verification, e-Sign and e-NACH, loan agreements, servicing ledger, and others)
 has no release notes yet. Add them here when the next version is cut. Until then `git log` is the record.
 
+### Paying your bill
+- **Pay with UPI now shows a QR code.** The button used to open a link that only works on a phone, so on a computer it did
+  nothing. It now opens a QR code with the amount and bill reference already filled in; scan it with any UPI app.
+- **The "bill due" banner appears from the due date (the 8th), not before.** From the day after, the pause screen carries Pay now.
+
+### Readability
+- The bill banner's **View bill** and **Pay now** links, and the **"An unhandled error has occurred. Reload"** bar, are now
+  clearly readable (they were close to invisible). Pay now is a button.
+
 ## [1.2.4] - 2026-10-09
 
 Installs silently in the background.
