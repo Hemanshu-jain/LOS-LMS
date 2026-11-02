@@ -23,7 +23,7 @@ has no release notes yet. Add them here when the next version is cut. Until then
   Stage 1, which keeps only PAN and Aadhaar entry, CIBIL and the photograph. Bank details and CAM are further tabs on Stage 3.
 - **Stage 2** reads "Vehicle Details". A SuperAdmin can allow property loans per company (Companies page). The TG Transport
   check is a "Manual RC check" card and switches off once Digio has verified the RC.
-- **Schemes carry loan terms** (amount, tenure, ROI, processing fee, advance EMI), set in Settings, Scheme Charges. Choosing
+- **Schemes carry loan terms** (amount, tenure, ROI, processing fee, advance EMI), set in Settings, Schemes. Choosing
   a scheme fills them in; anything the officer changed is kept.
 - Reports shows **Approved / Rejected / Pending approval** instead of Recommended / Not recommended / Pending.
 - **Borrower Classification** lists (PSL sub-category, co-lending partner, end use) are editable in Settings, Classification

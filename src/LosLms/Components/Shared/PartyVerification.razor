@@ -332,6 +332,8 @@ else
             }
         }
         catch (JSException ex) { _captureError = CameraError(ex); }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { _captureError = "The video could not be saved. Try again."; }
+
         await CloseCameraAsync();
     }
 
