@@ -418,7 +418,7 @@ export default function ApplicationsDashboardSpec() {
               {visibleRows.map((r) => {
                 const s = COLORS.status[r.status];
                 const age = daysAgo(r.queueDate);
-                const isOverdue = age > 5; // [IMPROVEMENT #6] — confirm the real SLA threshold with Arun/client
+                const isOverdue = age > 5; // [IMPROVEMENT #6] — confirm the real SLA threshold with the client
                 const pad = density === 'compact' ? '9px 10px' : '14px 10px';
                 return (
                   <tr key={r.id} onClick={() => openDrawer(r.id)} style={{ borderBottom: '1px solid #eceef1', cursor: 'pointer' }}

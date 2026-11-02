@@ -15,7 +15,7 @@ namespace LosLms.Models;
 /// The three file paths live here rather than in tables of their own: each is a single optional
 /// document hanging off this one row, and a table per file would buy nothing.
 /// <see cref="GeneralDocFilePath"/> in particular backs a tab whose purpose is unconfirmed — see
-/// OPEN-QUESTIONS-FOR-ARUN.md.
+/// docs/project/OPEN-QUESTIONS.md.
 /// </remarks>
 public class Disbursement
 {

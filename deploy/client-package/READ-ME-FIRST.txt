@@ -41,7 +41,7 @@ choose (10+ characters, with a symbol) — that's your login. After that you
 add your staff from Company Setup -> User Management.
 
 Your permanent address is shown in the tray icon (bottom-right, near the
-clock) and in the file   shareable-url.txt   next to the app.
+clock) and in the file   address.txt   next to the app.
 
 
 Nothing to install. No database to set up. Windows only.

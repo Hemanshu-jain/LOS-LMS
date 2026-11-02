@@ -15,7 +15,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
-// UNVERIFIED LICENCE DECLARATION — see OPEN-QUESTIONS-FOR-ARUN.md, item 1.
+// UNVERIFIED LICENCE DECLARATION — see docs/project/OPEN-QUESTIONS.md, item 1.
 // QuestPDF's Community licence is only valid for organisations under $1M USD annual gross revenue.
 // That has NOT been confirmed for this client, and a multi-branch NBFC may well exceed it — above
 // that threshold this needs a paid Professional or Enterprise licence. Confirm before production.

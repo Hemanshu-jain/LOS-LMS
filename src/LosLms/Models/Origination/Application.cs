@@ -128,7 +128,7 @@ public class Application
     /// The assigned officer as a real foreign key into <see cref="ApplicationUser"/>, the source of
     /// truth for the dashboard's officer filter and the Summary Rail. <see cref="AssignedOfficer"/>
     /// above is the older name-string representation, kept in sync on write and now otherwise
-    /// redundant — see OPEN-QUESTIONS-FOR-ARUN.md.
+    /// redundant — see docs/project/OPEN-QUESTIONS.md.
     /// </summary>
     public string? AssignedOfficerId { get; set; }
 

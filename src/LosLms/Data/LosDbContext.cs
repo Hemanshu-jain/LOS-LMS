@@ -1186,7 +1186,7 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
         // `db.Parties.Where(...)` that never touches Applications is now scoped just the same. The
         // `_isSuperAdmin` short-circuit matches the parent filters (and the seeding tenant, which is
         // SuperAdmin), so cross-company administration and startup seeding are unaffected. A companion
-        // test (LosLms.Tests/TenantIsolationTests) asserts this holds across every DbSet.
+        // test (tests/LosLms.Tests/TenantIsolationTests) asserts this holds across every DbSet.
         modelBuilder.Entity<Party>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
         modelBuilder.Entity<SecurityDetail>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
         modelBuilder.Entity<Reference>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);

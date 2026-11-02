@@ -11,7 +11,7 @@ namespace LosLms.Models;
 /// <see cref="Status"/> is recorded and displayed but gates nothing: funds can be released with a
 /// Pending mandate, because the release gate reads the checklist, not this row. The checklist does
 /// carry an "E-Nach registration" item, so the control exists — it is just a person ticking a box
-/// rather than this field. Recorded in OPEN-QUESTIONS-FOR-ARUN.md.
+/// rather than this field. Recorded in docs/project/OPEN-QUESTIONS.md.
 /// </remarks>
 public class EnachMandate : INachMandate
 {

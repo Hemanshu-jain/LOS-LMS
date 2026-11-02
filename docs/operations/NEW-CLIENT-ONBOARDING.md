@@ -12,7 +12,7 @@ fixed term, warns before expiry, and **freezes the app** once expired until rene
   `AccountId`, `ZoneId`, and an `ApiToken` with **Account → Cloudflare Tunnel: Edit** and **Zone
   (bhodhix.com) → DNS: Edit**. Used by the tool to create tunnels + DNS automatically.
 
-The tool: `dotnet run --project LosLms.LicenseTool -- <command>` (build it once; it's vendor-only, never shipped).
+The tool: `dotnet run --project src/LosLms.LicenseTool -- <command>` (build it once; it's vendor-only, never shipped).
 
 ---
 
@@ -20,7 +20,7 @@ The tool: `dotnet run --project LosLms.LicenseTool -- <command>` (build it once;
 
 **1. Provision (one command)** — creates their tunnel + DNS + signed licence, records them:
 ```powershell
-dotnet run --project LosLms.LicenseTool -- new-client "ABC Finance" abc 12
+dotnet run --project src/LosLms.LicenseTool -- new-client "ABC Finance" abc 12
 ```
 This creates the Cloudflare tunnel `LOS-LMS-abc`, points `abc.bhodhix.com → http://localhost:5037`,
 signs a 12-month licence, writes `tunnel-tokens\abc.txt` + `clients\abc.license`, and adds a row to
@@ -38,7 +38,7 @@ goes live automatically, licensed. Staff run it → **"Connect."** No pasting, n
 ## Renew a client (before or after expiry)
 
 ```powershell
-dotnet run --project LosLms.LicenseTool -- renew abc 12
+dotnet run --project src/LosLms.LicenseTool -- renew abc 12
 ```
 Prints a **renewal key**. Send it to the client; their **SuperAdmin** pastes it into the app's
 **"Subscription paused / Renew"** screen. The app verifies it (bound to their host, must extend) and
@@ -46,7 +46,7 @@ resumes. No rebuild needed. `clients\abc.license` is also updated for their next
 
 ## See everyone
 ```powershell
-dotnet run --project LosLms.LicenseTool -- list
+dotnet run --project src/LosLms.LicenseTool -- list
 ```
 Every client, host, expiry, and status (active / Nd left ⚠ / EXPIRED).
 
@@ -68,7 +68,7 @@ For a hard kill-switch later, add an online check (the app already reaches Cloud
 ## For the existing default deployment (bhodhix)
 Its tunnel already exists, so issue a licence without touching Cloudflare:
 ```powershell
-dotnet run --project LosLms.LicenseTool -- issue "Bhodhix" los-lms.bhodhix.com <tunnel-id> 12
+dotnet run --project src/LosLms.LicenseTool -- issue "Bhodhix" los-lms.bhodhix.com <tunnel-id> 12
 copy clients\los-lms.license license.txt   # the default -LicenseFile
 .\publish.ps1                               # bakes tunnel-token.txt + license.txt
 ```

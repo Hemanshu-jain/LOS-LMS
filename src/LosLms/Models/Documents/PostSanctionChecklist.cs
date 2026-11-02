@@ -11,7 +11,7 @@ namespace LosLms.Models;
 /// **These rows are the release-funds gate.** Every row must read Cleared before money can move, so
 /// adding a row tightens the control automatically and removing one loosens it. Seven are seeded
 /// today; the content brief says nine exist. See the gate comment in PostSanction.razor and
-/// OPEN-QUESTIONS-FOR-ARUN.md — the two missing items are the highest-priority open question in
+/// docs/project/OPEN-QUESTIONS.md — the two missing items are the highest-priority open question in
 /// this build.
 /// </remarks>
 public class PostSanctionChecklist

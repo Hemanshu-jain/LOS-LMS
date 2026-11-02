@@ -44,7 +44,7 @@ else
         <div class="stage-card">
 
             @* No completion gate on this stage, matching Loan & Security.
-               TODO: confirm with Arun/client whether Stage 3 needs a real completion gate. *@
+               TODO: confirm with the client whether Stage 3 needs a real completion gate. *@
             <StageSubHeader ApplicationId="@_application.Id"
                             CompleteBlocked="false"
                             OnSaveDraft="SaveDraftAsync"
@@ -942,7 +942,7 @@ else
 
     /// <remarks>
     /// Deletes the row only. The file stays on disk — orphaned statement files need a retention
-    /// policy, which is recorded in OPEN-QUESTIONS-FOR-ARUN.md rather than guessed at here.
+    /// policy, which is recorded in docs/project/OPEN-QUESTIONS.md rather than guessed at here.
     /// </remarks>
     private async Task RemoveStatementAsync(BankStatement statement)
     {

@@ -11,7 +11,7 @@ namespace LosLms.Models;
 /// Nothing reconciles <see cref="AmountReceived"/> against
 /// <c>CamCostBreakdown.AppliedMargin</c> — the margin the CAM assumed the customer would put in.
 /// The two are entered on different screens by different people and can disagree silently.
-/// Recorded in OPEN-QUESTIONS-FOR-ARUN.md.
+/// Recorded in docs/project/OPEN-QUESTIONS.md.
 /// </remarks>
 public class DownPaymentRecord
 {

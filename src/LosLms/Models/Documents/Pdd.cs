@@ -12,7 +12,7 @@ namespace LosLms.Models;
 /// Unlike <see cref="PostSanctionChecklist"/>, these do **not** gate anything: an application can be
 /// disbursed with every PDD still Open, which is the whole point of the category. Nothing chases
 /// them either — <see cref="ExpectedDate"/> can pass with no warning anywhere in the system.
-/// Recorded in OPEN-QUESTIONS-FOR-ARUN.md.
+/// Recorded in docs/project/OPEN-QUESTIONS.md.
 ///
 /// <see cref="WaivedByOfficerId"/> is a real foreign key rather than a typed name, so a waiver
 /// always points at an officer who exists — the same audit discipline used for

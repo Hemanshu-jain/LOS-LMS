@@ -14,6 +14,15 @@ nobody has confirmed.
 
 ---
 
+## Update — 2 Nov 2026 (read this first)
+
+- **The stack is MySQL 8, not SQLite.** The 29 Aug note below was true on that date but the app has since returned to MySQL
+  (Pomelo provider): the desktop edition bundles a portable MySQL and the cloud edition uses Aiven MySQL. SQLite is used
+  only by the automated tests. See [`../operations/`](../operations/) for how each edition is run.
+- Many items further down were written when nothing was integrated. Digio verification, e-Sign and e-NACH now exist; their
+  current state is in [`../integrations/PENDING-API-INTEGRATIONS.md`](../integrations/PENDING-API-INTEGRATIONS.md) and
+  [`../digio/`](../digio/).
+
 ## Update — 29 Aug 2026
 
 - **Stack is SQLite**, not MySQL. One embedded `App_Data/los_lms.db` file, no database server; the

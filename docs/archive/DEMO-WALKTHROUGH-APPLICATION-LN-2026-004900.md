@@ -391,7 +391,7 @@ Four inner blocks. Fill all four before *Confirm sanction* enables, then *Sancti
 
 # Stage 8 — Post Sanction *(Gated, hard — known-incomplete)*
 
-Seven of nine checklist rows are defined. Two items are pending definition per `OPEN-QUESTIONS-FOR-ARUN.md §0` — header reads **"7 of 9 flags cleared (2 items pending definition)"**.
+Seven of nine checklist rows are defined. Two items are pending definition per `OPEN-QUESTIONS.md §0` — header reads **"7 of 9 flags cleared (2 items pending definition)"**.
 
 ## 8.1 Checklist — clear all 7 defined rows
 
@@ -481,7 +481,7 @@ http://localhost:5037/applications/LN-2026-004900/reports-rcu
 - 90-day address-proof staleness (would require waiting 90 days)
 - Co-applicant or guarantor bank account (the model has only one account per application)
 - Stage 6 negative deviation (this case hits 0% deviation so no approver note is required)
-- The two undefined Post Sanction checklist items (per `OPEN-QUESTIONS-FOR-ARUN.md §0`)
+- The two undefined Post Sanction checklist items (per `OPEN-QUESTIONS.md §0`)
 
 Add any of these only if the demo needs to touch them.
 

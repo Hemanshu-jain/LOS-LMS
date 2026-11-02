@@ -10,7 +10,7 @@ namespace LosLms.Models;
 ///
 /// Overlaps <c>Parties.CustomerCategory</c> from Stage 1, which already records Proprietorship /
 /// Partnership firm / Private limited / HUF against the applicant. Nothing keeps the two in sync —
-/// recorded in OPEN-QUESTIONS-FOR-ARUN.md.
+/// recorded in docs/project/OPEN-QUESTIONS.md.
 /// </remarks>
 public class Business
 {

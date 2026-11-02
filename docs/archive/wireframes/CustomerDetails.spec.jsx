@@ -66,7 +66,7 @@ const SAMPLE_APPLICATION = { // dummy — replace with the real application reco
   roi: '13.25%',
 };
 
-// [IMPROVEMENT — flag for Arun/client] Per the brief, only the Dedupe check
+// [IMPROVEMENT — flag for the client] Per the brief, only the Dedupe check
 // gates "Complete stage". Video KYC has no such note. Worth confirming that's
 // intentional — in most lending compliance flows, an unfinished Video KYC
 // would also block sanction somewhere downstream, even if not at this exact

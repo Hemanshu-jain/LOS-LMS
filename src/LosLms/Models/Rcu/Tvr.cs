@@ -11,7 +11,7 @@ namespace LosLms.Models;
 ///
 /// <see cref="Status"/> is captured and displayed with risk colouring, but nothing acts on it: a
 /// "Negative - Discrepancy" TVR does not block the sanction. Only the presence of the fields feeds
-/// the completion gate. Recorded in OPEN-QUESTIONS-FOR-ARUN.md.
+/// the completion gate. Recorded in docs/project/OPEN-QUESTIONS.md.
 /// </remarks>
 public class Tvr
 {

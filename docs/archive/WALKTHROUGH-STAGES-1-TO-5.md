@@ -231,7 +231,7 @@ SELECT Id, Status, CurrentStage FROM Applications WHERE Id = 'LN-2026-004875';
 | RcuOutcomes | 2 | One per visible party |
 
 **`Status` will still say "New".** Nothing advances it yet — see item 4.10 in
-`OPEN-QUESTIONS-FOR-ARUN.md`.
+`OPEN-QUESTIONS.md`.
 
 ## One thing that will annoy you immediately
 
@@ -247,4 +247,4 @@ http://localhost:5037/applications/{id}/document-checklist
 http://localhost:5037/applications/{id}/reports-rcu
 ```
 
-Raised as item 4.16 for Arun.
+Raised as item 4.16 for the client.

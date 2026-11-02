@@ -9,7 +9,7 @@ namespace LosLms.Models;
 /// PROVISIONAL SCHEMA — reconciled during the cross-screen review once all nine screens exist.
 ///
 /// One account per application, i.e. the applicant's. Co-applicant and guarantor accounts are not
-/// modelled; that assumption is recorded in OPEN-QUESTIONS-FOR-ARUN.md.
+/// modelled; that assumption is recorded in docs/project/OPEN-QUESTIONS.md.
 /// </remarks>
 public class BankDetail
 {

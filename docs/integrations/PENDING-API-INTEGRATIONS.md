@@ -16,7 +16,7 @@ Golden rule already enforced in code: **no provider ever fabricates a result.** 
 ---
 
 > **Digio:** the complete integration plan (all products, every stage, webhooks, LMS collections, prompts) is in
-> [`docs/digio/00-MASTER-PLAN.md`](./digio/00-MASTER-PLAN.md). The Digio sections below describe what is built today.
+> [`docs/digio/00-MASTER-PLAN.md`](../digio/00-MASTER-PLAN.md). The Digio sections below describe what is built today.
 > Correction: the KYC endpoints listed as "not in Digio's public docs" **are** public. See `docs/digio/04-DIGIO-API-REFERENCE.md`.
 
 ## Gemini (`Gemini__ApiKey`)
@@ -37,7 +37,7 @@ and pre-fill fields). Same key. Flag before building — needs its own UI.
 
 - **Keys:** SuperAdmin → **Digio keys** (`/system/digio`) — per company: client id, client secret, webhook
   secret, sandbox/production. Stored encrypted in the credential vault (`App_Data`), never in the DB.
-- **One gate for every call:** `Services/Integrations/DigioClient.cs` → `PostAsync`. No keys → "not configured",
+- **One gate for every call:** `Services/Digio/DigioClient.cs` → `PostAsync`. No keys → "not configured",
   nothing sent. Overdue bill → paused, nothing sent. Otherwise HTTP Basic call + usage logged.
   Sandbox `https://ext.digio.in:444`, production `https://api.digio.in`.
 - **Penny drop — LIVE when keys set:** Bank & Financial → Run penny-drop check →
@@ -68,14 +68,14 @@ production credentials per NBFC. API docs: https://documentation.digio.in/
 
 | # | Feature | Digio product (indicative rate) | Drop-in point | Now (no key) |
 |---|---------|--------------------------------|---------------|--------------|
-| 2 | **Aadhaar fetch → auto-fill** party Personal/Contact | DigiKYC — DigiLocker fetch / Aadhaar Offline XML KYC (~₹2/fetch) | `Services/Integrations/DigiKycService.cs` → `VerifyAsync` (parse response into `DigiKycData`; `Apply` already fills blanks). "Verify OCR" buttons in `CustomerDetails.razor` | "API key not configured" notice; officer types the fields |
+| 2 | **Aadhaar fetch → auto-fill** party Personal/Contact | DigiKYC — DigiLocker fetch / Aadhaar Offline XML KYC (~₹2/fetch) | `Services/Digio/DigiKycService.cs` → `VerifyAsync` (parse response into `DigiKycData`; `Apply` already fills blanks). "Verify OCR" buttons in `CustomerDetails.razor` | "API key not configured" notice; officer types the fields |
 | 5 | **Aadhaar masking** on the uploaded Aadhaar | DigiKYC — Aadhaar masking API (~₹1) | Same service; call after the Aadhaar upload in `CustomerDetails.razor` | Manual: "Aadhaar generated/downloaded on" date + ≤5-day stale flag (already built) |
 | — | **PAN / ID OCR + verification** | DigiKYC — ID OCR (~₹2) + PAN verify (~₹1.50) | `DigiKycService.VerifyAsync`; "Verify OCR" in `CustomerDetails.razor` | Not-configured notice; manual entry |
 | — | **Bank account penny-drop** verification | DigiKYC — Penny drop (~₹2.50) | `Models/Banking/BankDetail.cs` `PennyDropStatus` + the verify flow in `BankFinancial.razor` | Stays `NotConfigured`; never invented |
 | — | **Bank statement analyzer** (Account Aggregator) | DigiOLink AA + BSA (~₹13/statement; 30–35 day FIU onboarding) | `Services/Integrations/BankStatementAnalysisService.cs` → `RequestAsync`; `BankFinancial.razor` | Request stub; no analysis produced |
-| — | **e-Sign** loan agreement (Aadhaar eSign) | DigiSign (onboarding ₹10k + ₹10.60/credit) | `Services/Integrations/EsignService.cs` → `DispatchAsync`; `PostSanction.razor` `AgreementEsignStatus` | Status never leaves `NotSent`; document still generated locally |
+| — | **e-Sign** loan agreement (Aadhaar eSign) | DigiSign (onboarding ₹10k + ₹10.60/credit) | `Services/Digio/EsignService.cs` → `DispatchAsync`; `PostSanction.razor` `AgreementEsignStatus` | Status never leaves `NotSent`; document still generated locally |
 | — | **eNACH / NACH mandate** | DigiCollect (needs NBFC's own utility code from its bank) | `Models/Disbursal/EnachMandate.cs` + mandate flow in `PostSanction.razor` | Mandate captured but not registered with a sponsor bank |
-| 12 | **Company / ROC verification** (Registrar of Companies) | DigiKYC — Business KYC: CIN / DIN / GSTIN / Udyam etc. (~₹3/check) | **Built (stub):** `Services/Integrations/BusinessKycService.cs` → `VerifyAsync` (marked `REAL PROVIDER:` boundary; `Apply` fills blank firm fields). "Verify company (ROC)" button in Approvals (Business tab) | Button reports "provider not configured"; firm details entered/pre-filled manually |
+| 12 | **Company / ROC verification** (Registrar of Companies) | DigiKYC — Business KYC: CIN / DIN / GSTIN / Udyam etc. (~₹3/check) | **Built (stub):** `Services/Digio/BusinessKycService.cs` → `VerifyAsync` (marked `REAL PROVIDER:` boundary; `Apply` fills blank firm fields). "Verify company (ROC)" button in Approvals (Business tab) | Button reports "provider not configured"; firm details entered/pre-filled manually |
 | — | **RBI-compliant Video KYC (V-CIP)** | DigiKYC — 1-way V-CIP (~₹6) | New; today's in-app camera recording (`CustomerDetails.razor` Video KYC) is **evidence only**, not V-CIP | In-app recording stored with the file |
 
 Rates are indicative from the Digio quote (Sept 2026) and exclude taxes / NPCI / sponsor-bank charges —

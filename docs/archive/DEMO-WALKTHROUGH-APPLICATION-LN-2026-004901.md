@@ -646,7 +646,7 @@ http://localhost:5037/applications/LN-2026-004901/reports-rcu
 - Vehicle security type (this demo used Property)
 - PDD expected-date chase (would require waiting past the date)
 - 90-day address-proof staleness
-- The two undefined Post Sanction checklist items (per `OPEN-QUESTIONS-FOR-ARUN.md §0`)
+- The two undefined Post Sanction checklist items (per `OPEN-QUESTIONS.md §0`)
 
 Add any of these only if the demo needs to touch them.
 

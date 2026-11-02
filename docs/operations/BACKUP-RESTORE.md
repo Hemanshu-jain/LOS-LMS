@@ -1,7 +1,7 @@
 # Nightly database backup and restore
 
 The production database (Aiven MySQL 8.4) is backed up every night by the GitHub Actions workflow
-[`.github/workflows/db-backup.yml`](../.github/workflows/db-backup.yml) into a **private** Supabase Storage bucket
+[`.github/workflows/db-backup.yml`](../../.github/workflows/db-backup.yml) into a **private** Supabase Storage bucket
 named `db-backups`. This repository is public, so the workflow holds no values: everything comes from repository
 secrets, and nothing is printed to the logs or uploaded as a GitHub artifact.
 

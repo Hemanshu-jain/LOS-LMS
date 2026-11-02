@@ -1,6 +1,6 @@
 # Digio × LOS/LMS — Master integration plan
 
-> **Status:** plan, not yet built. Supersedes `docs/DIGIO-KYC-INTEGRATION-PLAN.md`.
+> **Status:** plan, not yet built. Supersedes an earlier KYC-only plan (removed).
 > **Sources:** this repository (read end to end) and Digio's public documentation + OpenAPI specs at
 > documentation.digio.in, read on 2026-10-26 (206 pages, 79 endpoints). Where Digio's public docs are silent,
 > this plan says **"confirm with Digio"** instead of guessing.
@@ -173,7 +173,7 @@ Phases 2, 3 and 4 are independent once Phase 1 is done and can run in any order.
       `dotnet build` and `dotnet test` are green; no live network in tests.
 - [ ] EF migration is additive and MySQL-safe (`[MaxLength]` on every string); it applies on both desktop and cloud.
 - [ ] The sandbox test script in `05-SESSION-PROMPTS.md` was run end to end and its results pasted into the PR.
-- [ ] Docs updated: `PENDING-API-INTEGRATIONS.md`, and a `WHATS-NEW` entry when user-visible.
+- [ ] Docs updated: `PENDING-API-INTEGRATIONS.md`, and a `CHANGELOG.md` entry when user-visible.
 
 ---
 

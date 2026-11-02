@@ -16,7 +16,7 @@
   The eligible-amount formula (FOIR cap at 50%, LTV cap at 85%, take the
   minimum) is INVENTED, not your underwriting policy. It exists so this
   screen has something real to compute and react to. Confirm the actual
-  formula with Arun/client before anything downstream depends on it.
+  formula with the client before anything downstream depends on it.
 
   Dummy data note: everything below is placeholder for visual reference
   only — wire to real Application / Party / ExistingLoan / Banking records.

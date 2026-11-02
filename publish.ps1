@@ -14,7 +14,7 @@
 #   LOS-LMS-v<version>-win-x64.zip        the whole app — send this to everyone
 #   LOS-LMS-Update-v<version>-win-x64.zip the in-app UPDATE artifact (backend only) + .sig
 
-# Per-client build (see deploy\NEW-CLIENT.md):
+# Per-client build (see docs\operations\NEW-CLIENT-ONBOARDING.md):
 #   .\publish.ps1                                                   # default client (bhodhix)
 #   .\publish.ps1 -Subdomain client1.bhodhix.com -TunnelTokenFile tunnel-tokens\client1.txt -Label client1 -SkipUpdateArtifact
 param(
