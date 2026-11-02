@@ -66,8 +66,12 @@ var connectionString = CloudConfig.ConnectionString(builder.Configuration);
 // configuring DI, which would make startup fail hard when the database is briefly unreachable. The
 // startup migrate step below is the one place that must reach the database, and it fails closed on
 // its own.
-builder.Services.AddDbContextFactory<LosDbContext>(options =>
-    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 40))));
+// Every successful save is announced to the open screens (LiveUpdateHub) so they refresh themselves without a reload.
+builder.Services.AddSingleton<LiveUpdateHub>();
+builder.Services.AddSingleton<LiveChangeInterceptor>();
+builder.Services.AddDbContextFactory<LosDbContext>((sp, options) =>
+    options.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 40)))
+        .AddInterceptors(sp.GetRequiredService<LiveChangeInterceptor>()));
 
 // ---- Tenancy ----
 //

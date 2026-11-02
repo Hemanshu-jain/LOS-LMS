@@ -149,6 +149,16 @@ public sealed class DigioClient(
             return DigioResult.NotConfigured;
         }
 
+        // No call goes out for an application an Admin has not yet approved to proceed past Stage 2 (CurrentStage reaches 3 only on approval).
+        if (call.ApplicationId is { } appId)
+        {
+            await using var gateDb = await dbFactory.CreateDbContextAsync();
+            if (!await StageApprovalService.IsApprovedAsync(gateDb, appId))
+            {
+                return new DigioResult(DigioStatus.Paused, null, StageApprovalService.WaitingMessage);
+            }
+        }
+
         var access = await billing.CheckAccessAsync(call.CompanyId);
         if (!access.Allowed)
         {

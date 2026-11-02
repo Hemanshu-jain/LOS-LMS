@@ -10,6 +10,14 @@ release description that the in-app updater shows. The version number lives in `
 Work merged to `main` since 1.2.4 (Digio verification, e-Sign and e-NACH, loan agreements, servicing ledger, and others)
 has no release notes yet. Add them here when the next version is cut. Until then `git log` is the record.
 
+### Approval before Verification, and live screens
+- **After Stages 1 and 2 are complete, the file goes to an Admin automatically** and waits at Stage 2. Verification opens only
+  once an Admin approves, and **no outside check (Digio) is run for the file until then**. An Admin completing Stage 2 does not need a
+  second approval. Files already past Stage 2 are unaffected.
+- **Screens now update by themselves, within about a second, without reloading**: the applications list, the Admin Inbox, a file's
+  approval and gate state, the payment steps on Post Sanction. When an Admin approves, the officer's open page moves to the next
+  step on its own. Fields you are typing in are never overwritten.
+
 ### Releasing funds (Post Sanction)
 - **Funds are now released in four steps with two people.** An officer prepares the payment (payee name, account, **IFSC**, mode)
   and submits it; **a different Admin approves** it; an Admin pays from the bank and then enters the **bank reference (UTR) and the

@@ -1,0 +1,75 @@
+@implements IDisposable
+@inject LiveUpdateHub Hub
+
+@* Put this on a screen to have it refresh itself whenever something relevant is saved anywhere, with no reload and no flicker: the page keeps
+   its place, only the data behind it is re-read. Changes arriving close together are folded into one refresh a fraction of a second later.
+   With ApplicationId set it reacts only to that application; without, to any change. FallbackSeconds also re-reads on a timer, as a safety
+   net for a change this server did not see. *@
+
+@code {
+    /// <summary>Only react to changes of this application. Null: react to every change.</summary>
+    [Parameter] public string? ApplicationId { get; set; }
+
+    /// <summary>Called, on the screen's own thread, to re-read the data. The screen redraws itself afterwards.</summary>
+    [Parameter, EditorRequired] public EventCallback OnChange { get; set; }
+
+    /// <summary>Also refresh every this many seconds, whatever happens. 0 turns it off.</summary>
+    [Parameter] public int FallbackSeconds { get; set; }
+
+    /// <summary>How long to wait for more changes before refreshing. Short, so an approval shows up in well under two seconds.</summary>
+    [Parameter] public int DebounceMilliseconds { get; set; } = 350;
+
+    private CancellationTokenSource? _wait;
+    private Timer? _fallback;
+    private bool _disposed;
+    private int _running;
+
+    protected override void OnInitialized()
+    {
+        Hub.Changed += OnHubChangedAsync;
+        if (FallbackSeconds > 0)
+        {
+            _fallback = new Timer(_ => Schedule(), null, TimeSpan.FromSeconds(FallbackSeconds), TimeSpan.FromSeconds(FallbackSeconds));
+        }
+    }
+
+    private Task OnHubChangedAsync(LiveChange change)
+    {
+        if (ApplicationId is null || change.ApplicationId is null || change.ApplicationId == ApplicationId) { Schedule(); }
+        return Task.CompletedTask;
+    }
+
+    private void Schedule()
+    {
+        if (_disposed) { return; }
+
+        CancellationTokenSource wait;
+        lock (this)
+        {
+            _wait?.Cancel();
+            _wait = wait = new CancellationTokenSource();
+        }
+
+        _ = RunAfterDelayAsync(wait.Token);
+    }
+
+    private async Task RunAfterDelayAsync(CancellationToken token)
+    {
+        try { await Task.Delay(DebounceMilliseconds, token); }
+        catch (TaskCanceledException) { return; }
+
+        // One refresh at a time; a change that lands while one is running schedules the next.
+        if (_disposed || Interlocked.Exchange(ref _running, 1) == 1) { Schedule(); return; }
+        try { await InvokeAsync(async () => { if (!_disposed) { await OnChange.InvokeAsync(); } }); }
+        catch (Exception) { /* the circuit is going away, or the screen is mid-navigation */ }
+        finally { Interlocked.Exchange(ref _running, 0); }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Hub.Changed -= OnHubChangedAsync;
+        _fallback?.Dispose();
+        lock (this) { _wait?.Cancel(); }
+    }
+}

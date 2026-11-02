@@ -42,6 +42,8 @@ else
             @* The primary action is the credit decision, not a stage advance: an Admin sanctions the
                loan directly; an officer sends it to an Admin for sanction. The secondary opens the
                send-back panel rather than saving — hence both labels are overridden. *@
+            <LiveWatch ApplicationId="@ApplicationId" OnChange="OnLiveChangeAsync" />
+
             <StageSubHeader ApplicationId="@_application.Id"
                             SecondaryLabel="Send back"
                             PrimaryLabel="@PrimaryLabel"
@@ -712,6 +714,25 @@ else
             .AnyAsync(r => r.ApplicationId == ApplicationId
                            && r.RequestType == AdminRequest.SanctionApproval
                            && r.Status == AdminRequest.Pending);
+    }
+
+    /// <summary>
+    /// Something was saved for this application. Re-reads whether the sanction request is still waiting, without touching what the officer
+    /// is typing; when an Admin has just sanctioned the file, moves on to Post Sanction by itself.
+    /// </summary>
+    private async Task OnLiveChangeAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var wasPending = _sanctionPending;
+        _sanctionPending = await db.AdminRequests.AsNoTracking()
+            .AnyAsync(r => r.ApplicationId == ApplicationId
+                           && r.RequestType == AdminRequest.SanctionApproval
+                           && r.Status == AdminRequest.Pending);
+        var stage = await db.Applications.AsNoTracking().Where(a => a.Id == ApplicationId).Select(a => a.CurrentStage).FirstOrDefaultAsync();
+        if (wasPending && !_sanctionPending && stage >= 8)
+        {
+            Navigation.NavigateTo($"/applications/{ApplicationId}/post-sanction");
+        }
     }
 
     private static T Track<T>(DbSet<T> set, T entity, ref bool created) where T : class

@@ -50,6 +50,7 @@ public sealed class ClassificationListsTests : IDisposable
     [Fact]
     public void TheCam_PrintsTheBorrowerClassification()
     {
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
         var app = new Application { Id = "A1", LoanAmount = 500_000m, Roi = 14m, Tenure = 24 };
         var cam = new CamCostBreakdown { LastRecalculatedAt = DateTime.UtcNow, AppliedExShowroomCost = 600_000m };
         var without = CamPdf.Build(app, cam);

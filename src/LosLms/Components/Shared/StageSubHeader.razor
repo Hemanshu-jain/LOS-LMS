@@ -11,6 +11,11 @@
 @inject AdminRequestNotifier Notifier
 @inject DigioClient Digio
 
+@if (!string.IsNullOrWhiteSpace(ApplicationId))
+{
+    <LiveWatch ApplicationId="@ApplicationId" OnChange="RefreshLiveAsync" />
+}
+
 <div class="stage-sub-header">
     <button type="button" class="breadcrumb" @onclick="GoToApplications">
         &#8592; Applications &middot; APP #@ApplicationId@(string.IsNullOrWhiteSpace(BreadcrumbSuffix) ? null : " · " + BreadcrumbSuffix)
@@ -252,6 +257,15 @@
     private string? EffectiveBlockedReason =>
         CompleteBlocked ? BlockedReason : ActiveGate.BlockedReason;
 
+    /// <summary>Something was saved for this application (an Admin decided a request, a gate changed): re-read the gate and the requests at once.</summary>
+    private async Task RefreshLiveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ApplicationId)) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await LoadGateAndRequestsAsync(db);
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         if (string.IsNullOrWhiteSpace(ApplicationId))
@@ -472,6 +486,11 @@
                     // The CIBIL category was stashed in the subject key when the request was raised.
                     await RejectionService.ApplyAsync(
                         db, ApplicationId, stored.RequestReason ?? "Rejected by admin.", stored.SubjectKey);
+                    break;
+
+                case AdminRequest.ProceedApproval:
+                    // The application leaves Stage 2 and reaches Verification; the officer's open page moves on by itself.
+                    await StageApprovalService.ApplyApprovalAsync(db, ApplicationId);
                     break;
 
                 case AdminRequest.SanctionApproval:
