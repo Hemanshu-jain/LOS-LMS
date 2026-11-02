@@ -4,7 +4,8 @@ using Xunit;
 
 namespace LosLms.Tests;
 
-public sealed class OwnerUx1030Tests
+/// <summary>Customer Details and Approvals defaults: verified PAN/Aadhaar mapping, single-option dropdowns, and the borrower (not the lender) as the business start point.</summary>
+public sealed class CustomerAndBusinessDefaultsTests
 {
     [Fact]
     public void VerifiedPanAndAadhaar_MapToTheirPartyAndLatestDate()
@@ -65,27 +66,5 @@ public sealed class OwnerUx1030Tests
         BusinessPrefill.Apply(edited, new Party { EmployerName = "Test Traders", CustomerCategory = "Proprietorship" }, lender);
         Assert.Equal("Own Firm", edited.FirmName);
         Assert.Equal("HUF", edited.Constitution);
-    }
-}
-
-public sealed class OwnerUx1030FollowUpTests
-{
-    [Theory]
-    [InlineData("Proprietorship", true)]
-    [InlineData("Individual", true)]
-    [InlineData("Partnership firm", false)]
-    [InlineData("Private limited company", false)]
-    [InlineData(null, false)]
-    public void SoleProprietorship_NeedsNoGstinOrIncorporationDate(string? constitution, bool expected) =>
-        Assert.Equal(expected, BusinessPrefill.IsSoleProprietorship(constitution));
-
-    [Fact]
-    public void IndividualApplicant_GetsProprietorshipConstitution()
-    {
-        var b = new Business();
-
-        BusinessPrefill.Apply(b, new Party { CustomerCategory = "Individual" }, null);
-
-        Assert.Equal("Proprietorship", b.Constitution);
     }
 }

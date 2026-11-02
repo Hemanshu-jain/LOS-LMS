@@ -19,11 +19,11 @@ using Xunit;
 namespace LosLms.Tests;
 
 /// <summary>
-/// Digio Phase 3: multi-party sequential e-Sign (callback = our request id, agreement hash = fingerprint, cancel + re-send on change,
+/// Digio e-Sign and e-NACH: multi-party sequential e-Sign (callback = our request id, agreement hash = fingerprint, cancel + re-send on change,
 /// per-signer rows), the e-NACH state machine and its create / confirm path, and the release-funds gate. Digio is faked; the shapes the
 /// fake returns come from the spec appendix (no sandbox samples captured yet).
 /// </summary>
-public sealed class DigioPhase3Tests : IDisposable
+public sealed class DigioEsignAndNachTests : IDisposable
 {
     private const string Key = "App_Data/uploads/A1/postsanction/agreement-1.pdf";
     private static readonly byte[] PdfV1 = Encoding.ASCII.GetBytes("%PDF-1.4 agreement v1");
@@ -36,7 +36,7 @@ public sealed class DigioPhase3Tests : IDisposable
     private readonly Fake _digio = new();
     private readonly MemoryFiles _files = new();
 
-    public DigioPhase3Tests()
+    public DigioEsignAndNachTests()
     {
         _options = new DbContextOptionsBuilder<LosDbContext>().UseSqlite($"Data Source={_file};Pooling=False").Options;
         using (var db = Anonymous())
@@ -544,7 +544,7 @@ public sealed class DigioPhase3Tests : IDisposable
         try { Directory.Delete(_vaultDir, recursive: true); } catch { /* best effort */ }
     }
 
-    private sealed class Factory(DigioPhase3Tests owner) : IDbContextFactory<LosDbContext>
+    private sealed class Factory(DigioEsignAndNachTests owner) : IDbContextFactory<LosDbContext>
     {
         public LosDbContext CreateDbContext() => owner.Anonymous();
     }

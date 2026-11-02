@@ -6,12 +6,13 @@ using Xunit;
 
 namespace LosLms.Tests;
 
-public sealed class UiBatch1031Tests : IDisposable
+/// <summary>Disbursement defaults (blank-only fill, dealer vs customer account, next EMI day), the disbursement memo PDF, and re-sending a pending approval request.</summary>
+public sealed class DisbursementDefaultsAndApprovalResendTests : IDisposable
 {
     private readonly string _file = Path.Combine(Path.GetTempPath(), $"ui1031-{Guid.NewGuid():N}.db");
     private readonly DbContextOptions<LosDbContext> _options;
 
-    public UiBatch1031Tests()
+    public DisbursementDefaultsAndApprovalResendTests()
     {
         _options = new DbContextOptionsBuilder<LosDbContext>().UseSqlite($"Data Source={_file};Pooling=False").Options;
         using var db = Open();

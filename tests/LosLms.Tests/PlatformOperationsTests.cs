@@ -12,14 +12,14 @@ using Xunit;
 
 namespace LosLms.Tests;
 
-/// <summary>The owner batch of 30 Oct: remember-me cookie lifetimes, the API usage breakdown / log, and the loan-account backfill.</summary>
-public sealed class OwnerBatchTests : IDisposable
+/// <summary>Platform operations: remember-me sign-in cookie lifetimes, the API usage log with its breakdown and CSV, and the loan-account backfill.</summary>
+public sealed class PlatformOperationsTests : IDisposable
 {
     private readonly string _file = Path.Combine(Path.GetTempPath(), $"batch-{Guid.NewGuid():N}.db");
     private readonly DbContextOptions<LosDbContext> _options;
     private static readonly DateTime Now = DateTime.UtcNow;
 
-    public OwnerBatchTests()
+    public PlatformOperationsTests()
     {
         _options = new DbContextOptionsBuilder<LosDbContext>().UseSqlite($"Data Source={_file};Pooling=False").Options;
         using var db = Ctx();
@@ -174,7 +174,7 @@ public sealed class OwnerBatchTests : IDisposable
         File.Delete(_file);
     }
 
-    private sealed class Factory(OwnerBatchTests owner) : IDbContextFactory<LosDbContext>
+    private sealed class Factory(PlatformOperationsTests owner) : IDbContextFactory<LosDbContext>
     {
         public LosDbContext CreateDbContext() => owner.Ctx();
     }
