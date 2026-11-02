@@ -581,7 +581,7 @@ else
     {
         (1, "Customer Details", "customer-details"),
         (2, "Loan & Security", "loan-security"),
-        (3, "Bank & Financial", "bank-financial"),
+        (3, "Verification", "bank-financial"),
         (4, "Document Checklist", "document-checklist"),
         (5, "Reports (RCU)", "reports-rcu"),
         (6, "Eligibility", "eligibility"),
@@ -974,9 +974,9 @@ else
 
     private string RcuStatusLabel => _rcuStatus switch
     {
-        RcuOutcomes.NotRecommended => "Not recommended",
-        RcuOutcomes.Recommended => "Recommended",
-        _ => "Pending",
+        RcuOutcomes.NotRecommended => "Rejected",
+        RcuOutcomes.Recommended => "Approved",
+        _ => "Pending approval",
     };
 
     private bool SanctionedBelowRequested =>

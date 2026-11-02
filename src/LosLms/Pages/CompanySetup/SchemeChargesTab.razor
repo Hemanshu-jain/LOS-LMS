@@ -28,6 +28,21 @@
 
         @if (_scheme.Length > 0)
         {
+            <h4 class="setup-subhead">Scheme terms</h4>
+            <p class="setup-note">
+                The standard terms for this scheme. Choosing the scheme on a file's Loan Details fills these in; the officer can still change
+                them, and a figure they have changed is never overwritten. Leave a box empty if this scheme does not set it. Changing them here
+                does not change existing files.
+            </p>
+            <div class="field-grid">
+                <label>Requested amount (₹)<input class="field-input" type="number" min="0" step="1" @bind="_terms.Amount" /></label>
+                <label>Tenure (months)<input class="field-input" type="number" min="0" step="1" @bind="_terms.Tenure" /></label>
+                <label>ROI %<input class="field-input" type="number" min="0" step="0.01" @bind="_terms.Roi" /></label>
+                <label>Processing fee (₹)<input class="field-input" type="number" min="0" step="1" @bind="_terms.ProcessingFee" /></label>
+                <label>Advance EMI (₹)<input class="field-input" type="number" min="0" step="1" @bind="_terms.AdvanceEmi" /></label>
+            </div>
+
+            <h4 class="setup-subhead">Default charges</h4>
             <div class="table-scroll">
                 <table class="row-table">
                     <thead>
@@ -96,6 +111,7 @@
     private List<string> _schemes = new();
     private string _scheme = string.Empty;
     private List<SchemeChargeTemplate> _rows = new();
+    private SchemeTerms _terms = new();
 
     private string? _newHead;
     private bool _newIsPercent;
@@ -118,9 +134,11 @@
 
     private async Task LoadRowsAsync()
     {
-        if (_scheme.Length == 0) { _rows = new(); return; }
+        if (_scheme.Length == 0) { _rows = new(); _terms = new(); return; }
 
         await using var db = await DbFactory.CreateDbContextAsync();
+        _terms = await db.SchemeTerms.AsNoTracking().FirstOrDefaultAsync(t => t.CompanyId == CompanyId && t.Scheme == _scheme)
+                 ?? new SchemeTerms { CompanyId = CompanyId, Scheme = _scheme };
         _rows = await db.SchemeChargeTemplates
             .Where(t => t.Scheme == _scheme).OrderBy(t => t.Id).ToListAsync();
     }
@@ -164,8 +182,19 @@
             });
         }
 
+        var terms = await db.SchemeTerms.FirstOrDefaultAsync(t => t.CompanyId == CompanyId && t.Scheme == _scheme);
+        var hasTerms = _terms.Amount is not null || _terms.Tenure is not null || _terms.Roi is not null
+                       || _terms.ProcessingFee is not null || _terms.AdvanceEmi is not null;
+        if (hasTerms && terms is null) { db.SchemeTerms.Add(terms = new SchemeTerms { CompanyId = CompanyId, Scheme = _scheme }); }
+        if (terms is not null && !hasTerms) { db.SchemeTerms.Remove(terms); }
+        else if (terms is not null)
+        {
+            terms.Amount = _terms.Amount; terms.Tenure = _terms.Tenure; terms.Roi = _terms.Roi;
+            terms.ProcessingFee = _terms.ProcessingFee; terms.AdvanceEmi = _terms.AdvanceEmi;
+        }
+
         await db.SaveChangesAsync();
         await LoadRowsAsync();
-        await OnSaved.InvokeAsync($"Saved charges for {_scheme} — new files on this scheme use them");
+        await OnSaved.InvokeAsync($"Saved terms and charges for {_scheme} — new files on this scheme use them");
     }
 }

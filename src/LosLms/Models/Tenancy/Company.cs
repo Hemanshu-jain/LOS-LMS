@@ -36,6 +36,12 @@ public class Company
     [MaxLength(3)]
     public string? Code { get; set; }
 
+    /// <summary>
+    /// Whether this company lends against property as well as vehicles. Set per company by a SuperAdmin on the Companies page; off by
+    /// default, so Loan &amp; Security shows only vehicle details. A file already recorded as Property keeps showing it either way.
+    /// </summary>
+    public bool PropertyEnabled { get; set; }
+
     // ---- Profile ----
 
     [MaxLength(400)] public string? Address { get; set; }

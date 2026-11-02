@@ -80,7 +80,7 @@ else
                                     class="loan-tab @(isActive ? "is-active" : null)"
                                     aria-selected="@isActive"
                                     @onclick="() => SelectTab(tab)">
-                                @tab
+                                @TabLabel(tab)
                                 @if (isStale && !isActive)
                                 {
                                     <span class="stale-dot" title="Loan terms changed since you last viewed this"></span>
@@ -118,7 +118,7 @@ else
                                 </FormField>
 
                                 <FormField Label="Scheme" For="ls-scheme">
-                                    <select id="ls-scheme" class="field-input" @bind="_application!.Scheme">
+                                    <select id="ls-scheme" class="field-input" @bind="_application!.Scheme" @bind:after="OnSchemeChangedAsync">
                                         <option value="">@BlankOption</option>
                                         @foreach (var o in _schemeOptions) { <option value="@o">@o</option> }
                                     </select>
@@ -192,17 +192,20 @@ else
                     @* ---------- Tab 2: Security details ---------- *@
                     @if (_activeTab == SecurityTab)
                     {
-                        <Panel Title="Security details">
+                        <Panel Title="@(ShowAssetToggle ? "Security details" : "Vehicle details")">
                             <Right>
-                                <div class="asset-toggle" role="group" aria-label="Asset type">
-                                    @foreach (var type in AssetTypes)
-                                    {
-                                        <button type="button"
-                                                class="@(_security.AssetType == type ? "is-active" : null)"
-                                                aria-pressed="@(_security.AssetType == type)"
-                                                @onclick="() => _security.AssetType = type">@type</button>
-                                    }
-                                </div>
+                                @if (ShowAssetToggle)
+                                {
+                                    <div class="asset-toggle" role="group" aria-label="Asset type">
+                                        @foreach (var type in AssetTypes)
+                                        {
+                                            <button type="button"
+                                                    class="@(_security.AssetType == type ? "is-active" : null)"
+                                                    aria-pressed="@(_security.AssetType == type)"
+                                                    @onclick="() => _security.AssetType = type">@type</button>
+                                        }
+                                    </div>
+                                }
                             </Right>
                             <ChildContent>
                                 <div class="security-layout">
@@ -268,6 +271,16 @@ else
                                                 </FormField>
                                             }
 
+                                            @* Secondary link directly under the dropdown row, not a form field,
+                                               so the row above stays unbroken. Same conditions as before. *@
+                                            @if (MatchedCap is null && !_addNewVehicle)
+                                            {
+                                                <div class="catalog-add-row">
+                                                    <button id="sec-addnew" type="button" class="catalog-add-link"
+                                                            @onclick="StartAddNewVehicle">Vehicle not in the list? Add it</button>
+                                                </div>
+                                            }
+
                                             @* A value recorded before the catalog existed, or after its
                                                row was removed. Shown, never silently dropped — it is
                                                real data about a real vehicle. *@
@@ -318,14 +331,7 @@ else
                                                written into the catalog as this vehicle's ceiling. *@
                                             @if (MatchedCap is null)
                                             {
-                                                @if (!_addNewVehicle)
-                                                {
-                                                    <FormField Label="Not listed?" For="sec-addnew">
-                                                        <button id="sec-addnew" type="button" class="add-row-button"
-                                                                @onclick="StartAddNewVehicle">＋ Add a vehicle not in the catalog</button>
-                                                    </FormField>
-                                                }
-                                                else
+                                                @if (_addNewVehicle)
                                                 {
                                                     <FormField Label="New make" For="sec-nm-make">
                                                         <input id="sec-nm-make" class="field-input" maxlength="80"
@@ -394,7 +400,7 @@ else
                                                     <ChildContent>
                                                         <RcPanel ApplicationId="@ApplicationId" CompanyId="_application.CompanyId" RegNo="@_security.RegNo"
                                                                  Chassis="@_security.ChassisNo" Engine="@_security.EngineNo"
-                                                                 InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" />
+                                                                 InsuranceProvider="@_security.InsuranceProvider" OnFill="OnRcFill" OnVerified="RefreshRcVerifiedAsync" />
                                                     </ChildContent>
                                                     <ErrorContent><span class="inline-error" role="alert">The RC check is unavailable right now.</span></ErrorContent>
                                                 </ErrorBoundary>
@@ -402,7 +408,7 @@ else
 
                                             <div style="grid-column: 1 / -1;">
                                                 <ErrorBoundary>
-                                                    <ChildContent><TgPortalPanel ApplicationId="@ApplicationId" /></ChildContent>
+                                                    <ChildContent><TgPortalPanel ApplicationId="@ApplicationId" RcVerified="_rcVerified" /></ChildContent>
                                                     <ErrorContent><span class="inline-error" role="alert">The TG portal record is unavailable right now.</span></ErrorContent>
                                                 </ErrorBoundary>
                                             </div>
@@ -840,6 +846,26 @@ else
 
     private static readonly string[] Tabs = { LoanTab, SecurityTab, ReferenceTab, ViabilityTab };
     private static readonly string[] AssetTypes = { "Vehicle", "Property" };
+
+    /// <summary>Property security is switched on per company by a SuperAdmin; off, the tab is simply "Vehicle Details".</summary>
+    private bool _propertyEnabled;
+
+    /// <summary>True when Digio has verified this vehicle's RC, which switches the manual TG portal check off.</summary>
+    private bool _rcVerified;
+
+    private bool ShowAssetToggle => _propertyEnabled || _security.AssetType == "Property";
+
+    private string TabLabel(string tab) => tab == SecurityTab ? (ShowAssetToggle ? "Security Details" : "Vehicle Details") : tab;
+
+    private async Task RefreshRcVerifiedAsync()
+    {
+        if (_application is null) { return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _rcVerified = await db.VerificationEvidence.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.CompanyId == _application.CompanyId && e.ApplicationId == ApplicationId && e.Subject == "VEHICLE_RC")
+            .OrderByDescending(e => e.Id).Select(e => e.Verdict).FirstOrDefaultAsync() == "Verified";
+        StateHasChanged();
+    }
     private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
 
     // Loaded per load from the company's editable list (Settings → Sourcing Channels), not hardcoded.
@@ -1020,6 +1046,11 @@ else
             _application.Branch = OnlyChoice.IfBlank(_application.Branch, _branchOptions);
             _application.SourcingChannel = OnlyChoice.IfBlank(_application.SourcingChannel, _channelOptions);
             _application.Scheme = OnlyChoice.IfBlank(_application.Scheme, _schemeOptions);
+            _schemeTerms = await SchemeTermsService.ForAsync(db, _application.CompanyId, _application.Scheme);
+            _propertyEnabled = await db.Companies.AsNoTracking().Where(c => c.Id == _application.CompanyId).Select(c => c.PropertyEnabled).FirstOrDefaultAsync();
+            _rcVerified = await db.VerificationEvidence.IgnoreQueryFilters().AsNoTracking()
+                .Where(e => e.CompanyId == _application.CompanyId && e.ApplicationId == ApplicationId && e.Subject == "VEHICLE_RC")
+                .OrderByDescending(e => e.Id).Select(e => e.Verdict).FirstOrDefaultAsync() == "Verified";
 
             var security = await db.SecurityDetails.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.ApplicationId == ApplicationId);
@@ -1398,6 +1429,24 @@ else
     /// Re-evaluates the cap from the values currently on screen. Called on load, after the vehicle
     /// or the amount changes, and after an Admin decides a bypass.
     /// </summary>
+    /// <summary>The terms of the scheme currently selected, i.e. what the figures on screen started from.</summary>
+    private SchemeTerms? _schemeTerms;
+
+    /// <summary>
+    /// Choosing a scheme starts the loan terms from the scheme's (amount, tenure, ROI, processing fee, advance EMI). Anything the officer
+    /// has typed themselves is kept; only blanks and figures that still equal the previous scheme's are replaced.
+    /// </summary>
+    private async Task OnSchemeChangedAsync()
+    {
+        if (_application is null) { return; }
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var next = await SchemeTermsService.ForAsync(db, _application.CompanyId, _application.Scheme);
+        SchemeTermsService.Apply(_application, _schemeTerms, next);
+        _schemeTerms = next;
+        await RefreshCapGateAsync();
+    }
+
     private async Task RefreshCapGateAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();

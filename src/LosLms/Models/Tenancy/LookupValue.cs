@@ -52,11 +52,16 @@ public static class LookupKind
     public const string Scheme = "Scheme";
     public const string RcuVendor = "RcuVendor";
 
+    /// <summary>Borrower Classification (Eligibility): the priority-sector sub-categories, co-lending partners and end uses of funds.</summary>
+    public const string PslSub = "PslSub";
+    public const string CoLendingPartner = "CoLendingPartner";
+    public const string EndUse = "EndUse";
+
     /// <summary>The lender's own bank accounts money is disbursed from: Name = bank and label, Code = account no. / IFSC. Not seeded.</summary>
     public const string DisbursementAccount = "DisbursementAccount";
 
     /// <summary>Every kind, so a seeder can walk them.</summary>
-    public static readonly string[] All = { SourcingChannel, Scheme, RcuVendor };
+    public static readonly string[] All = { SourcingChannel, Scheme, RcuVendor, PslSub, CoLendingPartner, EndUse };
 
     /// <summary>
     /// The built-in options seeded for a company the first time it has none of a kind. These are the
@@ -68,6 +73,9 @@ public static class LookupKind
         {
             [SourcingChannel] = new[] { "DSA — Patil Motors", "DSA — Shree Associates", "Branch walk-in", "Digital" },
             [Scheme] = new[] { "CV-STD-2026", "CV-PRIME-2026", "LAP-STD-2026" },
+            [PslSub] = new[] { "Transport Sector - CV", "Agriculture", "MSME", "Other" },
+            [CoLendingPartner] = new[] { "None", "HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank" },
+            [EndUse] = new[] { "Fleet expansion", "Vehicle replacement", "New business setup", "Working capital", "Other" },
             [RcuVendor] = new[]
             {
                 "Verified Field Services", "TransUnion CIBIL RCU", "CRISIL Risk Solutions",

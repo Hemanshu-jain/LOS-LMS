@@ -1,0 +1,351 @@
+@using LosLms.Components.Shared.Digio
+@using LosLms.Data
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.EntityFrameworkCore
+@implements IDisposable
+@inject IDbContextFactory<LosDbContext> DbFactory
+@inject LosLms.Services.IFileStore Files
+@inject IJSRuntime JS
+@inject DigioKyc DigioKycService
+@inject DigioClient DigioApi
+@inject DigioStatusNotifier DigioNotifier
+
+@* Stage 3 "Verification": everything that proves who the customer is, moved here from Stage 1 (which now only collects PAN, Aadhaar
+   and the CIBIL check). Per party: Digio PAN / DigiLocker / AML checks, PAN and Aadhaar scans, the Aadhaar generation date, address
+   proof, and the video KYC. This component reads and writes ONLY these fields, straight on the party row, so Stage 1's auto-save
+   cannot overwrite them and these cannot overwrite Stage 1's. *@
+
+@if (_parties.Count == 0)
+{
+    <p class="pv-note">No party details yet. Complete Stage 1 first.</p>
+}
+else
+{
+    <div class="pv-tabs" role="tablist" aria-label="Party">
+        @foreach (var p in _parties)
+        {
+            <button type="button" role="tab" class="pv-tab @(_active == p.PartyType ? "is-active" : null)"
+                    aria-selected="@(_active == p.PartyType)" @onclick="() => Select(p.PartyType)">@LabelOf(p.PartyType)</button>
+        }
+    </div>
+
+    var party = _parties.First(p => p.PartyType == _active);
+
+    <div class="pv-grid">
+        <div class="pv-col">
+            <div class="pv-ident">
+                <span class="pv-k">PAN</span> <span class="pv-v">@(Mask(party.Pan))</span>
+                <span class="pv-k">Aadhaar</span> <span class="pv-v">@(Mask(party.Aadhaar))</span>
+                <span class="pv-k">Name</span> <span class="pv-v">@(party.FullName)</span>
+            </div>
+            <p class="pv-note">PAN and Aadhaar are entered in Stage 1. The checks run here.</p>
+
+            @if (!_digioPan || !_digioAadhaar)
+            {
+                <div class="pv-row">
+                    @if (!_digioPan)
+                    {
+                        <button type="button" class="verify-button" @onclick='() => Ocr(party, "pan-ocr", PanOcrUnavailable)'>PAN · Verify OCR</button>
+                    }
+                    @if (!_digioAadhaar)
+                    {
+                        <button type="button" class="verify-button" @onclick='() => Ocr(party, "aadhaar-ocr", AadhaarOcrUnavailable)'>Aadhaar · Verify OCR</button>
+                    }
+                </div>
+                @foreach (var key in new[] { "pan-ocr", "aadhaar-ocr" })
+                {
+                    @if (_notices.TryGetValue(key, out var notice)) { <p class="field-caption" role="status">@notice</p> }
+                }
+            }
+
+            <PartyKycPanel CompanyId="CompanyId" ApplicationId="@ApplicationId" PartyId="party.Id"
+                           FullName="@party.FullName" Pan="@party.Pan" Dob="party.DateOfBirth" Mobile="@party.Mobile"
+                           Individual="@(party.CustomerCategory is null || !party.CustomerCategory.Contains("Company", StringComparison.OrdinalIgnoreCase))"
+                           OnChanged="OnDigioChangedAsync" Inline="true" />
+        </div>
+
+        <div class="pv-col">
+            <div class="gate gate-@(string.IsNullOrWhiteSpace(party.VideoKycPath) ? "inactive" : "pass")">
+                <span class="gate-label">Video KYC</span>
+
+                @* Always rendered (hidden until active) so the camera code can find it by id. *@
+                <div class="capture-media @(_cameraOpen ? null : "is-hidden")">
+                    <video id="@CameraId" class="capture-video" autoplay playsinline muted></video>
+                    @if (_recording) { <span class="capture-rec">● REC</span> }
+                </div>
+
+                @if (_cameraOpen)
+                {
+                    <div class="capture-actions">
+                        @if (!_recording) { <button type="button" class="verify-button" @onclick="StartRecordingAsync">Start recording</button> }
+                        else { <button type="button" class="verify-button" @onclick="() => StopRecordingAsync(party)">Stop &amp; save</button> }
+                        <button type="button" class="row-action" @onclick="CloseCameraAsync">Cancel</button>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(party.VideoKycPath))
+                {
+                    <span class="gate-note">Recorded · stored with the file</span>
+                    <video class="capture-thumb" controls src="@FileUrl(party, party.VideoKycPath!)"></video>
+                    <button type="button" class="verify-button is-block" @onclick="OpenCameraAsync">Re-record</button>
+                }
+                else
+                {
+                    <span class="gate-note">Not initiated · record a live KYC video</span>
+                    <button type="button" class="verify-button is-block" @onclick="OpenCameraAsync">Start video KYC</button>
+                }
+                @if (_captureError is not null) { <p class="inline-error" role="alert">@_captureError</p> }
+            </div>
+
+            <div class="scan-row">
+                <label class="scan-drop">
+                    <span>@ScanLabel("PAN card scan", party.PanScanPath)</span>
+                    <InputFile class="visually-hidden" accept="image/*,application/pdf" OnChange="@(e => UploadAsync(e, party, Kind.PanScan))" />
+                </label>
+                <label class="scan-drop">
+                    <span>@ScanLabel("Aadhaar scan", party.AadhaarScanPath)</span>
+                    <InputFile class="visually-hidden" accept="image/*,application/pdf" OnChange="@(e => UploadAsync(e, party, Kind.AadhaarScan))" />
+                </label>
+            </div>
+
+            <label class="pv-field">
+                <span>Aadhaar generated / downloaded on</span>
+                <input type="date" class="field-input" value="@(party.AadhaarGeneratedOn?.ToString("yyyy-MM-dd"))"
+                       @onchange="e => SetAadhaarDateAsync(party, e.Value?.ToString())" />
+                @if (AadhaarStale(party))
+                {
+                    <span class="field-caption field-caption-warn">Masked Aadhaar is more than @FreshnessDays days old — request a freshly generated copy.</span>
+                }
+            </label>
+
+            <label class="scan-check">
+                <input type="checkbox" checked="@party.AddressChangedSinceAadhaar" @onchange="e => SetAddressChangedAsync(party, (bool)(e.Value ?? false))" />
+                <span>Current address differs from Aadhaar — attach proof</span>
+            </label>
+            @if (party.AddressChangedSinceAadhaar)
+            {
+                <label class="scan-drop">
+                    <span>@ScanLabel("Address proof", party.AddressProofPath)</span>
+                    <InputFile class="visually-hidden" accept="image/*,application/pdf" OnChange="@(e => UploadAsync(e, party, Kind.AddressProof))" />
+                </label>
+            }
+            @if (_uploadError is not null) { <p class="inline-error" role="alert">@_uploadError</p> }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string ApplicationId { get; set; } = string.Empty;
+
+    /// <summary>Raised after anything changes that can move the KYC gate (a Digio check, a scan, a video), so the page re-reads it.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private const string CameraId = "videokyc-cam-s3";
+    private const long MaxUploadBytes = 5 * 1024 * 1024;
+    private const int FreshnessDays = 5;
+    private const string PanOcrUnavailable = "Digio PAN verification is not switched on for this company.";
+    private const string AadhaarOcrUnavailable = "Digio Aadhaar verification is not switched on for this company.";
+    private static readonly string[] AllowedExtensions = { ".jpg", ".jpeg", ".png", ".webp", ".pdf" };
+    private enum Kind { PanScan, AadhaarScan, AddressProof }
+
+    private sealed record CaptureResult(string? Name, string? Error, int? Seconds = null);
+
+    private List<Party> _parties = new();
+    private string _active = "Applicant";
+    private int CompanyId;
+    private bool _digioPan;
+    private bool _digioAadhaar;
+    private bool _cameraOpen;
+    private bool _recording;
+    private string? _captureError;
+    private string? _uploadError;
+    private readonly Dictionary<string, string> _notices = new();
+    private bool _subscribed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_subscribed) { _subscribed = true; DigioNotifier.Changed += OnDigioNotifiedAsync; }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var app = await db.Applications.AsNoTracking().FirstOrDefaultAsync(a => a.Id == ApplicationId);
+        if (app is null) { return; }
+
+        CompanyId = app.CompanyId;
+        var digio = await db.DigioSettings.AsNoTracking().FirstOrDefaultAsync(d => d.CompanyId == app.CompanyId);
+        _digioPan = digio?.PanVerify == true;
+        _digioAadhaar = digio?.DigiLocker == true;
+        _parties = await db.Parties.AsNoTracking().Where(p => p.ApplicationId == ApplicationId).OrderBy(p => p.Id).ToListAsync();
+        if (_parties.Count > 0 && _parties.All(p => p.PartyType != _active)) { _active = _parties[0].PartyType; }
+    }
+
+    private async Task OnDigioNotifiedAsync(string applicationId)
+    {
+        if (applicationId == ApplicationId) { await InvokeAsync(async () => { await ReloadAsync(); StateHasChanged(); }); }
+    }
+
+    private async Task OnDigioChangedAsync()
+    {
+        await ReloadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private void Select(string partyType)
+    {
+        _active = partyType;
+        _uploadError = null;
+        _captureError = null;
+    }
+
+    private static string LabelOf(string partyType) => partyType == "CoApplicant" ? "Co-Applicant" : partyType;
+
+    private static string Mask(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "—" : value.Length <= 4 ? value : new string('•', value.Length - 4) + value[^4..];
+
+    private static string ScanLabel(string label, string? path) =>
+        string.IsNullOrWhiteSpace(path) ? label : $"{label} · {Path.GetFileName(path)}";
+
+    private static bool AadhaarStale(Party party) =>
+        party.AadhaarGeneratedOn is { } on && DateOnly.FromDateTime(DateTime.Today).DayNumber - on.DayNumber > FreshnessDays;
+
+    private string FileUrl(Party party, string relativePath) => $"/files/{ApplicationId}/{party.PartyType}/{Path.GetFileName(relativePath)}";
+
+    private async Task Ocr(Party party, string key, string message)
+    {
+        // Routed through the Digio service like the Stage 1 buttons were: with no provider switched on it changes nothing and says so.
+        _notices[key] = message;
+        await Task.CompletedTask;
+    }
+
+    // ---- fields saved straight on the party row (only these) ----
+
+    private async Task UpdateAsync(Party party, Action<Party> change)
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var row = await db.Parties.FirstOrDefaultAsync(p => p.Id == party.Id && p.ApplicationId == ApplicationId);
+        if (row is null) { return; }
+
+        change(row);
+        await db.SaveChangesAsync();
+        await ReloadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private Task SetAadhaarDateAsync(Party party, string? value) =>
+        UpdateAsync(party, p => p.AadhaarGeneratedOn = DateOnly.TryParse(value, out var d) ? d : null);
+
+    private Task SetAddressChangedAsync(Party party, bool changed) =>
+        UpdateAsync(party, p => p.AddressChangedSinceAadhaar = changed);
+
+    // ---- uploads ----
+
+    private async Task UploadAsync(InputFileChangeEventArgs e, Party party, Kind kind)
+    {
+        _uploadError = null;
+        var file = e.File;
+        if (file is null) { return; }
+        if (file.Size > MaxUploadBytes) { _uploadError = $"File is too large. Maximum {MaxUploadBytes / (1024 * 1024)} MB."; return; }
+
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension)) { _uploadError = "Unsupported file type. Use JPG, PNG, WEBP or PDF."; return; }
+
+        byte[] bytes;
+        await using (var stream = file.OpenReadStream(MaxUploadBytes))
+        {
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            bytes = buffer.ToArray();
+        }
+
+        if (!FileSignature.Matches(extension, bytes))
+        {
+            _uploadError = "This file's contents don't match its type. Upload a genuine JPG, PNG, WEBP or PDF.";
+            return;
+        }
+
+        if (kind == Kind.AadhaarScan && await DigioKycService.MaskingOnAsync(CompanyId))
+        {
+            // Only the masked file is ever stored: if Digio can't mask it, the upload is refused.
+            var (masked, message) = await DigioKycService.MaskAadhaarAsync(CompanyId, ApplicationId, party.Id, bytes,
+                extension switch { ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg", ".pdf" => "application/pdf", _ => "" },
+                $"aadhaar{extension}", null);
+            if (masked is null) { _uploadError = message; return; }
+
+            bytes = masked;
+        }
+
+        var name = $"{kind.ToString().ToLowerInvariant()}-{Guid.NewGuid():N}{extension}";
+        var path = await Files.SaveUploadAsync(ApplicationId, party.PartyType, name, bytes);
+        await UpdateAsync(party, p =>
+        {
+            switch (kind)
+            {
+                case Kind.PanScan: p.PanScanPath = path; break;
+                case Kind.AadhaarScan: p.AadhaarScanPath = path; break;
+                case Kind.AddressProof: p.AddressProofPath = path; break;
+            }
+        });
+    }
+
+    // ---- video KYC ----
+
+    private async Task OpenCameraAsync()
+    {
+        _captureError = null;
+        _cameraOpen = true; // reveal the always-rendered <video> before attaching the stream
+        try
+        {
+            var error = await JS.InvokeAsync<string>("losStartCamera", CameraId, true);
+            if (!string.IsNullOrEmpty(error)) { _captureError = error; _cameraOpen = false; }
+        }
+        catch (JSException ex) { _captureError = CameraError(ex); _cameraOpen = false; }
+    }
+
+    private async Task StartRecordingAsync()
+    {
+        _captureError = null;
+        try
+        {
+            var error = await JS.InvokeAsync<string>("losStartRecording", CameraId);
+            if (!string.IsNullOrEmpty(error)) { _captureError = error; return; }
+            _recording = true;
+        }
+        catch (JSException ex) { _captureError = CameraError(ex); }
+    }
+
+    private async Task StopRecordingAsync(Party party)
+    {
+        _recording = false;
+        try
+        {
+            var url = $"/api/party-media/{ApplicationId}/{party.PartyType}/videokyc";
+            var result = await JS.InvokeAsync<CaptureResult>("losStopRecording", CameraId, url);
+            if (result.Error is { } err) { _captureError = err; }
+            else if (result.Name is { } name)
+            {
+                var path = Path.Combine("App_Data", "uploads", ApplicationId, party.PartyType, name);
+                await UpdateAsync(party, p => { p.VideoKycPath = path; p.VideoKycSeconds = result.Seconds; });
+            }
+        }
+        catch (JSException ex) { _captureError = CameraError(ex); }
+        await CloseCameraAsync();
+    }
+
+    private async Task CloseCameraAsync()
+    {
+        try { await JS.InvokeVoidAsync("losStopCamera", CameraId); } catch (JSException) { /* camera already gone */ }
+        _cameraOpen = false;
+        _recording = false;
+    }
+
+    private static string CameraError(JSException ex) => $"Camera error: {ex.Message.Split('\n')[0]}";
+
+    public void Dispose()
+    {
+        if (_subscribed) { DigioNotifier.Changed -= OnDigioNotifiedAsync; }
+    }
+}

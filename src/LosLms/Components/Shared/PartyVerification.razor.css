@@ -1,0 +1,237 @@
+/* Stage 3 Verification: the styles of the identity-proof controls that used to live in Stage 1 (copied, scoped to this component). */
+.upload-button {
+    height: 24px;
+    width: 76px;
+    border: 1px solid #c4c4c4;
+    background: #f1f1f1;
+    font-size: 9.5px;
+    font-weight: 500;
+    color: #6f6f6f;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.upload-button:hover {
+    background: #e6e6e6;
+}
+
+/* InputFile renders its own <input type="file">. That element belongs to a child component, so it
+   never receives this page's scoped-CSS attribute and a plain .visually-hidden rule cannot reach
+   it — ::deep is required, otherwise the browser's raw "Choose File" button shows through. */
+.visually-hidden,
+.upload-button ::deep input[type="file"],
+.scan-drop ::deep input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+
+.panel-divider {
+    height: 1px;
+    background: #e4e4e4;
+}
+
+
+.verify-button {
+    height: 29px;
+    border: 1px solid #9e9e9e;
+    background: #ebebeb;
+    padding: 0 11px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #3d3d3d;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.verify-button:hover {
+    background: #e0e0e0;
+}
+
+.verify-button.is-block {
+    height: 26px;
+    width: 100%;
+}
+
+.scan-row {
+    display: flex;
+    gap: 9px;
+    flex-wrap: wrap;
+}
+
+.scan-drop {
+    flex: 1 1 100px;
+    min-height: 30px;
+    border: 1px dashed #bdbdbd;
+    background: #f7f7f7;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 10.5px;
+    color: #8d8d8d;
+    cursor: pointer;
+    word-break: break-all;
+}
+
+.scan-drop:hover {
+    background: #efefef;
+}
+
+.scan-check {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 9px;
+    font-size: 11px;
+    color: #5b6472;
+    cursor: pointer;
+}
+
+.field-caption-warn {
+    color: #c0392b;
+    font-weight: 600;
+}
+
+/* ---------- Live photo (in the photo frame) ---------- */
+
+.is-hidden { display: none; }
+
+/* ---------- Video KYC (in the Gates panel) ---------- */
+.capture-media {
+    position: relative;
+    margin: 6px 0;
+}
+
+.capture-video {
+    width: 100%;
+    max-width: 260px;
+    aspect-ratio: 4 / 3;
+    background: #111;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.capture-thumb {
+    width: 100%;
+    max-width: 200px;
+    border: 1px solid #d5d5d5;
+    border-radius: 4px;
+    background: #f2f2f2;
+    margin: 6px 0;
+    display: block;
+}
+
+.capture-rec {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    background: rgba(192, 57, 43, 0.9);
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+}
+
+.capture-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.file-link {
+    font-size: 11px;
+    color: #2d6cdf;
+    text-decoration: underline;
+}
+
+/* ---------- Gates ---------- */
+
+.gate {
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.gate-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.gate-value {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.gate-note {
+    font-size: 10px;
+    color: #8a8a8a;
+}
+
+.gate-pass {
+    border: 1px solid #1f5c2a;
+    background: #d9ecd7;
+    color: #1f5c2a;
+}
+
+.gate-fail {
+    border: 1px solid #8a1f1f;
+    background: #f8d7d7;
+    color: #8a1f1f;
+}
+
+.gate-notrun {
+    border: 1px solid #bdbdbd;
+    background: #f2f2f2;
+    color: #6f6f6f;
+}
+
+.gate-inactive {
+    border: 1px dashed #bdbdbd;
+    background: #f7f7f7;
+    gap: 5px;
+}
+
+.gate-inactive .gate-label {
+    color: #6f6f6f;
+}
+
+/* ---------- Notices ---------- */
+.inline-error {
+    margin: 0;
+    font-size: 10.5px;
+    line-height: 1.4;
+    color: #8a1f1f;
+    background: #f8d7d7;
+    border: 1px solid #e6b3b3;
+    padding: 6px 8px;
+
+.pv-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #d8dbe1; }
+.pv-tab { border: 1px solid #d8dbe1; border-bottom: none; background: #f4f4f4; padding: 6px 14px; font-size: 11.5px; line-height: 1.4; color: #6b6b6b; cursor: pointer; }
+.pv-tab.is-active { background: #fff; color: #1f3a5f; font-weight: 600; }
+.pv-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.pv-col { display: flex; flex-direction: column; gap: 11px; }
+.pv-ident { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 12px; }
+.pv-k { color: #6b6b6b; }
+.pv-v { font-weight: 600; }
+.pv-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pv-note { margin: 0; font-size: 11.5px; color: #6b6b6b; }
+.pv-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #5b6472; }
+@media (max-width: 800px) { .pv-grid { grid-template-columns: 1fr; } }
+
+.field-input { height: 29px; border: 1px solid #d8dbe1; font-size: 12px; background: #fafbfc; padding: 0 8px; width: 100%; color: #1a1f29; }
+.field-caption { font-size: 10.5px; color: #6b6b6b; }
+.row-action { border: none; background: none; color: #1f3a5f; text-decoration: underline; font-size: 11px; cursor: pointer; }

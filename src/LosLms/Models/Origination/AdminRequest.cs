@@ -96,11 +96,20 @@ public class AdminRequest
     /// </summary>
     public const string RcuReview = "RcuReview";
 
+    /// <summary>
+    /// An officer's payment details submitted for an Admin to approve before any money is paid. Approving it freezes the amount and
+    /// payee (see Services/Disbursal/DisbursementWorkflow.cs); denying it sends the payout back to Draft.
+    /// </summary>
+    public const string DisbursementApproval = "DisbursementApproval";
+
     // ---- Statuses ----
 
     public const string Pending = "Pending";
     public const string Approved = "Approved";
     public const string Denied = "Denied";
+
+    /// <summary>Taken back by the requester (or cancelled by an Admin) before it was decided.</summary>
+    public const string Withdrawn = "Withdrawn";
 
     /// <summary>Human label for the Inbox, so the raw enum value never reaches a screen.</summary>
     public static string LabelFor(string requestType) => requestType switch
@@ -113,6 +122,7 @@ public class AdminRequest
         SanctionApproval => "Sanction approval",
         DigioReleaseBypass => "Release without signed agreement / mandate",
         RcuReview => "RCU outcome for review",
+        DisbursementApproval => "Payment approval (disbursement)",
         _ => requestType,
     };
 }

@@ -32,6 +32,14 @@ public static class DisbursementDefaults
             {
                 d.BeneficiaryAccount = borrowerBank.AccountNumber.Trim();
             }
+
+            // The IFSC follows the account: only filled when the account is the borrower's own.
+            if (string.IsNullOrWhiteSpace(d.BeneficiaryIfsc) && !string.IsNullOrWhiteSpace(borrowerBank?.Ifsc)
+                && string.Equals(d.BeneficiaryAccount?.Trim(), borrowerBank.AccountNumber?.Trim(), StringComparison.Ordinal))
+            {
+                d.BeneficiaryIfsc = borrowerBank.Ifsc.Trim().ToUpperInvariant();
+                d.BeneficiaryBank ??= borrowerBank.BankName;
+            }
         }
 
         d.DisburseFromAccount = OnlyChoice.IfBlank(d.DisburseFromAccount, lenderAccounts);

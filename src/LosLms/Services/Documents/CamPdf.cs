@@ -22,7 +22,7 @@ public static class CamPdf
     public static string FileNameFor(Application application) =>
         DocumentNames.For(application.Id, application.CustomerName, application.CreatedAt, DocumentNames.Cam);
 
-    public static byte[] Build(Application application, CamCostBreakdown cam)
+    public static byte[] Build(Application application, CamCostBreakdown cam, Classification? classification = null)
     {
         var rate = application.Roi ?? 0m;
         var months = application.Tenure ?? 0;
@@ -76,6 +76,28 @@ public static class CamPdf
                         AddCostRow(table, "Processing fee", Money(application.ProcessingFee));
                         AddCostRow(table, "Loan amount", Money(application.LoanAmount));
                         AddCostRow(table, "LTV on on-road cost", ltv.HasValue ? Percent(ltv.Value) : "—");
+                    });
+
+                    content.Item().PaddingTop(14).Text("Borrower classification").FontSize(10).Bold();
+                    content.Item().PaddingTop(4).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.RelativeColumn(3);
+                            columns.RelativeColumn(2);
+                        });
+
+                        var psl = classification is { Psl: Classification.PslYes };
+                        AddCostRow(table, "Priority sector (PSL)", Display(classification?.Psl));
+                        if (psl)
+                        {
+                            AddCostRow(table, "PSL sub-category", Display(classification?.PslSub));
+                            AddCostRow(table, "Priority sector amount", classification?.PrioritySectorAmount is { } psa ? Money(psa) : "—");
+                        }
+
+                        AddCostRow(table, "Co-lending partner", Display(classification?.CoLendingPartner));
+                        AddCostRow(table, "Risk sharing", classification is null ? "—" : Percent(classification.RiskSharing));
+                        AddCostRow(table, "End use of funds", Display(classification?.EndUse));
                     });
 
                     content.Item().PaddingTop(14).Text("Sanction summary").FontSize(10).Bold();

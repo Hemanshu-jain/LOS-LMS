@@ -10,35 +10,54 @@
 
 @* The TG Transport vehicle search has a CAPTCHA, so the app does not touch it: the officer opens it in a new tab, checks the vehicle,
    then ticks it here. The record (tick, date, who, optional screenshot) is the officer's statement, not an automated check. *@
-<div class="tg-box">
-    <a class="verify-button tg-link" href="@TgPortalService.Url" target="_blank" rel="noopener noreferrer">Verify on TG Transport ↗</a>
+<fieldset class="tg-card" disabled="@RcVerified" style="border:1px solid #d8dbe1;padding:10px 12px;margin:0;@(RcVerified ? "opacity:.6" : "")">
+    <legend style="font-size:11px;font-weight:600;padding:0 6px;color:#1f3a5f">Manual RC check (TG Transport)</legend>
 
-    <label class="tg-check">
-        <input type="checkbox" checked="@_verified" @onchange="ToggleAsync" />
-        <span>Verified on the TG portal</span>
-    </label>
-
-    @if (_verified)
+    @if (RcVerified)
     {
-        <span class="dg-muted">@(_at is { } at ? at.ToLocalTime().ToString("d MMM yyyy, HH:mm") : "") @(string.IsNullOrWhiteSpace(_by) ? "" : "by " + _by)</span>
+        <p class="dg-muted" role="status" style="margin:0">The RC was verified through Digio, so this manual check is not needed.</p>
+    }
+    else
+    {
+        <p class="dg-muted" style="margin:0 0 8px">Use this only when the automatic RC check is unavailable or does not match. The portal asks for a CAPTCHA, so you check it yourself and record the result here.</p>
     }
 
-    <label class="verify-button tg-upload">Upload screenshot
-        <InputFile OnChange="UploadAsync" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" />
-    </label>
-    @if (_shot is { } shot)
-    {
-        <a class="file-link" href="@($"/files/{ApplicationId}/rcportal/{Path.GetFileName(shot)}")" target="_blank" rel="noopener">✓ Screenshot</a>
-    }
+    <ol style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:8px;font-size:12px">
+        <li>
+            <a class="verify-button tg-link" href="@TgPortalService.Url" target="_blank" rel="noopener noreferrer">Open TG Transport vehicle search ↗</a>
+        </li>
+        <li>
+            <label class="tg-check">
+                <input type="checkbox" checked="@_verified" @onchange="ToggleAsync" />
+                <span>I checked this vehicle on the TG portal</span>
+            </label>
+            @if (_verified)
+            {
+                <span class="dg-muted">@(_at is { } at ? at.ToLocalTime().ToString("d MMM yyyy, HH:mm") : "") @(string.IsNullOrWhiteSpace(_by) ? "" : "by " + _by)</span>
+            }
+        </li>
+        <li>
+            <label class="verify-button tg-upload">Upload screenshot (optional)
+                <InputFile OnChange="UploadAsync" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" />
+            </label>
+            @if (_shot is { } shot)
+            {
+                <a class="file-link" href="@($"/files/{ApplicationId}/rcportal/{Path.GetFileName(shot)}")" target="_blank" rel="noopener">✓ Screenshot</a>
+            }
+        </li>
+    </ol>
 
     @if (_notice is not null)
     {
         <span class="inline-error" role="alert">@_notice</span>
     }
-</div>
+</fieldset>
 
 @code {
     [Parameter, EditorRequired] public string ApplicationId { get; set; } = "";
+
+    /// <summary>True when Digio has verified the RC: the manual portal check is then switched off.</summary>
+    [Parameter] public bool RcVerified { get; set; }
 
     private bool _verified;
     private DateTime? _at;

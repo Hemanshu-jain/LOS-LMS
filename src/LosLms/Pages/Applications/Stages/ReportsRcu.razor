@@ -136,7 +136,7 @@ else
                         <div class="override-panel">
                             <label class="override-toggle">
                                 <input type="checkbox" @bind="_initiation.OverrideActive" />
-                                Override and proceed despite "Not recommended"
+                                Override and proceed despite "Rejected"
                             </label>
 
                             @if (_initiation.OverrideActive)
@@ -613,7 +613,7 @@ else
     {
         "Pending" => "Every party needs an RCU outcome before this stage can complete.",
         "NotRecommended" when !OverrideValid =>
-            "Outcome is Not recommended — tick the override and record both a reason and an approver.",
+            "Outcome is Rejected — tick the override and record both a reason and an approver.",
         _ => null,
     };
 
@@ -701,8 +701,14 @@ else
     private static string RoleLabel(string partyType) =>
         partyType == "CoApplicant" ? "Co-Applicant" : partyType;
 
-    private static string StatusLabel(string status) =>
-        status == "NotRecommended" ? "Not recommended" : status;
+    // Display text only. The stored values (Pending / Recommended / NotRecommended) never change.
+    private static string StatusLabel(string status) => status switch
+    {
+        "Recommended" => "Approved",
+        "NotRecommended" => "Rejected",
+        "Pending" => "Pending approval",
+        _ => status,
+    };
 
     private static string BandFor(string status) => status switch
     {

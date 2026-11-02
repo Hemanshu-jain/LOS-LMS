@@ -33,6 +33,10 @@ public class PostSanctionChecklist
 
     public DateOnly? ClearedOn { get; set; }
 
+    /// <summary>Who cleared the item. "CAM approval" and "Rate &amp; PF approval" can only be cleared by an Admin.</summary>
+    [MaxLength(450)]
+    public string? ClearedByUserId { get; set; }
+
     [MaxLength(300)]
     public string? Remarks { get; set; }
 

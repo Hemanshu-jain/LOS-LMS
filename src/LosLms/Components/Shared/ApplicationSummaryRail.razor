@@ -126,7 +126,8 @@
             return;
         }
 
-        var pdf = CamPdf.Build(Application, cam);
+        var classification = await db.Classifications.AsNoTracking().FirstOrDefaultAsync(c => c.ApplicationId == Application.Id);
+        var pdf = CamPdf.Build(Application, cam, classification);
 
         using var stream = new MemoryStream(pdf);
         using var streamReference = new DotNetStreamReference(stream);
