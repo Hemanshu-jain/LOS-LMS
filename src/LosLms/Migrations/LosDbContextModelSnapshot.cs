@@ -1920,10 +1920,37 @@ namespace LosLms.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
+                    b.Property<string>("ApprovalNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<decimal?>("ApprovedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ApprovedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<string>("ApprovedFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
                     b.Property<string>("BeneficiaryAccount")
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
+
+                    b.Property<string>("BeneficiaryBank")
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<string>("BeneficiaryIfsc")
+                        .HasMaxLength(11)
+                        .HasColumnType("varchar(11)");
 
                     b.Property<string>("BeneficiaryName")
                         .IsRequired()
@@ -1984,9 +2011,30 @@ namespace LosLms.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
 
+                    b.Property<string>("PayoutStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("Draft");
+
+                    b.Property<DateTime?>("ReleasedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ReleasedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
                     b.Property<string>("SignedAgreementFilePath")
                         .HasMaxLength(400)
                         .HasColumnType("varchar(400)");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("SubmittedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
 
                     b.Property<decimal?>("TradeAdvance")
                         .HasPrecision(18, 2)
@@ -2027,6 +2075,46 @@ namespace LosLms.Migrations
                         .IsUnique();
 
                     b.ToTable("Disbursement", (string)null);
+                });
+
+            modelBuilder.Entity("LosLms.Models.DisbursementEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<string>("ApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationId");
+
+                    b.ToTable("DisbursementEvents");
                 });
 
             modelBuilder.Entity("LosLms.Models.DocumentRemark", b =>
@@ -3265,6 +3353,10 @@ namespace LosLms.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ClearedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("varchar(450)");
 
                     b.Property<DateOnly?>("ClearedOn")
                         .HasColumnType("date");
@@ -4711,6 +4803,17 @@ namespace LosLms.Migrations
                     b.HasOne("LosLms.Models.Application", "Application")
                         .WithOne()
                         .HasForeignKey("LosLms.Models.Disbursement", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Application");
+                });
+
+            modelBuilder.Entity("LosLms.Models.DisbursementEvent", b =>
+                {
+                    b.HasOne("LosLms.Models.Application", "Application")
+                        .WithMany()
+                        .HasForeignKey("ApplicationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

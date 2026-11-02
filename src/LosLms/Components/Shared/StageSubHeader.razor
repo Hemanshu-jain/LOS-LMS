@@ -9,6 +9,7 @@
 @inject IDbContextFactory<LosDbContext> DbFactory
 @inject TenantContext Tenant
 @inject AdminRequestNotifier Notifier
+@inject DigioClient Digio
 
 <div class="stage-sub-header">
     <button type="button" class="breadcrumb" @onclick="GoToApplications">
@@ -417,6 +418,27 @@
         {
             _reviewErrors[request.Id] = SelfReviewBlocked;
             return;
+        }
+
+        // A payment approval is validated against the file BEFORE the request is marked approved: if the amount or payee is no
+        // longer complete, or the payee was not bank-verified and the Admin gave no note, the request stays pending.
+        if (stored.RequestType == AdminRequest.DisbursementApproval)
+        {
+            var companyForPayout = await db.Applications.IgnoreQueryFilters().Where(a => a.Id == ApplicationId).Select(a => a.CompanyId).FirstAsync();
+            if (approve)
+            {
+                var refused = await DisbursementWorkflow.ApproveAsync(db, ApplicationId, Tenant.UserId ?? "", Tenant.DisplayName, note,
+                    Digio.Credentials(companyForPayout)?.Production ?? false);
+                if (refused is not null)
+                {
+                    _reviewErrors[request.Id] = refused;
+                    return;
+                }
+            }
+            else
+            {
+                await DisbursementWorkflow.RejectAsync(db, ApplicationId, Tenant.UserId ?? "", Tenant.DisplayName, note);
+            }
         }
 
         stored.Status = approve ? AdminRequest.Approved : AdminRequest.Denied;

@@ -118,6 +118,7 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
     public DbSet<DownPaymentRecord> DownPaymentRecords => Set<DownPaymentRecord>();
 
     public DbSet<PostSanctionChecklist> PostSanctionChecklists => Set<PostSanctionChecklist>();
+    public DbSet<DisbursementEvent> DisbursementEvents => Set<DisbursementEvent>();
 
     public DbSet<Pdd> Pdds => Set<Pdd>();
 
@@ -623,6 +624,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
             entity.Property(d => d.EmiRoundedTo).HasPrecision(18, 2);
             entity.Property(d => d.AgreementEsignStatus).HasDefaultValue("NotSent");
             entity.Property(d => d.WelcomeSmsStatus).HasDefaultValue("NotSent");
+            entity.Property(d => d.PayoutStatus).HasDefaultValue("Draft");
+            entity.Property(d => d.ApprovedAmount).HasPrecision(18, 2);
 
             entity.HasIndex(d => d.ApplicationId).IsUnique();
 
@@ -695,6 +698,16 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
             entity.HasOne(d => d.Application)
                 .WithOne()
                 .HasForeignKey<DownPaymentRecord>(d => d.ApplicationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DisbursementEvent>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ApplicationId);
+            entity.HasOne(e => e.Application)
+                .WithMany()
+                .HasForeignKey(e => e.ApplicationId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -1214,6 +1227,7 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
         modelBuilder.Entity<SecurityNachMandate>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
         modelBuilder.Entity<DownPaymentRecord>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
         modelBuilder.Entity<PostSanctionChecklist>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
+        modelBuilder.Entity<DisbursementEvent>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
         modelBuilder.Entity<Pdd>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
         modelBuilder.Entity<RejectionLog>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);
         modelBuilder.Entity<AdminRequest>().HasQueryFilter(x => _isSuperAdmin || x.Application!.CompanyId == _companyId);

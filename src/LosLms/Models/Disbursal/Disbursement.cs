@@ -138,6 +138,38 @@ public class Disbursement
     [MaxLength(400)]
     public string? GeneralDocFilePath { get; set; }
 
+    // ---- Payout control (maker-checker) ----
+    //
+    // Money leaves the NBFC's own bank, outside this app. These fields make sure it only happens against an Admin-approved,
+    // frozen set of payment details, and that the record cannot drift from what was paid. See Services/Disbursal/DisbursementWorkflow.cs.
+
+    /// <summary>IFSC of the payee's account (the account in <see cref="BeneficiaryAccount"/>).</summary>
+    [MaxLength(11)] public string? BeneficiaryIfsc { get; set; }
+
+    /// <summary>Bank of the payee's account, resolved from the IFSC.</summary>
+    [MaxLength(120)] public string? BeneficiaryBank { get; set; }
+
+    /// <summary>Draft → PendingApproval → Approved → Released. Only <see cref="Services.DisbursementWorkflow"/> moves it.</summary>
+    [MaxLength(20)] public string PayoutStatus { get; set; } = "Draft";
+
+    [MaxLength(450)] public string? SubmittedByUserId { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+
+    [MaxLength(450)] public string? ApprovedByUserId { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+
+    /// <summary>The amount the Admin approved. Release refuses if the amount on file no longer equals it.</summary>
+    public decimal? ApprovedAmount { get; set; }
+
+    /// <summary>Hash of the payment details the Admin approved (amount, payee, account, IFSC, mode, from-account).</summary>
+    [MaxLength(64)] public string? ApprovedFingerprint { get; set; }
+
+    /// <summary>What the approving Admin checked, required when the payee's account was not verified through the bank.</summary>
+    [MaxLength(500)] public string? ApprovalNote { get; set; }
+
+    [MaxLength(450)] public string? ReleasedByUserId { get; set; }
+    public DateTime? ReleasedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

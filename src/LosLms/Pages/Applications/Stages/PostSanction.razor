@@ -17,6 +17,7 @@
 @inject DigioStatusNotifier DigioNotifier
 @inject TenantContext Tenant
 @inject AdminRequestNotifier AdminNotifier
+@inject IHttpClientFactory HttpClientFactory
 
 <PageTitle>Post Sanction · @ApplicationId</PageTitle>
 
@@ -47,11 +48,11 @@ else
             <StageSubHeader ApplicationId="@_application.Id"
                             BreadcrumbSuffix="@_application.Status"
                             SecondaryLabel="Disbursement memo"
-                            PrimaryLabel="Release funds"
-                            CompleteBlocked="ReleaseBlocked"
-                            BlockedReason="@ReleaseBlockedReason"
+                            PrimaryLabel="@PrimaryLabel"
+                            CompleteBlocked="PrimaryBlocked"
+                            BlockedReason="@PrimaryBlockedReason"
                             OnSaveDraft="GenerateDisbursementMemoAsync"
-                            OnCompleteStage="ReleaseFundsAsync" />
+                            OnCompleteStage="PrimaryActionAsync" />
 
             @if (_loanAccountId is { } loanId)
             {
@@ -118,7 +119,7 @@ else
                                             <th>Checklist item</th>
                                             <th>Owner</th>
                                             <th>Flag</th>
-                                            <th>Cleared on</th>
+                                            <th>Cleared on / by</th>
                                             <th>Remarks</th>
                                         </tr>
                                     </thead>
@@ -131,6 +132,8 @@ else
                                                 <td>
                                                     <select class="flag-select flag-@(row.Flag == "Cleared" ? "healthy" : "caution")"
                                                             aria-label="@("Flag for " + row.Item)"
+                                                            title="@ChecklistLockReason(row)"
+                                                            disabled="@(ChecklistLockReason(row) is not null)"
                                                             value="@row.Flag"
                                                             @onchange="e => SetFlag(row, (string?)e.Value)">
                                                         @foreach (var o in FlagOptions) { <option value="@o">@o</option> }
@@ -138,9 +141,18 @@ else
                                                 </td>
                                                 <td class="cell-muted">
                                                     @(row.ClearedOn?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—")
+                                                    @if (row.Flag == "Cleared" && NameFor(row.ClearedByUserId) is { } clearedBy)
+                                                    {
+                                                        <span> · @clearedBy</span>
+                                                    }
+                                                    @if (DisbursementWorkflow.AdminOnlyChecklistItems.Contains(row.Item))
+                                                    {
+                                                        <span class="field-caption"> (Admin clears)</span>
+                                                    }
                                                 </td>
                                                 <td>
                                                     <input class="cell-input w-remarks" aria-label="@("Remarks for " + row.Item)"
+                                                           disabled="@(ChecklistLockReason(row) is not null)"
                                                            @bind="row.Remarks" @bind:event="oninput" />
                                                 </td>
                                             </tr>
@@ -148,6 +160,125 @@ else
                                     </tbody>
                                 </table>
                             </div>
+                        </ChildContent>
+                    </Panel>
+
+                    @* ---------- Payment to the payee: prepare → Admin approval → pay in bank & confirm → released ---------- *@
+                    <Panel Title="Payment to the payee">
+                        <Right>
+                            <span class="pay-status pay-@_disbursement.PayoutStatus.ToLowerInvariant()">@DisbursementWorkflow.Label(_disbursement.PayoutStatus)</span>
+                        </Right>
+                        <ChildContent>
+                            <ol class="pay-steps" aria-label="Payment steps">
+                                @foreach (var (step, i) in PaySteps.Select((x, i) => (x, i)))
+                                {
+                                    <li class="@(i < PayStepIndex ? "is-done" : i == PayStepIndex ? "is-current" : null)">@step</li>
+                                }
+                            </ol>
+
+                            <dl class="pay-summary">
+                                <dt>Amount to pay</dt>
+                                <dd><strong>@FormatInr(_disbursement.PayoutStatus == DisbursementWorkflow.Draft ? NetDisbursement : _disbursement.ApprovedAmount ?? NetDisbursement)</strong></dd>
+                                <dt>Payee</dt>
+                                <dd>@(string.IsNullOrWhiteSpace(_disbursement.BeneficiaryName) ? "—" : _disbursement.BeneficiaryName)
+                                    · A/c @(string.IsNullOrWhiteSpace(_disbursement.BeneficiaryAccount) ? "—" : "****" + DisbursementWorkflow.Last4(_disbursement.BeneficiaryAccount))
+                                    · @(_disbursement.BeneficiaryIfsc ?? "no IFSC")@(_disbursement.BeneficiaryBank is { } bank ? " (" + bank + ")" : "")</dd>
+                                <dt>Payee bank check</dt>
+                                <dd>
+                                    <span class="pay-check pay-check-@_payee.State.ToLowerInvariant()">@PayeeCheckLabel</span>
+                                    @if (_payee.Note is { } payeeNote) { <span class="field-caption"> @payeeNote</span> }
+                                    @if (_disbursement.PayoutStatus == DisbursementWorkflow.Draft && !_payee.IsVerified)
+                                    {
+                                        <button type="button" class="verify-button" disabled="@_payBusy" @onclick="VerifyPayeeAsync">Verify payee account</button>
+                                    }
+                                    @if (_payeeMessage is { } pm) { <div class="field-caption">@pm</div> }
+                                </dd>
+                                <dt>Paid from</dt>
+                                <dd>@(string.IsNullOrWhiteSpace(_disbursement.DisburseFromAccount) ? "—" : _disbursement.DisburseFromAccount) · @(_disbursement.PaymentMode ?? "—")</dd>
+                                @if (_disbursement.SubmittedAt is { } submittedAt)
+                                {
+                                    <dt>Prepared by</dt>
+                                    <dd>@(NameFor(_disbursement.SubmittedByUserId) ?? "—") · @Ist(submittedAt)</dd>
+                                }
+                                @if (_disbursement.ApprovedAt is { } approvedAt)
+                                {
+                                    <dt>Approved by</dt>
+                                    <dd>@(NameFor(_disbursement.ApprovedByUserId) ?? "—") · @Ist(approvedAt)@(_disbursement.ApprovalNote is { } an ? " · " + an : "")</dd>
+                                }
+                                @if (_disbursement.ReleasedAt is { } releasedAt)
+                                {
+                                    <dt>Released</dt>
+                                    <dd>Paid on @(_disbursement.ValueDate?.ToString("dd MMM yyyy", CultureInfo.InvariantCulture) ?? "—") · Ref @_disbursement.Utr
+                                        · confirmed by @(NameFor(_disbursement.ReleasedByUserId) ?? "—") · @Ist(releasedAt)</dd>
+                                }
+                            </dl>
+
+                            @if (_disbursement.PayoutStatus == DisbursementWorkflow.Draft && MissingForSubmit.Count > 0)
+                            {
+                                <div class="pay-missing">
+                                    <span class="sub-block-label">Before it can go to an Admin</span>
+                                    <ul>@foreach (var m in MissingForSubmit) { <li>@m</li> }</ul>
+                                </div>
+                            }
+
+                            @if (_disbursement.PayoutStatus == DisbursementWorkflow.PendingApproval)
+                            {
+                                <p class="field-caption">An Admin approves this from the request at the top of the page (another Admin if you prepared it).
+                                    The details above are frozen until then. To change anything, withdraw it.</p>
+                            }
+
+                            @if (_disbursement.PayoutStatus == DisbursementWorkflow.Approved)
+                            {
+                                @if (_isElevated)
+                                {
+                                    <div class="pay-confirm">
+                                        <p class="field-caption">Pay exactly @FormatInr(_disbursement.ApprovedAmount ?? 0m) from your bank to the account above. Then enter the
+                                            bank's reference and the date it was paid, and confirm. This opens the loan account and its EMI schedule.</p>
+                                        <div class="field-grid">
+                                            <FormField Label="@(_disbursement.PaymentMode == "Cheque" ? "Cheque number" : "Bank reference (UTR)")" For="ps-confirm-utr">
+                                                <input id="ps-confirm-utr" class="field-input" maxlength="30" autocomplete="off" @bind="_confirmUtr" @bind:event="oninput" />
+                                            </FormField>
+                                            <FormField Label="Date paid" For="ps-confirm-date">
+                                                <input id="ps-confirm-date" type="date" class="field-input" @bind="_confirmDate" />
+                                            </FormField>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p class="field-caption">Approved. An Admin pays it from the bank and confirms the payment reference here.</p>
+                                }
+                            }
+
+                            @if (_disbursement.PayoutStatus is DisbursementWorkflow.PendingApproval or DisbursementWorkflow.Approved && CanWithdraw)
+                            {
+                                <div class="pay-withdraw">
+                                    <input class="field-input" placeholder="Reason for withdrawing" maxlength="300" aria-label="Reason for withdrawing"
+                                           @bind="_withdrawReason" @bind:event="oninput" />
+                                    <button type="button" class="doc-action" disabled="@_payBusy" @onclick="WithdrawPaymentAsync">
+                                        @(_disbursement.PayoutStatus == DisbursementWorkflow.Approved ? "Cancel approval" : "Withdraw")
+                                    </button>
+                                </div>
+                            }
+
+                            @if (_payError is { } payError)
+                            {
+                                <div class="pay-error" role="alert">@payError</div>
+                            }
+
+                            @if (_events.Count > 0)
+                            {
+                                <details class="pay-history">
+                                    <summary>History (@_events.Count)</summary>
+                                    <ul>
+                                        @foreach (var ev in _events)
+                                        {
+                                            <li><span class="cell-muted">@Ist(ev.At)</span> · <strong>@DisbursementWorkflow.ActionLabel(ev.Action)</strong>
+                                                · @(ev.UserName ?? NameFor(ev.UserId) ?? "—")@(ev.Detail is { } det ? " · " + det : "")</li>
+                                        }
+                                    </ul>
+                                </details>
+                            }
                         </ChildContent>
                     </Panel>
 
@@ -173,7 +304,7 @@ else
                                         <div class="stacked">
                                             <div class="field-grid">
                                                 <FormField Label="Disbursement type" For="ps-type">
-                                                    <select id="ps-type" class="field-input" @bind="_disbursement.Type" @bind:after="OnDisbursementTypeChanged">
+                                                    <select id="ps-type" disabled="@PayoutLocked" class="field-input" @bind="_disbursement.Type" @bind:after="OnDisbursementTypeChanged">
                                                         <option value="">@BlankOption</option>
                                                         @foreach (var o in DisbursementTypes) { <option value="@o">@o</option> }
                                                     </select>
@@ -189,14 +320,14 @@ else
                                                 <FormField Label="Disburse from account" For="ps-fromacct">
                                                     @if (_lenderAccounts.Count > 0)
                                                     {
-                                                        <select id="ps-fromacct" class="field-input" @bind="_disbursement.DisburseFromAccount">
+                                                        <select id="ps-fromacct" disabled="@PayoutLocked" class="field-input" @bind="_disbursement.DisburseFromAccount">
                                                             <option value="">@BlankOption</option>
                                                             @foreach (var a in LenderAccountChoices) { <option value="@a">@a</option> }
                                                         </select>
                                                     }
                                                     else
                                                     {
-                                                        <input id="ps-fromacct" class="field-input"
+                                                        <input id="ps-fromacct" class="field-input" disabled="@PayoutLocked"
                                                                placeholder="Add your accounts in Settings → Disbursement Accounts"
                                                                @bind="_disbursement.DisburseFromAccount" @bind:event="oninput" />
                                                     }
@@ -220,40 +351,50 @@ else
                                                 </FormField>
 
                                                 <FormField Label="Round regular EMI to nearest" For="ps-emiround">
-                                                    <select id="ps-emiround" class="field-input" @bind="EmiRoundedToChoice">
+                                                    <select id="ps-emiround" disabled="@PayoutLocked" class="field-input" @bind="EmiRoundedToChoice">
                                                         <option value="">None</option>
                                                         <option value="10">₹10</option>
                                                         <option value="100">₹100</option>
                                                     </select>
                                                 </FormField>
 
-                                                <FormField Label="Beneficiary name" For="ps-benname">
-                                                    <input id="ps-benname" class="field-input"
+                                                <FormField Label="Payee name (as on the bank account)" For="ps-benname">
+                                                    <input id="ps-benname" class="field-input" maxlength="200" disabled="@PayoutLocked"
                                                            @bind="_disbursement.BeneficiaryName" @bind:event="oninput" />
                                                 </FormField>
 
-                                                <FormField Label="Beneficiary account" For="ps-benacct">
-                                                    <input id="ps-benacct" class="field-input"
+                                                <FormField Label="Payee account number" For="ps-benacct">
+                                                    <input id="ps-benacct" class="field-input" maxlength="34" inputmode="numeric" autocomplete="off" disabled="@PayoutLocked"
                                                            @bind="_disbursement.BeneficiaryAccount" @bind:event="oninput" />
                                                 </FormField>
 
+                                                <FormField Label="Payee IFSC" For="ps-benifsc">
+                                                    <input id="ps-benifsc" class="field-input" maxlength="11" autocomplete="off" style="text-transform:uppercase" disabled="@PayoutLocked"
+                                                           @bind="_disbursement.BeneficiaryIfsc" @bind:after="OnPayeeIfscChangedAsync" />
+                                                    @if (_disbursement.BeneficiaryBank is { } payeeBank)
+                                                    {
+                                                        <span class="field-caption">@payeeBank</span>
+                                                    }
+                                                    else if (!string.IsNullOrWhiteSpace(_disbursement.BeneficiaryIfsc) && !DisbursementWorkflow.IsValidIfsc(_disbursement.BeneficiaryIfsc))
+                                                    {
+                                                        <span class="field-caption">IFSC is 11 characters: 4 letters, a zero, then 6 letters or digits.</span>
+                                                    }
+                                                </FormField>
+
                                                 <FormField Label="Payment mode" For="ps-mode">
-                                                    <select id="ps-mode" class="field-input" @bind="_disbursement.PaymentMode">
+                                                    <select id="ps-mode" disabled="@PayoutLocked" class="field-input" @bind="_disbursement.PaymentMode">
                                                         <option value="">@BlankOption</option>
                                                         @foreach (var o in PaymentModes) { <option value="@o">@o</option> }
                                                     </select>
                                                 </FormField>
 
-                                                <FormField Label="Value date" For="ps-valuedate">
-                                                    <input id="ps-valuedate" type="date" class="field-input" @bind="_disbursement.ValueDate" />
-                                                </FormField>
-
-                                                <FormField Label="UTR / cheque no." For="ps-utr">
-                                                    <input id="ps-utr" class="field-input" @bind="_disbursement.Utr" @bind:event="oninput" />
+                                                <FormField Label="Planned payment date" For="ps-valuedate">
+                                                    <input id="ps-valuedate" type="date" class="field-input" disabled="@PayoutLocked" @bind="_disbursement.ValueDate" />
+                                                    <span class="field-caption">The real date and the bank reference are entered when the payment is confirmed.</span>
                                                 </FormField>
 
                                                 <FormField Label="Preferred EMI date" For="ps-emiday">
-                                                    <select id="ps-emiday" class="field-input" @bind="EmiDayChoice">
+                                                    <select id="ps-emiday" disabled="@PayoutLocked" class="field-input" @bind="EmiDayChoice">
                                                         <option value="5">5th of the month</option>
                                                         <option value="10">10th of the month</option>
                                                         <option value="">Exact date (set below)</option>
@@ -913,6 +1054,7 @@ else
             .Where(p => p.ApplicationId == ApplicationId).OrderBy(p => p.Id).ToListAsync();
 
         await LoadDigioStateAsync(db);
+        await ReloadPayoutAsync(db);
     }
 
     /// <summary>The Digio-side facts the page needs: is e-NACH on, may this user bypass, is the release gate met.</summary>
@@ -1045,22 +1187,71 @@ else
 
     private int ClearedCount => _checklist.Count(c => c.Flag == "Cleared");
 
-    // Release is allowed once every item on the branch disbursement checklist reads Cleared. An empty
-    // checklist never releases — a file must have its checklist created before any funds move.
-    private bool ReleaseBlocked =>
-        _checklist.Count == 0 || _checklist.Any(c => c.Flag != "Cleared") || DigioBlocked;
+    // The payout moves Draft → PendingApproval → Approved → Released, and only through DisbursementWorkflow, which re-checks every
+    // rule against the database. What is below only decides what the page shows and enables.
+
+    private static readonly string[] PaySteps = { "Prepare payment", "Admin approval", "Pay in bank & confirm", "Released" };
+
+    private int PayStepIndex => _disbursement.PayoutStatus switch
+    {
+        DisbursementWorkflow.PendingApproval => 1,
+        DisbursementWorkflow.Approved => 2,
+        DisbursementWorkflow.Released => 4,
+        _ => 0,
+    };
+
+    /// <summary>Amount-, payee- and EMI-related fields are frozen from the moment the payment is submitted.</summary>
+    private bool PayoutLocked => _disbursement.PayoutStatus != DisbursementWorkflow.Draft || _disbursed;
+
+    private List<string> MissingForSubmit => DisbursementWorkflow.MissingForSubmit(_disbursement, NetDisbursement, _checklist);
 
     // The Digio gate (agreement signed, mandate registered) blocks officers; an Admin may release anyway and that is logged.
     private bool DigioBlocked => !_digioGate.CanAdvance && !_isElevated;
 
-    private string? ReleaseBlockedReason =>
-        !ReleaseBlocked
-            ? null
-            : DigioBlocked && _checklist.Count > 0 && _checklist.All(c => c.Flag == "Cleared")
-            ? _digioGate.BlockedReason
-            : _checklist.Count == 0
-                ? "The disbursement checklist has not been created yet."
-                : $"{_checklist.Count - ClearedCount} checklist item(s) still pending.";
+    private bool CanWithdraw =>
+        _isElevated || (_disbursement.PayoutStatus == DisbursementWorkflow.PendingApproval && _disbursement.SubmittedByUserId == Tenant.UserId);
+
+    private string PrimaryLabel => _disbursement.PayoutStatus switch
+    {
+        DisbursementWorkflow.PendingApproval => "Waiting for Admin approval",
+        DisbursementWorkflow.Approved => "Confirm payment & release",
+        DisbursementWorkflow.Released => "Released",
+        _ => "Submit for approval",
+    };
+
+    private bool PrimaryBlocked => PrimaryBlockedReason is not null;
+
+    private string? PrimaryBlockedReason => _disbursed
+        ? "This loan has already been released."
+        : _disbursement.PayoutStatus switch
+        {
+            DisbursementWorkflow.Draft => MissingForSubmit.Count > 0 ? MissingForSubmit[0] : null,
+            DisbursementWorkflow.PendingApproval => "An Admin must approve the payment first.",
+            DisbursementWorkflow.Approved when !_isElevated => "An Admin pays it from the bank and confirms the payment.",
+            DisbursementWorkflow.Approved when DigioBlocked => _digioGate.BlockedReason,
+            DisbursementWorkflow.Approved when string.IsNullOrWhiteSpace(_confirmUtr) || _confirmDate is null =>
+                "Enter the bank reference and the date the money was paid.",
+            DisbursementWorkflow.Released => "This loan has already been released.",
+            _ => null,
+        };
+
+    private string PayeeCheckLabel => _payee.State switch
+    {
+        "Verified" => "✓ Verified with the bank" + (_payee.Source == "Stage 3" ? " (borrower's own account)" : ""),
+        "Mismatch" => "Account exists, name does not match",
+        "Failed" => "Bank could not verify this account",
+        _ => "Not checked",
+    };
+
+    /// <summary>Why a checklist row cannot be changed by this user right now; null when it can.</summary>
+    private string? ChecklistLockReason(PostSanctionChecklist row) =>
+        _disbursement.PayoutStatus != DisbursementWorkflow.Draft || _disbursed
+            ? "Frozen: the payment has been submitted."
+            : DisbursementWorkflow.AdminOnlyChecklistItems.Contains(row.Item) && !_isElevated
+                ? "Only an Admin can clear this item."
+                : null;
+
+    private static string Ist(DateTime utc) => utc.AddMinutes(330).ToString("dd MMM yyyy, HH:mm", CultureInfo.InvariantCulture);
 
     // ---------------------------------------------------------------------
     // Sanctioned terms — Stage 7's decision, not the originally requested figures
@@ -1390,6 +1581,12 @@ else
     /// <summary>Clearing a flag stamps the server date; reverting to Pending clears it again.</summary>
     private void SetFlag(PostSanctionChecklist row, string? flag)
     {
+        if (ChecklistLockReason(row) is not null)
+        {
+            return; // the server refuses it too (DisbursementWorkflow.ApplyChecklistEdit); this keeps the page honest
+        }
+
+        row.ClearedByUserId = Tenant.UserId;
         row.Flag = string.IsNullOrWhiteSpace(flag) ? "Pending" : flag;
         row.ClearedOn = row.Flag == "Cleared" ? DateOnly.FromDateTime(DateTime.Now) : null;
     }
@@ -1493,54 +1690,146 @@ else
     // Release funds
     // ---------------------------------------------------------------------
 
-    private async Task ReleaseFundsAsync()
+    // The four actions below each save the page first (so the server sees what the officer sees), then hand the decision to
+    // DisbursementWorkflow, then re-read the payout from the database. None of them trusts the page's copy of the state.
+
+    private DisbursementWorkflow.PayeeCheck _payee = DisbursementWorkflow.PayeeCheck.NotChecked;
+    private List<DisbursementEvent> _events = new();
+    private string? _payeeMessage;
+    private string? _payError;
+    private string? _confirmUtr;
+    private DateOnly? _confirmDate;
+    private string? _withdrawReason;
+    private bool _payBusy;
+
+    private Task PrimaryActionAsync() => _disbursement.PayoutStatus switch
     {
-        // Server-side gate. The sub-header already disables the button, but that is UX — a crafted
-        // event or a stale circuit must not get past it. One shared check, never re-implemented.
-        await using (var gateDb = await DbFactory.CreateDbContextAsync())
-        {
-            if (!(await GateCheckService.CanAdvanceAsync(gateDb, ApplicationId)).CanAdvance)
-            {
-                return;
-            }
-        }
-        // The button carries a real disabled attribute; this repeats the check so a crafted request
-        // cannot release funds against an unfinished checklist.
-        if (ReleaseBlocked || _application is null)
-        {
-            return;
-        }
+        DisbursementWorkflow.Draft => SubmitPaymentAsync(),
+        DisbursementWorkflow.Approved => ConfirmReleaseAsync(),
+        _ => Task.CompletedTask,
+    };
 
-        await using var db = await DbFactory.CreateDbContextAsync();
-
-        var digio = await DigioReleaseGate.CheckAsync(db, ApplicationId, await IsProductionAsync());
-        if (!digio.CanAdvance)
+    private async Task SubmitPaymentAsync()
+    {
+        if (_application is null || _payBusy) { return; }
+        await RunPayoutAsync(async db =>
         {
-            if (!db.IsElevatedUser)
-            {
-                return; // a crafted event or a stale circuit: the gate is re-checked here, the banner is only UX
-            }
-
             await Tenant.EnsureLoadedAsync();
-            await DigioReleaseGate.LogOverrideAsync(db, ApplicationId, Tenant.UserId, digio.BlockedReason ?? "");
+            return await DisbursementWorkflow.SubmitAsync(db, AdminNotifier, ApplicationId, Tenant.UserId ?? "", Tenant.DisplayName);
+        }, "Sent to an Admin for approval");
+    }
+
+    private async Task WithdrawPaymentAsync()
+    {
+        if (_application is null || _payBusy) { return; }
+        await RunPayoutAsync(async db =>
+        {
+            await Tenant.EnsureLoadedAsync();
+            return await DisbursementWorkflow.WithdrawAsync(db, ApplicationId, Tenant.UserId ?? "", Tenant.DisplayName, db.IsElevatedUser, _withdrawReason);
+        }, "Payment taken back to preparation");
+        if (_payError is null) { _withdrawReason = null; }
+    }
+
+    private async Task ConfirmReleaseAsync()
+    {
+        if (_application is null || _payBusy) { return; }
+        await RunPayoutAsync(async db =>
+        {
+            await Tenant.EnsureLoadedAsync();
+            return await DisbursementWorkflow.ReleaseAsync(db, ApplicationId, Tenant.UserId ?? "", Tenant.DisplayName, _confirmUtr, _confirmDate,
+                DisbursementWorkflow.TodayIst(), await IsProductionAsync());
+        }, "Funds released. The loan account is open.");
+
+        if (_payError is null)
+        {
+            _confirmUtr = null;
+            _confirmDate = null;
+        }
+    }
+
+    private async Task VerifyPayeeAsync()
+    {
+        if (_application is null || _payBusy) { return; }
+        _payBusy = true;
+        _payeeMessage = null;
+        try
+        {
+            await SaveDisbursementAsync();
+            await Tenant.EnsureLoadedAsync();
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var (check, message) = await DisbursementWorkflow.VerifyPayeeAsync(db, Digio, _application.CompanyId, ApplicationId, Tenant.UserId, Tenant.DisplayName);
+            _payee = check;
+            _payeeMessage = message;
+            await ReloadPayoutAsync(db);
+        }
+        finally
+        {
+            _payBusy = false;
+        }
+    }
+
+    private async Task OnPayeeIfscChangedAsync()
+    {
+        _disbursement.BeneficiaryIfsc = _disbursement.BeneficiaryIfsc?.Trim().ToUpperInvariant();
+        _disbursement.BeneficiaryBank = null;
+        if (!DisbursementWorkflow.IsValidIfsc(_disbursement.BeneficiaryIfsc)) { return; }
+
+        using var cts = new CancellationTokenSource();
+        var details = await IfscLookup.FetchAsync(_disbursement.BeneficiaryIfsc, HttpClientFactory, cts.Token);
+        _disbursement.BeneficiaryBank = details is null ? null : $"{details.BankName}{(string.IsNullOrWhiteSpace(details.Branch) ? "" : ", " + details.Branch)}";
+    }
+
+    private async Task RunPayoutAsync(Func<LosDbContext, Task<string?>> action, string success)
+    {
+        _payBusy = true;
+        _payError = null;
+        try
+        {
+            await SaveDisbursementAsync();
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _payError = await action(db);
+            await ReloadPayoutAsync(db);
+            if (_payError is null)
+            {
+                await ShowToastAsync(success);
+            }
+        }
+        finally
+        {
+            _payBusy = false;
+        }
+    }
+
+    /// <summary>Re-reads the payout state, the payee check, the history and the checklist from the database.</summary>
+    private async Task ReloadPayoutAsync(LosDbContext db)
+    {
+        var stored = await db.Disbursements.AsNoTracking().FirstOrDefaultAsync(d => d.ApplicationId == ApplicationId);
+        if (stored is not null)
+        {
+            _disbursement.PayoutStatus = stored.PayoutStatus;
+            _disbursement.SubmittedByUserId = stored.SubmittedByUserId;
+            _disbursement.SubmittedAt = stored.SubmittedAt;
+            _disbursement.ApprovedByUserId = stored.ApprovedByUserId;
+            _disbursement.ApprovedAt = stored.ApprovedAt;
+            _disbursement.ApprovedAmount = stored.ApprovedAmount;
+            _disbursement.ApprovedFingerprint = stored.ApprovedFingerprint;
+            _disbursement.ApprovalNote = stored.ApprovalNote;
+            _disbursement.ReleasedByUserId = stored.ReleasedByUserId;
+            _disbursement.ReleasedAt = stored.ReleasedAt;
+            if (stored.PayoutStatus != DisbursementWorkflow.Draft)
+            {
+                // Frozen fields: show what is on file, not what a stale page holds.
+                DisbursementWorkflow.CopyPayoutFields(stored, _disbursement);
+            }
         }
 
-        await PersistAsync(db);
-
-        var application = await db.Applications.FirstAsync(a => a.Id == ApplicationId);
-        application.Disbursed = true;
-
-        // The loan account and its instalment snapshot commit with the release, in the same SaveChanges.
-        var opened = await LoanAccountService.OpenAsync(db, application, SanctionedAmount, SanctionedRoi, SanctionedTenure,
-            _disbursement.FirstEmiDate, _disbursement.EmiDayOfMonth, _disbursement.FirstEmiOverride, _disbursement.EmiRoundedTo);
-
-        // CurrentStage deliberately stays at 8 — this is the final stage, there is no Stage 9.
-
-        await db.SaveChangesAsync();
-
-        _disbursed = true;
-        _loanAccountId = opened?.Id ?? _loanAccountId;
-        await ShowToastAsync("Funds released");
+        _checklist = await db.PostSanctionChecklists.AsNoTracking()
+            .Where(c => c.ApplicationId == ApplicationId).OrderBy(c => c.Id).ToListAsync();
+        _events = await db.DisbursementEvents.AsNoTracking()
+            .Where(e => e.ApplicationId == ApplicationId).OrderByDescending(e => e.Id).ToListAsync();
+        _payee = await DisbursementWorkflow.PayeeCheckAsync(db, _application?.CompanyId ?? 0, ApplicationId, _disbursement, await IsProductionAsync());
+        _disbursed = await db.Applications.AsNoTracking().Where(a => a.Id == ApplicationId).Select(a => a.Disbursed).FirstOrDefaultAsync();
+        _loanAccountId = await db.LoanAccounts.AsNoTracking().Where(a => a.ApplicationId == ApplicationId).Select(a => (int?)a.Id).FirstOrDefaultAsync();
     }
 
     // ---------------------------------------------------------------------
@@ -1561,18 +1850,8 @@ else
             db.Disbursements.Add(disbursement);
         }
 
-        disbursement.Type = _disbursement.Type;
-        disbursement.BeneficiaryName = _disbursement.BeneficiaryName;
-        disbursement.BeneficiaryAccount = _disbursement.BeneficiaryAccount;
-        disbursement.PaymentMode = _disbursement.PaymentMode;
-        disbursement.ValueDate = _disbursement.ValueDate;
-        disbursement.Utr = _disbursement.Utr;
-        disbursement.FirstEmiDate = _disbursement.FirstEmiDate;
-        disbursement.EmiDayOfMonth = _disbursement.EmiDayOfMonth;
-        disbursement.DisburseFromAccount = _disbursement.DisburseFromAccount;
-        disbursement.TradeAdvance = _disbursement.TradeAdvance;
-        disbursement.FirstEmiOverride = _disbursement.FirstEmiOverride;
-        disbursement.EmiRoundedTo = _disbursement.EmiRoundedTo;
+        // Payee, amount and EMI fields: only while the payment is still being prepared (the stored state decides, not the page's).
+        DisbursementWorkflow.ApplyPageEdits(disbursement, _disbursement);
         disbursement.WelcomeLetterFilePath = _disbursement.WelcomeLetterFilePath;
         disbursement.DisbursementMemoFilePath = _disbursement.DisbursementMemoFilePath;
         disbursement.WelcomeSmsStatus = _disbursement.WelcomeSmsStatus;
@@ -1624,15 +1903,20 @@ else
             db.DownPaymentRecords.Add(downPayment);
         }
 
-        downPayment.AmountReceived = _downPayment.AmountReceived;
-        downPayment.ReceiptNo = _downPayment.ReceiptNo;
-        downPayment.ReceivedDate = _downPayment.ReceivedDate;
+        if (disbursement.PayoutStatus != DisbursementWorkflow.Released)
+        {
+            downPayment.AmountReceived = _downPayment.AmountReceived;
+            downPayment.ReceiptNo = _downPayment.ReceiptNo;
+            downPayment.ReceivedDate = _downPayment.ReceivedDate;
+        }
 
         // Checklist and PDD rows are seeded, never added or removed by the officer, so these are
         // straight field updates rather than the insert/update/delete diff the earlier stages need.
         var storedChecklist = await db.PostSanctionChecklists
             .Where(c => c.ApplicationId == ApplicationId).ToListAsync();
 
+        await Tenant.EnsureLoadedAsync();
+        var today = DisbursementWorkflow.TodayIst();
         foreach (var row in _checklist)
         {
             var target = storedChecklist.FirstOrDefault(c => c.Id == row.Id);
@@ -1641,9 +1925,13 @@ else
                 continue;
             }
 
-            target.Flag = row.Flag;
-            target.ClearedOn = row.ClearedOn;
-            target.Remarks = row.Remarks;
+            var before = target.Flag;
+            if (DisbursementWorkflow.ApplyChecklistEdit(target, row, disbursement.PayoutStatus, db.IsElevatedUser, Tenant.UserId, today)
+                && before != target.Flag)
+            {
+                DisbursementWorkflow.Log(db, ApplicationId, target.Flag == "Cleared" ? "ChecklistCleared" : "ChecklistReopened",
+                    Tenant.UserId, Tenant.DisplayName, target.Item);
+            }
         }
 
         var storedPdds = await db.Pdds.Where(p => p.ApplicationId == ApplicationId).ToListAsync();

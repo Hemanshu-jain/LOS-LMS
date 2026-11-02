@@ -619,3 +619,101 @@ select.field-input {
     color: #7a4b06;
     margin: 4px 0 0;
 }
+
+/* ---------- Payment to the payee ---------- */
+.pay-status {
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #fff4d6;
+    color: #6b4e00;
+}
+
+.pay-status.pay-approved { background: #e3ecf8; color: #1f3a5f; }
+.pay-status.pay-released { background: #e3f4e6; color: #1d6b2c; }
+
+.pay-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    counter-reset: pay;
+}
+
+.pay-steps li {
+    counter-increment: pay;
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid #d8dbe1;
+    border-radius: 14px;
+    color: #5b5b5b;
+    background: #fff;
+}
+
+.pay-steps li::before { content: counter(pay) ". "; }
+.pay-steps li.is-done { border-color: #b9dfc0; background: #e3f4e6; color: #1d6b2c; }
+.pay-steps li.is-done::before { content: "✓ "; }
+.pay-steps li.is-current { border-color: #1f3a5f; color: #1f3a5f; font-weight: 600; }
+
+.pay-summary {
+    display: grid;
+    grid-template-columns: minmax(120px, max-content) 1fr;
+    gap: 6px 14px;
+    margin: 0 0 10px;
+    font-size: 12.5px;
+}
+
+.pay-summary dt { color: #6b6b6b; }
+.pay-summary dd { margin: 0; overflow-wrap: anywhere; }
+
+.pay-check { font-weight: 600; margin-right: 8px; }
+.pay-check-verified { color: #1d6b2c; }
+.pay-check-mismatch, .pay-check-failed { color: #9a2a1f; }
+.pay-check-notchecked { color: #6b4e00; }
+
+.pay-missing {
+    background: #fff8e6;
+    border: 1px solid #f0dca8;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    margin-bottom: 10px;
+}
+
+.pay-missing ul { margin: 4px 0 0; padding-left: 18px; }
+
+.pay-confirm {
+    border: 1px solid #c9d6ea;
+    background: #f5f8fc;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+}
+
+.pay-withdraw {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.pay-withdraw .field-input { flex: 1 1 220px; }
+
+.pay-error {
+    background: #fdecea;
+    border: 1px solid #f3c1bb;
+    color: #8a1f14;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    margin-bottom: 10px;
+}
+
+.pay-history { font-size: 12px; }
+.pay-history summary { cursor: pointer; color: #1f3a5f; }
+.pay-history ul { margin: 6px 0 0; padding-left: 18px; }
+.pay-history li { margin-bottom: 3px; }
