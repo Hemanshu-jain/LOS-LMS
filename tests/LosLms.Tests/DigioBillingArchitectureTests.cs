@@ -35,7 +35,7 @@ public class DigioBillingArchitectureTests
 
     private static IEnumerable<(string File, string Call, string Args)> Calls(string pattern)
     {
-        var skip = new[] { Path.Combine("Services", "Integrations", "DigioClient.cs"), "obj", "bin", "Migrations" };
+        var skip = new[] { Path.Combine("Services", "Digio", "DigioClient.cs"), "obj", "bin", "Migrations" };
         foreach (var file in Directory.EnumerateFiles(AppRoot(), "*.*", SearchOption.AllDirectories).Where(f => f.EndsWith(".cs") || f.EndsWith(".razor")))
         {
             if (skip.Any(s => file.Contains(s)))
