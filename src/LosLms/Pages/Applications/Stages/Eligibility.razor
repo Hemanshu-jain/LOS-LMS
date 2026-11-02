@@ -513,14 +513,21 @@ else
 
     private static readonly string[] PslOptions = { Classification.PslYes, Classification.PslNo };
 
-    private static readonly string[] PslSubOptions =
-        { "Transport Sector - CV", "Agriculture", "MSME", "Other" };
+    // The three lists below come from the company's own lists (Settings → Classification Lists), seeded with these same values.
+    // A value already stored on the file stays selectable even if it has since been removed from the list.
+    private List<string> PslSubOptions = new(LookupKind.Defaults[LookupKind.PslSub]);
+    private List<string> CoLendingOptions = new(LookupKind.Defaults[LookupKind.CoLendingPartner]);
+    private List<string> EndUseOptions = new(LookupKind.Defaults[LookupKind.EndUse]);
 
-    private static readonly string[] CoLendingOptions =
-        { "None", "HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank" };
-
-    private static readonly string[] EndUseOptions =
-        { "Fleet expansion", "Vehicle replacement", "New business setup", "Working capital", "Other" };
+    private static async Task<List<string>> ClassificationListAsync(LosDbContext db, int companyId, string kind, string? current)
+    {
+        var names = await db.LookupValues.AsNoTracking()
+            .Where(l => l.CompanyId == companyId && l.Kind == kind && l.IsActive)
+            .OrderBy(l => l.Id).Select(l => l.Name).ToListAsync();
+        if (names.Count == 0) { names = new List<string>(LookupKind.Defaults[kind]); }
+        if (!string.IsNullOrWhiteSpace(current) && !names.Contains(current, StringComparer.OrdinalIgnoreCase)) { names.Insert(0, current); }
+        return names;
+    }
 
     private static readonly string[] RtrOptions = { "Regular", "Irregular", "Overdue" };
 
@@ -617,6 +624,10 @@ else
         {
             await db.SaveChangesAsync();
         }
+
+        PslSubOptions = await ClassificationListAsync(db, _application!.CompanyId, LookupKind.PslSub, _classification.PslSub);
+        CoLendingOptions = await ClassificationListAsync(db, _application.CompanyId, LookupKind.CoLendingPartner, _classification.CoLendingPartner);
+        EndUseOptions = await ClassificationListAsync(db, _application.CompanyId, LookupKind.EndUse, _classification.EndUse);
 
         _loans = await db.ExistingLoans.AsNoTracking()
             .Where(l => l.ApplicationId == ApplicationId)

@@ -1044,7 +1044,9 @@ else
             return;
         }
 
-        var pdf = CamPdf.Build(_application, _cam);
+        await using var classDb = await DbFactory.CreateDbContextAsync();
+        var classification = await classDb.Classifications.AsNoTracking().FirstOrDefaultAsync(c => c.ApplicationId == ApplicationId);
+        var pdf = CamPdf.Build(_application, _cam, classification);
 
         using var stream = new MemoryStream(pdf);
         using var streamReference = new DotNetStreamReference(stream);

@@ -1262,16 +1262,16 @@ namespace LosLms.Migrations
 
                     b.Property<string>("CoLendingPartner")
                         .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("EndUse")
                         .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("varchar(60)");
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
 
                     b.Property<decimal?>("PrioritySectorAmount")
                         .HasPrecision(18, 2)
@@ -1285,8 +1285,8 @@ namespace LosLms.Migrations
                         .HasDefaultValue("No - Non-Priority Sector");
 
                     b.Property<string>("PslSub")
-                        .HasMaxLength(40)
-                        .HasColumnType("varchar(40)");
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
 
                     b.Property<decimal>("RiskSharing")
                         .HasPrecision(5, 2)

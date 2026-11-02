@@ -23,15 +23,15 @@ public class Classification
     [MaxLength(40)]
     public string Psl { get; set; } = PslNo;
 
-    [MaxLength(40)]
+    [MaxLength(120)]
     public string? PslSub { get; set; }
 
     public decimal RiskSharing { get; set; }
 
-    [MaxLength(60)]
+    [MaxLength(120)]
     public string CoLendingPartner { get; set; } = string.Empty;
 
-    [MaxLength(60)]
+    [MaxLength(120)]
     public string EndUse { get; set; } = string.Empty;
 
     public decimal? PrioritySectorAmount { get; set; }

@@ -388,6 +388,22 @@
                            OnSaved="ShowToastAsync" />
             }
 
+            @if (_activeTab == ClassificationListsTab)
+            {
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.PslSub"
+                           Title="Priority-sector sub-categories" ItemNoun="sub-category"
+                           Description="The choices for 'PSL sub-category' on the Eligibility stage's Borrower Classification, offered when a loan counts as priority sector."
+                           OnSaved="ShowToastAsync" />
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.CoLendingPartner"
+                           Title="Co-lending partners" ItemNoun="co-lending partner"
+                           Description="The banks or institutions you co-lend with. 'None' means the loan is on your own book. Offered as 'Co-lending partner' on Borrower Classification."
+                           OnSaved="ShowToastAsync" />
+                <LookupTab CompanyId="_company.Id" Kind="@LookupKind.EndUse"
+                           Title="End use of funds" ItemNoun="end use"
+                           Description="What the borrower will use the money for. Offered as 'End use of funds' on Borrower Classification and printed on the CAM."
+                           OnSaved="ShowToastAsync" />
+            }
+
             @if (_activeTab == SchemeChargesTab)
             {
                 <SchemeChargesTab CompanyId="_company.Id" OnSaved="ShowToastAsync" />
@@ -439,13 +455,14 @@
     private const string SourcingTab = "Sourcing Channels";
     private const string SchemeTab = "Schemes";
     private const string SchemeChargesTab = "Scheme Charges";
+    private const string ClassificationListsTab = "Classification Lists";
     private const string RcuVendorTab = "RCU Vendors";
     private const string DisbursementAccountsTab = "Disbursement Accounts";
     private const string UsersTab = "User Management";
     private const string ToolsTabName = "Usage & Updates";
 
     private static readonly string[] Tabs =
-        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, RcuVendorTab, DisbursementAccountsTab, UsersTab, ToolsTabName };
+        { ProfileTab, BranchesTab, PolicyTab, VehicleTab, SourcingTab, SchemeTab, SchemeChargesTab, ClassificationListsTab, RcuVendorTab, DisbursementAccountsTab, UsersTab, ToolsTabName };
 
     private string _activeTab = ProfileTab;
     private Company? _company;
