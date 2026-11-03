@@ -57,10 +57,11 @@ public sealed class CompanyProvisioningService(
     PasswordVault vault,
     ILogger<CompanyProvisioningService> logger)
 {
+    /// <param name="mustChangePassword">The admin's password is a temporary one handed over by the vendor: the first sign-in must replace it.</param>
     /// <param name="requireEmailConfirmation">Public self-sign-up passes true: the owner can't sign in until they confirm the
     /// emailed link. The demo seeder and other trusted callers leave it false (confirmed from the start).</param>
     public async Task<CompanyProvisioningResult> ProvisionCompanyAsync(
-        CompanyProfile profile, AdminAccount admin, bool requireEmailConfirmation = false)
+        CompanyProfile profile, AdminAccount admin, bool requireEmailConfirmation = false, bool mustChangePassword = false)
     {
         var email = admin.Email.Trim();
 
@@ -110,7 +111,7 @@ public sealed class CompanyProvisioningService(
             DisplayName = admin.DisplayName.Trim(),
             CompanyId = companyId,
             IsActive = true,
-            MustChangePassword = false,
+            MustChangePassword = mustChangePassword, // a vendor-created company shares a temporary password: first sign-in forces a new one
         };
 
         var result = await userManager.CreateAsync(user, admin.Password);

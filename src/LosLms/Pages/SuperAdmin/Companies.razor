@@ -8,17 +8,53 @@
 @inject ActingCompanyStore Store
 @inject TenantContext Tenant
 @inject NavigationManager Nav
+@inject CompanyProvisioningService Provisioning
+@inject AuditService Audit
+@inject IJSRuntime JS
 
 <PageTitle>Companies · LOS/LMS</PageTitle>
 
 @* SuperAdmin landing: pick a company to open its dashboard. Choosing one scopes the whole app to that
    company (TenantContext.ActingCompanyId), so every screen then shows only that company's data. *@
 
-<div class="sa-companies">
+<div class="sa-page"><div class="sa-companies">
     <div class="sa-head">
         <h1>Companies</h1>
         <p>Choose a company to open. You'll see its dashboard exactly as its own admins do.</p>
+        <button type="button" class="sa-create-btn" @onclick="() => _showCreate = !_showCreate">+ Create company</button>
     </div>
+
+    @if (_created is not null)
+    {
+        @* Shown ONCE: the temporary password is not kept anywhere you can read it again. *@
+        <div class="sa-created" role="status">
+            <strong>Company created: @_created.Name (@_created.Code)</strong>
+            <p>Share these with the client. They must choose a new password at their first sign-in.</p>
+            <dl>
+                <dt>Sign-in (email)</dt><dd>@_created.Email</dd>
+                <dt>Temporary password</dt><dd><code>@_created.Password</code></dd>
+            </dl>
+            <button type="button" class="sa-copy" @onclick="CopyAsync">@(_copied ? "Copied" : "Copy sign-in and password")</button>
+            <button type="button" class="sa-copy" @onclick="DismissCreated">I have shared it</button>
+            <p class="sa-warn">This password will not be shown again.</p>
+        </div>
+    }
+
+    @if (_showCreate)
+    {
+        <form class="sa-form" @onsubmit="CreateAsync" @onsubmit:preventDefault>
+            <h2>Create company</h2>
+            <p class="sa-muted">Creates the company with the standard defaults and its first Admin, with a generated temporary password.</p>
+            @if (_createError is not null) { <p class="sa-error" role="alert">@_createError</p> }
+            <label>Company name<input @bind="_name" maxlength="200" /></label>
+            <label>Contact email<input type="email" @bind="_contactEmail" /></label>
+            <label>Contact phone<input @bind="_phone" /></label>
+            <label>Address<input @bind="_address" maxlength="400" /></label>
+            <label>First Admin: full name<input @bind="_adminName" /></label>
+            <label>First Admin: email (their sign-in)<input type="email" @bind="_adminEmail" /></label>
+            <button type="submit" class="sa-create-btn" disabled="@_creating">@(_creating ? "Creating…" : "Create company and generate password")</button>
+        </form>
+    }
 
     @if (_companies is null)
     {
@@ -48,9 +84,10 @@
             }
         </div>
     }
-</div>
+</div></div>
 
 <style>
+    .sa-page { min-height: 100vh; background: #eef1f5; color: #1a1f29; }
     .sa-companies { max-width: 1000px; margin: 0 auto; padding: 32px 16px 64px; }
     .sa-head h1 { font-size: 1.6rem; margin: 0 0 4px; }
     .sa-head p { color: #5b6472; margin: 0 0 24px; }
@@ -72,11 +109,80 @@
     }
     .sa-name { font-size: 1.1rem; font-weight: 600; color: #1a1f29; }
     .sa-meta { font-size: .82rem; color: #5b6472; }
+    .sa-create-btn, .sa-copy { padding: 9px 14px; border: 1px solid #1a1f29; border-radius: 8px; background: #1a1f29; color: #fff; font-weight: 600; cursor: pointer; margin-right: 8px; }
+    .sa-copy { background: #fff; color: #1a1f29; }
+    .sa-form { display: grid; gap: 10px; max-width: 520px; padding: 18px; margin-bottom: 24px; border: 1px solid #e2e6ec; border-radius: 12px; background: #fff; }
+    .sa-form label { display: grid; gap: 4px; font-size: .85rem; color: #1a1f29; }
+    .sa-form input { padding: 8px 10px; border: 1px solid #cfd5df; border-radius: 6px; font: inherit; }
+    .sa-form h2 { margin: 0; font-size: 1.1rem; }
+    .sa-created { padding: 16px 18px; margin-bottom: 24px; border: 2px solid #1f7a3d; border-radius: 12px; background: #f1faf4; }
+    .sa-created dl { display: grid; grid-template-columns: 170px 1fr; gap: 6px 12px; margin: 10px 0; }
+    .sa-created dt { color: #5b6472; } .sa-created dd { margin: 0; } .sa-created code { font-size: 1.05rem; user-select: all; }
+    .sa-warn { color: #9a3412; font-weight: 600; margin: 10px 0 0; }
+    .sa-error { color: #b42318; }
     .sa-open { margin-top: 8px; font-size: .85rem; font-weight: 600; color: #1a1f29; }
 </style>
 
 @code {
     private List<CompanyRow>? _companies;
+
+    private bool _showCreate, _creating, _copied;
+    private string _name = "", _contactEmail = "", _phone = "", _address = "", _adminName = "", _adminEmail = "";
+    private string? _createError;
+    private CreatedCompany? _created;
+
+    private sealed record CreatedCompany(string Name, string Code, string Email, string Password);
+
+    /// <summary>SuperAdmin only (the page is): creates a tenant exactly like self-sign-up does (same defaults), with a temporary password the first sign-in must replace.</summary>
+    private async Task CreateAsync()
+    {
+        _createError = null;
+        await Tenant.EnsureLoadedAsync();
+        if (!Tenant.IsSuperAdmin) { return; }
+
+        if (new[] { _name, _contactEmail, _phone, _address, _adminName, _adminEmail }.Any(string.IsNullOrWhiteSpace))
+        {
+            _createError = "Fill in every field.";
+            return;
+        }
+
+        _creating = true;
+        try
+        {
+            var password = TempPassword.Generate();
+            var result = await Provisioning.ProvisionCompanyAsync(
+                new CompanyProfile(_name, _contactEmail, _phone, _address), new AdminAccount(_adminName, _adminEmail, password),
+                requireEmailConfirmation: false, mustChangePassword: true);
+            if (!result.Succeeded)
+            {
+                _createError = string.Join(" ", result.Errors);
+                return;
+            }
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var company = await db.Companies.AsNoTracking().FirstAsync(c => c.Id == result.CompanyId);
+            await Audit.WriteAsync("company.created", result.CompanyId, Tenant.UserId, $"Company {company.Name} ({company.Code}) created by the vendor; first Admin {_adminEmail.Trim()}");
+            _created = new CreatedCompany(company.Name, company.Code ?? "", _adminEmail.Trim(), password);
+            _copied = false;
+            _showCreate = false;
+            _name = _contactEmail = _phone = _address = _adminName = _adminEmail = "";
+            await LoadAsync();
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private async Task CopyAsync()
+    {
+        if (_created is null) { return; }
+
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", $"Sign in: {_created.Email}\nTemporary password: {_created.Password}");
+        _copied = true;
+    }
+
+    private void DismissCreated() => _created = null;
 
     private sealed record CompanyRow(int Id, string Name, string? Code, string? ContactEmail, bool PropertyEnabled);
 
@@ -98,6 +204,11 @@
     protected override async Task OnInitializedAsync()
     {
         await Tenant.EnsureLoadedAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
         await using var db = await DbFactory.CreateDbContextAsync();
 
         // Blank seed company (name "") is the internal placeholder — never a real tenant, so hide it.
