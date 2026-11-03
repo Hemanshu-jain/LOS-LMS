@@ -1,0 +1,152 @@
+@page "/account/register/google"
+@using System.ComponentModel.DataAnnotations
+@using LosLms.Models
+@using LosLms.Services
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
+@attribute [AllowAnonymous]
+@inject SignInManager<ApplicationUser> SignInManager
+@inject GoogleAccountService Accounts
+@inject IOptions<WebOptions> WebOptions
+@inject NavigationManager Navigation
+
+<PageTitle>Create your company · LOS/LMS</PageTitle>
+
+<RequireStaticRender />
+
+@* Step 2 of "Sign up with Google": Google has already verified the email, so only the company's details are asked for. The Google answer
+   waits in Identity's short-lived external cookie. The new Admin has no password they know (they sign in with Google, or use "Forgot password"). *@
+
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-head">
+            <span class="auth-system">LOS/LMS</span>
+            <h1 class="auth-title">Create your company</h1>
+            <p class="auth-sub">Signed in with Google as <strong>@_google?.Email</strong>. Add your company's details to finish.</p>
+        </div>
+
+        @if (_google is null)
+        {
+            <p class="inline-error" role="alert">The Google sign-in expired. <a href="/account/register">Start again</a>.</p>
+        }
+        else
+        {
+            <EditForm Model="Input" method="post" OnValidSubmit="CreateAsync" FormName="register-google">
+                <DataAnnotationsValidator />
+
+                @if (_errors.Count > 0)
+                {
+                    <div class="inline-error" role="alert">
+                        @foreach (var error in _errors) { <p>@error</p> }
+                    </div>
+                }
+
+                <div class="auth-field">
+                    <label class="auth-label" for="rg-company">Company name</label>
+                    <InputText id="rg-company" class="field-input" @bind-Value="Input.CompanyName" autocomplete="organization" />
+                    <ValidationMessage For="() => Input.CompanyName" class="auth-validation" />
+                </div>
+                <div class="auth-field">
+                    <label class="auth-label" for="rg-company-email">Company contact email</label>
+                    <InputText id="rg-company-email" type="email" class="field-input" @bind-Value="Input.CompanyEmail" autocomplete="email" />
+                    <ValidationMessage For="() => Input.CompanyEmail" class="auth-validation" />
+                </div>
+                <div class="auth-field">
+                    <label class="auth-label" for="rg-company-phone">Company contact phone</label>
+                    <InputText id="rg-company-phone" class="field-input" @bind-Value="Input.CompanyPhone" autocomplete="tel" />
+                    <ValidationMessage For="() => Input.CompanyPhone" class="auth-validation" />
+                </div>
+                <div class="auth-field">
+                    <label class="auth-label" for="rg-company-address">Company address</label>
+                    <InputText id="rg-company-address" class="field-input" @bind-Value="Input.CompanyAddress" autocomplete="street-address" />
+                    <ValidationMessage For="() => Input.CompanyAddress" class="auth-validation" />
+                </div>
+                <div class="auth-field">
+                    <label class="auth-label" for="rg-name">Your full name</label>
+                    <InputText id="rg-name" class="field-input" @bind-Value="Input.DisplayName" autocomplete="name" />
+                    <ValidationMessage For="() => Input.DisplayName" class="auth-validation" />
+                </div>
+
+                <button type="submit" class="auth-submit">Create company</button>
+            </EditForm>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm] private GoogleRegisterInput Input { get; set; } = new();
+
+    private readonly List<string> _errors = new();
+    private GoogleIdentity? _google;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!WebOptions.Value.AllowSelfRegistration)
+        {
+            Navigation.NavigateTo("/account/login", forceLoad: true);
+            return;
+        }
+
+        var external = await HttpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
+        _google = external.Succeeded ? GoogleLoginEndpoints.Identity(external.Principal) : null;
+        if (_google is { EmailVerified: false })
+        {
+            _google = null;
+        }
+
+        if (_google is not null && string.IsNullOrEmpty(Input.CompanyEmail))
+        {
+            Input.CompanyEmail = _google.Email;
+            Input.DisplayName = _google.Name ?? string.Empty;
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        _errors.Clear();
+        var external = await HttpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
+        _google = external.Succeeded ? GoogleLoginEndpoints.Identity(external.Principal) : null;
+        if (_google is null)
+        {
+            _errors.Add("The Google sign-in expired. Start again.");
+            return;
+        }
+
+        var result = await Accounts.SignUpAsync(_google,
+            new CompanyProfile(Input.CompanyName, Input.CompanyEmail, Input.CompanyPhone, Input.CompanyAddress), Input.DisplayName);
+        if (!result.Succeeded || result.User is null)
+        {
+            _errors.AddRange(result.Errors);
+            return;
+        }
+
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        await SignInManager.SignInAsync(result.User, isPersistent: false);
+        Navigation.NavigateTo("/settings", forceLoad: true);
+    }
+
+    private sealed class GoogleRegisterInput
+    {
+        [Required(ErrorMessage = "Enter your company name.")]
+        [StringLength(200)]
+        public string CompanyName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter a company contact email.")]
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string CompanyEmail { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter a company contact phone.")]
+        [Phone(ErrorMessage = "Enter a valid phone number.")]
+        public string CompanyPhone { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your company address.")]
+        [StringLength(400)]
+        public string CompanyAddress { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your full name.")]
+        public string DisplayName { get; set; } = string.Empty;
+    }
+}

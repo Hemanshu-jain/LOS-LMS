@@ -130,6 +130,8 @@ public class LosDbContext : IdentityDbContext<ApplicationUser>, IDataProtectionK
 
     public DbSet<ApiRate> ApiRates => Set<ApiRate>();
 
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+
     public DbSet<ApiUsageLog> ApiUsageLogs => Set<ApiUsageLog>();
 
     public DbSet<DigioRequest> DigioRequests => Set<DigioRequest>();

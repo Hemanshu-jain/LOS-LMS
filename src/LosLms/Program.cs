@@ -158,6 +158,27 @@ builder.Services.AddScoped<SignatureDetectionService>();
 // Provisions a brand-new tenant (company + owning admin) for the public sign-up page and the demo
 // seeder. Scoped, because it creates the admin through the scoped UserManager.
 builder.Services.AddScoped<CompanyProvisioningService>();
+builder.Services.AddSingleton<AuditService>();
+builder.Services.AddScoped<GoogleAccountService>();
+
+// "Continue with Google": only wired when the owner has put a client id + secret in the environment (Authentication__Google__ClientId / __ClientSecret).
+// Without them the button is hidden and the /signin-google callback does not exist.
+var googleOptions = builder.Configuration.GetSection("Authentication:Google").Get<GoogleLoginOptions>() ?? new GoogleLoginOptions();
+builder.Services.AddSingleton(Microsoft.Extensions.Options.Options.Create(googleOptions));
+if (googleOptions.Enabled)
+{
+    builder.Services.AddAuthentication().AddGoogle(GoogleLoginOptions.Provider, o =>
+    {
+        o.ClientId = googleOptions.ClientId!;
+        o.ClientSecret = googleOptions.ClientSecret!;
+        o.CallbackPath = "/signin-google";
+        o.Scope.Add("openid");
+        o.Scope.Add("email");
+        o.Scope.Add("profile");
+        Microsoft.AspNetCore.Authentication.ClaimActionCollectionMapExtensions.MapJsonKey(o.ClaimActions, "email_verified", "email_verified"); // Google's own "this address is verified"
+        o.SaveTokens = false;
+    });
+}
 
 // Provider (Digio) API metering + postpaid monthly billing: usage log, rate card, invoices and the
 // pause-after-grace gate. Nothing calls a provider yet; the service is ready for when keys arrive.
@@ -519,6 +540,7 @@ app.MapDigioHarness(); // Phase 0 throwaway: Development + SuperAdmin only; abse
 #endif
 
 app.UseAuthentication();
+app.MapGoogleLogin();
 
 // Maintenance gate. When maintenance mode is on, everyone except a signed-in SuperAdmin gets the branded
 // maintenance page (503 + Retry-After) instead of the app, so planned downtime reads as deliberate rather
