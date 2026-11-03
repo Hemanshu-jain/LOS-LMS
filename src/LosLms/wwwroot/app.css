@@ -1246,3 +1246,6 @@ a.auth-submit {
 .tg-box { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 4px 0 2px; }
 .tg-link { text-decoration: none; display: inline-block; }
 .tg-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+
+/* While a table column border is being dragged (js/table-resize.js): no text selection, resize cursor everywhere. */
+body.col-resizing { cursor: col-resize; user-select: none; }

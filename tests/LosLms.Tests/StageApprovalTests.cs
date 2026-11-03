@@ -98,6 +98,62 @@ public sealed class StageApprovalTests : IDisposable
         Assert.Equal(5, (await db.Applications.AsNoTracking().SingleAsync(a => a.Id == "A2")).CurrentStage);
     }
 
+    [Fact]
+    public async Task ResendAsync_WhenAlreadyPending_NudgesExistingRequest()
+    {
+        using var db = Officer();
+        await StageApprovalService.SubmitAsync(db, _notifier, "A1", "officer", "Initial request");
+
+        var outcome = await StageApprovalService.ResendAsync(db, _notifier, "A1", "officer");
+        Assert.Equal(StageApprovalService.Outcome.Pending, outcome);
+
+        var req = await db.AdminRequests.SingleAsync(r => r.ApplicationId == "A1");
+        Assert.Equal(AdminRequest.Pending, req.Status);
+        Assert.Contains("Re-sent", req.RequestReason);
+    }
+
+    [Fact]
+    public async Task ResendAsync_AfterDenial_RaisesNewRequestFlaggedAsRetriggered()
+    {
+        using (var db = Officer())
+        {
+            await StageApprovalService.SubmitAsync(db, _notifier, "A1", "officer", "First request");
+        }
+
+        // Admin denies it
+        using (var admin = Seeding())
+        {
+            var req = await admin.AdminRequests.SingleAsync(r => r.ApplicationId == "A1");
+            req.Status = AdminRequest.Denied;
+            req.ReviewNote = "Please fix address proof";
+            await admin.SaveChangesAsync();
+        }
+
+        using (var db = Officer())
+        {
+            // Officer checks state
+            var (waiting, deniedWhy) = await StageApprovalService.StateAsync(db, "A1");
+            Assert.False(waiting);
+            Assert.Equal("Please fix address proof", deniedWhy);
+
+            // Officer re-sends request
+            var outcome = await StageApprovalService.ResendAsync(db, _notifier, "A1", "officer", "Fixed address proof");
+            Assert.Equal(StageApprovalService.Outcome.Pending, outcome);
+
+            // State is now waiting again
+            var (waitingAfter, deniedAfter) = await StageApprovalService.StateAsync(db, "A1");
+            Assert.True(waitingAfter);
+            Assert.Null(deniedAfter);
+
+            // There are now two requests: one Denied and one Pending with [Re-triggered]
+            var allReqs = await db.AdminRequests.AsNoTracking().Where(r => r.ApplicationId == "A1").OrderBy(r => r.Id).ToListAsync();
+            Assert.Equal(2, allReqs.Count);
+            Assert.Equal(AdminRequest.Denied, allReqs[0].Status);
+            Assert.Equal(AdminRequest.Pending, allReqs[1].Status);
+            Assert.Contains("[Re-triggered]", allReqs[1].RequestReason);
+        }
+    }
+
     private sealed class Auth(System.Security.Claims.ClaimsPrincipal user) : Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider
     {
         public override Task<Microsoft.AspNetCore.Components.Authorization.AuthenticationState> GetAuthenticationStateAsync() =>

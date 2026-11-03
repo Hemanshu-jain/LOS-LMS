@@ -51,6 +51,38 @@ public static class StageApprovalService
             : Outcome.AlreadyWaiting;
     }
 
+    /// <summary>
+    /// Re-sends or re-raises the approval request after denial or while pending.
+    /// If a request is already pending, nudges it to the top of the Admin Inbox.
+    /// If the request was denied, raises a new pending request marked as re-triggered (see <see cref="PendingApprovals.RetriggerCountsAsync"/>).
+    /// </summary>
+    public static async Task<Outcome> ResendAsync(LosDbContext db, AdminRequestNotifier notifier, string applicationId, string? userId, string? reason = null)
+    {
+        var application = await db.Applications.FirstAsync(a => a.Id == applicationId);
+        if (application.CurrentStage >= VerificationStage)
+        {
+            return Outcome.Approved;
+        }
+
+        var isPending = await db.AdminRequests.AnyAsync(r => r.ApplicationId == applicationId
+            && r.RequestType == AdminRequest.ProceedApproval
+            && r.Status == AdminRequest.Pending);
+
+        if (isPending)
+        {
+            await GateCheckService.ResendRequestAsync(db, notifier, applicationId, AdminRequest.ProceedApproval, userId);
+            return Outcome.Pending;
+        }
+
+        var fullReason = string.IsNullOrWhiteSpace(reason)
+            ? "[Re-triggered] Stages 1 and 2 re-submitted for approval."
+            : (reason.StartsWith("[Re-triggered]", StringComparison.OrdinalIgnoreCase) ? reason : $"[Re-triggered] {reason}");
+
+        return await GateCheckService.RaiseRequestAsync(db, notifier, applicationId, AdminRequest.ProceedApproval, userId, fullReason)
+            ? Outcome.Pending
+            : Outcome.AlreadyWaiting;
+    }
+
     /// <summary>An Admin approved the request: the application moves to Verification.</summary>
     public static async Task ApplyApprovalAsync(LosDbContext db, string applicationId)
     {

@@ -60,6 +60,10 @@
                     <Icon Name="columns" Size="14" /> Columns
                 </button>
 
+                <button type="button" class="ghost-button" title="Put every column back to its original width" @onclick="ResetColumnWidthsAsync">
+                    Reset columns
+                </button>
+
                 <button type="button" class="ghost-button" @onclick="() => ExportCsvAsync(filtered)">
                     <Icon Name="download" Size="14" /> Export
                 </button>
@@ -220,7 +224,7 @@
 
             @* ---------- Table ---------- *@
             <div class="table-scroll">
-                <table class="applications-table density-compact">
+                <table class="applications-table density-compact" data-resizable="applications">
                     <thead>
                         <tr>
                             <th class="checkbox-header" scope="col">
@@ -228,11 +232,11 @@
                                        checked="@AllPagedSelected(paged)"
                                        @onchange="() => ToggleAllOnPage(paged)" />
                             </th>
-                            <SortableHeader Label="App ID" SortKeyName="id"
+                            <SortableHeader Label="App ID" SortKeyName="id" ColumnKey="id"
                                             CurrentKey="@_sortKey" SortDir="@_sortDir" OnSort="HandleSort" />
                             @foreach (var column in ColumnDefs.Where(c => _visibleColumns.Contains(c.Key)))
                             {
-                                <SortableHeader Label="@column.Label" SortKeyName="@column.Key"
+                                <SortableHeader Label="@column.Label" SortKeyName="@column.Key" ColumnKey="@column.Key"
                                                 Align="@(column.Key == "amount" ? "right" : "left")"
                                                 CurrentKey="@_sortKey" SortDir="@_sortDir" OnSort="HandleSort" />
                             }
@@ -291,6 +295,19 @@
                                                 </span>
                                             }
                                         </div>
+                                    </td>
+                                }
+                                @if (_visibleColumns.Contains("requests"))
+                                {
+                                    <td class="cell-requests" @onclick:stopPropagation="true">
+                                        @if (_pendingRequests.TryGetValue(row.Id, out var reqSummary) && reqSummary.Count > 0)
+                                        {
+                                            <a class="request-bubble"
+                                               href="@LoanStages.Path(row.Id, reqSummary.Stage)"
+                                               title="@reqSummary.Tooltip">
+                                                <span class="request-stage-num">@reqSummary.Stage</span>@if (reqSummary.Count > 1) { <sup class="request-count-sup">@reqSummary.Count</sup> }
+                                            </a>
+                                        }
                                     </td>
                                 }
                             </tr>
@@ -516,6 +533,7 @@
         ("amount", "Loan amount"),
         ("status", "Status · stage"),
         ("queueDate", "Queue date"),
+        ("requests", "Approval"),
     };
 
     /// <summary>
@@ -620,11 +638,29 @@
     private ElementReference _drawerPanel;
     private bool _shouldFocusDrawer;
 
+    private sealed record AppRequestSummary(int Stage, int Count, string Tooltip);
+    private Dictionary<string, AppRequestSummary> _pendingRequests = new(StringComparer.Ordinal);
+
     // ---------------------------------------------------------------------
     // Lifecycle
     // ---------------------------------------------------------------------
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        Notifier.Changed += OnNotifierChangedAsync;
+        await LoadAsync();
+    }
+
+    private async Task ResetColumnWidthsAsync() => await JS.InvokeVoidAsync("lmsTableResize.reset", "applications");
+
+    private async Task OnNotifierChangedAsync(int companyId)
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadAsync();
+            StateHasChanged();
+        });
+    }
 
     /// <summary>
     /// Reads the whole applications table once per page load and filters in memory afterwards.
@@ -685,6 +721,26 @@
             .GroupBy(x => x.ApplicationId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.Pan!).ToList(), StringComparer.Ordinal);
 
+        var pendingRequests = await db.AdminRequests.AsNoTracking()
+            .Where(r => r.Status == AdminRequest.Pending)
+            .Select(r => new { r.ApplicationId, r.RequestType })
+            .ToListAsync();
+
+        _pendingRequests = pendingRequests
+            .GroupBy(r => r.ApplicationId)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var reqs = g.ToList();
+                    var app = _allRows.FirstOrDefault(a => a.Id == g.Key);
+                    var stage = PendingApprovals.StageOf(reqs.Select(r => r.RequestType), app?.CurrentStage ?? 1);
+                    var labels = reqs.Select(r => AdminRequest.LabelFor(r.RequestType)).Distinct();
+                    var tooltip = $"{reqs.Count} approval request{(reqs.Count == 1 ? "" : "s")} waiting for an Admin (first on Stage {stage}): {string.Join(", ", labels)}";
+                    return new AppRequestSummary(stage, reqs.Count, tooltip);
+                },
+                StringComparer.Ordinal);
+
         // Triage counts come from the whole dataset, unfiltered, matching the reference spec.
         // In production this belongs in a server-side aggregate query, not a client-side scan.
         _statusCounts = StatusOrder.ToDictionary(
@@ -703,6 +759,7 @@
 
     public void Dispose()
     {
+        Notifier.Changed -= OnNotifierChangedAsync;
         _searchDebounce?.Cancel();
         _searchDebounce?.Dispose();
     }
@@ -797,7 +854,7 @@
         DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out date);
 
-    private static int CompareRows(Application a, Application b, string key) => key switch
+    private int CompareRows(Application a, Application b, string key) => key switch
     {
         "amount" => a.LoanAmount.CompareTo(b.LoanAmount),
         "queueDate" => a.CreatedAt.CompareTo(b.CreatedAt),
@@ -806,6 +863,8 @@
         "product" => string.Compare(a.LoanProduct, b.LoanProduct, StringComparison.OrdinalIgnoreCase),
         "branch" => string.Compare(a.Branch, b.Branch, StringComparison.OrdinalIgnoreCase),
         "customer" => string.Compare(a.CustomerName, b.CustomerName, StringComparison.OrdinalIgnoreCase),
+        "requests" => (_pendingRequests.TryGetValue(a.Id, out var ra) ? ra.Count : 0)
+            .CompareTo(_pendingRequests.TryGetValue(b.Id, out var rb) ? rb.Count : 0),
         _ => 0,
     };
 

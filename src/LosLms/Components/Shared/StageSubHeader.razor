@@ -81,6 +81,9 @@
 {
     <div class="denied-banner" role="status">
         <span>Your bypass request was denied — @denied</span>
+        <button type="button" class="gate-request" disabled="@(!_interactive)" @onclick="RequestBypassAsync">
+            Re-send request
+        </button>
         <button type="button" class="denied-dismiss" @onclick="() => _denialDismissed = true">Dismiss</button>
     </div>
 }
@@ -104,7 +107,13 @@
             var r = request;
             <div class="admin-review-row">
                 <div class="admin-review-detail">
-                    <span class="admin-review-type">@AdminRequest.LabelFor(r.RequestType)</span>
+                    <span class="admin-review-type">
+                        @AdminRequest.LabelFor(r.RequestType)
+                        @if (_retriggerCounts.TryGetValue(r.Id, out var times))
+                        {
+                            <span class="admin-review-retrigger">&#8634; @PendingApprovals.RetriggerLabel(times)</span>
+                        }
+                    </span>
                     <span class="admin-review-meta">
                         requested by @(_requesterNames.GetValueOrDefault(r.RequestedByUserId ?? string.Empty) ?? "—")
                         on @r.RequestedAt.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture)
@@ -230,6 +239,7 @@
     private bool _rejectRequested;
     private string? _rejectDenied;
     private List<AdminRequest> _pending = new();
+    private Dictionary<int, int> _retriggerCounts = new();
     private Dictionary<string, string> _requesterNames = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _reviewNotes = new();
     private readonly Dictionary<int, string> _reviewErrors = new();
@@ -346,6 +356,8 @@
                 .OrderBy(r => r.Id)
                 .ToListAsync()
             : new List<AdminRequest>();
+
+        _retriggerCounts = await PendingApprovals.RetriggerCountsAsync(db, _pending);
 
         if (_pending.Count > 0)
         {

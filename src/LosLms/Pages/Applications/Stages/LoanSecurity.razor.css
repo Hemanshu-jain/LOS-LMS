@@ -536,3 +536,63 @@ select.field-input {
     margin-left: 6px;
     font-size: 11px;
 }
+
+/* Stage approval banner & re-send request button */
+.stage-approval-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin: 8px 0;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    flex-wrap: wrap;
+}
+
+.stage-approval-banner.is-waiting {
+    background: #fff4d6;
+    border: 1px solid #f0dca8;
+    color: #6b4e00;
+}
+
+.stage-approval-banner.is-denied {
+    background: #fdecea;
+    border: 1px solid #f3c1bb;
+    color: #8a1f14;
+}
+
+.stage-approval-text {
+    flex: 1 1 300px;
+    line-height: 1.4;
+}
+
+/* The same look as the stage header's primary button (navy, square, uppercase). */
+.btn-resend-approval {
+    height: 28px;
+    padding: 0 12px;
+    border: 1px solid #16304f;
+    background: #1f3a5f;
+    color: #fff;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    border-radius: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.btn-resend-approval:hover:not(:disabled) {
+    background: #16304f;
+}
+
+.btn-resend-approval:disabled {
+    border-color: #b9bfc9;
+    background: #e4e6e9;
+    color: #a7adb5;
+    cursor: not-allowed;
+}

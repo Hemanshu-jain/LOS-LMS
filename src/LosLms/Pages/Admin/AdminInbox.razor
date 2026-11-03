@@ -24,6 +24,9 @@
             <div>
                 <span class="system-label">LOS/LMS · Admin inbox</span>
                 <h1 class="inbox-title">
+                    <span class="inbox-title-icon" aria-hidden="true">
+                        <Icon Name="bell" Size="18" />
+                    </span>
                     Pending requests
                     @if (_pending.Count > 0)
                     {
@@ -81,6 +84,12 @@
                                 <span class="inbox-type inbox-type-@TypeClass(r.RequestType)">
                                     @AdminRequest.LabelFor(r.RequestType)
                                 </span>
+                                @if (_retriggerCounts.TryGetValue(r.Id, out var times))
+                                {
+                                    <span class="inbox-retrigger" title="@($"Raised again {times} time{(times == 1 ? "" : "s")} after a denial or a nudge from staff")">
+                                        &#8634; @PendingApprovals.RetriggerLabel(times)
+                                    </span>
+                                }
                             </td>
                             <td class="inbox-reason">@(string.IsNullOrWhiteSpace(r.RequestReason) ? "—" : r.RequestReason)</td>
                             <td>@(_names.GetValueOrDefault(r.RequestedByUserId ?? string.Empty) ?? "—")</td>
@@ -145,6 +154,7 @@
     private bool _loading = true;
     private List<AdminRequest> _pending = new();
     private List<AdminRequest> _decided = new();
+    private Dictionary<int, int> _retriggerCounts = new();
     private Dictionary<string, string> _names = new(StringComparer.Ordinal);
     private List<Company> _companies = new();
     private int? _companyFilter;
@@ -189,6 +199,8 @@
             .OrderByDescending(r => r.ReviewedAt)
             .Take(DecidedHistoryRows)
             .ToListAsync();
+
+        _retriggerCounts = await PendingApprovals.RetriggerCountsAsync(db, _pending);
 
         var userIds = _pending.Select(r => r.RequestedByUserId)
             .Concat(_decided.Select(r => r.RequestedByUserId))
