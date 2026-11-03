@@ -56,15 +56,27 @@ else
 
             @if (_waitingForApproval)
             {
-                <div role="status" style="margin:8px 0;padding:10px 14px;background:#fff4d6;border:1px solid #f0dca8;color:#6b4e00;font-size:12.5px">
-                    <strong>Waiting for Admin approval.</strong> Stages 1 and 2 are complete and the file has gone to an Admin. Verification opens here
-                    by itself the moment it is approved. Until then no outside checks are run for this application.
+                <div role="status" class="stage-approval-banner is-waiting">
+                    <div class="stage-approval-text">
+                        <strong>Waiting for Admin approval.</strong> Stages 1 and 2 are complete and the file has gone to an Admin. Verification opens here
+                        by itself the moment it is approved. Until then no outside checks are run for this application.
+                    </div>
+                    <button type="button" class="btn-resend-approval is-waiting" disabled="@_resendingApproval" @onclick="ResendApprovalAsync">
+                        <Icon Name="history" Size="12" />
+                        <span>@(_resendingApproval ? "Sending…" : "Send for approval again")</span>
+                    </button>
                 </div>
             }
             else if (_approvalDenied is { } deniedWhy)
             {
-                <div role="alert" style="margin:8px 0;padding:10px 14px;background:#fdecea;border:1px solid #f3c1bb;color:#8a1f14;font-size:12.5px">
-                    <strong>The Admin did not approve this file yet.</strong> @deniedWhy Fix what was asked, then complete Stage 2 again.
+                <div role="alert" class="stage-approval-banner is-denied">
+                    <div class="stage-approval-text">
+                        <strong>The Admin did not approve this file yet.</strong> @(deniedWhy.TrimEnd('.', ' ')). Fix what was asked, then request approval again.
+                    </div>
+                    <button type="button" class="btn-resend-approval" disabled="@_resendingApproval" @onclick="ResendApprovalAsync">
+                        <Icon Name="history" Size="12" />
+                        <span>@(_resendingApproval ? "Sending…" : "Request again")</span>
+                    </button>
                 </div>
             }
 
@@ -1680,6 +1692,28 @@ else
 
     private bool _waitingForApproval;
     private string? _approvalDenied;
+    private bool _resendingApproval;
+
+    private async Task ResendApprovalAsync()
+    {
+        _resendingApproval = true;
+        try
+        {
+            await Tenant.EnsureLoadedAsync();
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var customerName = _application?.CustomerName ?? "customer";
+            await StageApprovalService.ResendAsync(
+                db, Notifier, ApplicationId, Tenant.UserId,
+                $"Stages 1 and 2 re-submitted for approval for {customerName}.");
+
+            await LoadApprovalStateAsync();
+            StateHasChanged();
+        }
+        finally
+        {
+            _resendingApproval = false;
+        }
+    }
 
     private async Task LoadApprovalStateAsync()
     {

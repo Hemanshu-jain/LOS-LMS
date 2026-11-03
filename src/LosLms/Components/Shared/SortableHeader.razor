@@ -3,11 +3,17 @@
 <th class="sortable-header @(Align == "right" ? "align-right" : null)"
     scope="col"
     aria-sort="@AriaSort"
+    data-col="@ColumnKey"
     @onclick="() => OnSort.InvokeAsync(SortKeyName)">
     <span class="sortable-header-inner">
         @Label
         <span class="sort-indicator @(IsActive ? "is-active" : null)">@Indicator</span>
     </span>
+    @if (!string.IsNullOrEmpty(ColumnKey))
+    {
+        @* Drag handle for table-resize.js; only present when the table opts in with data-resizable. *@
+        <span class="col-resizer" role="separator" aria-orientation="vertical" aria-label="@($"Resize the {Label} column")"></span>
+    }
 </th>
 
 @code {
@@ -23,6 +29,9 @@
     [Parameter] public string SortDir { get; set; } = "asc";
 
     [Parameter] public EventCallback<string> OnSort { get; set; }
+
+    /// <summary>Set to make the column resizable (the table must carry <c>data-resizable</c>); the widths are remembered under this key.</summary>
+    [Parameter] public string? ColumnKey { get; set; }
 
     private bool IsActive => CurrentKey == SortKeyName;
 

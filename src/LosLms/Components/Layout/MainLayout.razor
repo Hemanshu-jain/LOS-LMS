@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
+@implements IAsyncDisposable
 @using LosLms.Data
+@using LosLms.Models
 @using LosLms.Services
 @using Microsoft.EntityFrameworkCore
 @inject NavigationManager Navigation
@@ -8,6 +10,7 @@
 @inject LicenseService License
 @inject TenantContext Tenant
 @inject ApiBillingService Billing
+@inject AdminRequestNotifier Notifier
 
 @* Subscription freeze. Once the licence has expired the whole app is paused — this replaces every
    screen with the renewal card. A SuperAdmin can paste a renewal key here; everyone else is told to
@@ -104,7 +107,16 @@ else
                convenience, not the control — Staff typing the URL still get the access-denied card. *@
             <AuthorizeView Roles="@TenantContext.AdminRoles" Context="admin">
                 <Authorized>
-                    <a class="app-nav-link" href="/admin/inbox">Admin Inbox</a>
+                    <a class="app-nav-link app-nav-inbox" href="/admin/inbox">
+                        <span>Admin Inbox</span>
+                        @if (_pendingRequestsCount > 0)
+                        {
+                            <span class="nav-inbox-badge" title="@($"{_pendingRequestsCount} pending approval request{(_pendingRequestsCount == 1 ? "" : "s")}")">
+                                <Icon Name="bell" Size="10" />
+                                <span>@_pendingRequestsCount</span>
+                            </span>
+                        }
+                    </a>
                     <a class="app-nav-link" href="/settings">Settings</a>
                 </Authorized>
             </AuthorizeView>
@@ -186,6 +198,44 @@ else
     private ApiAccess? _apiAccess;
     private bool _onPayPage;
     private bool _onAccountPage;
+    private int _pendingRequestsCount;
+
+    protected override void OnInitialized()
+    {
+        Notifier.Changed += OnAdminRequestsChangedAsync;
+    }
+
+    private async Task OnAdminRequestsChangedAsync(int companyId)
+    {
+        if (_role is "Admin" or "SuperAdmin")
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadPendingRequestsCountAsync();
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task LoadPendingRequestsCountAsync()
+    {
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            _pendingRequestsCount = await db.AdminRequests.AsNoTracking()
+                .CountAsync(r => r.Status == AdminRequest.Pending);
+        }
+        catch
+        {
+            // Ignore during transient lifecycle states
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Notifier.Changed -= OnAdminRequestsChangedAsync;
+        return ValueTask.CompletedTask;
+    }
 
     private string _licClient = string.Empty;
     private string _renewKey = string.Empty;
@@ -284,6 +334,11 @@ else
             {
                 _companyName = string.Empty;
             }
+        }
+
+        if (_role is "Admin" or "SuperAdmin")
+        {
+            await LoadPendingRequestsCountAsync();
         }
     }
 }

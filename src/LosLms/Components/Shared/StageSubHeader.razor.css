@@ -183,11 +183,27 @@
 .admin-review-detail { display: flex; flex-direction: column; gap: 2px; min-width: 240px; }
 
 .admin-review-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-size: 10px;
     font-weight: 600;
     letter-spacing: .08em;
     text-transform: uppercase;
     color: #1f3a5f;
+}
+
+.admin-review-retrigger {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 2px;
+    background: #fff0d4;
+    border: 1px solid #e0b06b;
+    color: #8c4a00;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
 }
 
 .admin-review-meta { font-size: 10.5px; color: #5b6472; }

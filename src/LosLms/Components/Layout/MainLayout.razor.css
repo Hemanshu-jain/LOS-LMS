@@ -254,3 +254,26 @@ a.license-renew { display: block; box-sizing: border-box; text-align: center; te
 .license-banner a.license-banner-pay strong { color: inherit; }
 
 .license-banner a.license-banner-pay:hover { background: #fff; color: #4a3410; }
+
+.app-nav-inbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.nav-inbox-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #b3261e;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    line-height: 1.2;
+}
+
+.nav-inbox-badge:hover {
+    background: #8e1c15;
+}
