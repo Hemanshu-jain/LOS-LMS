@@ -34,6 +34,8 @@ Thanks for working on LOS/LMS. This system handles customers' identity documents
 
 ## Tests
 
+- Put a new test file in the `tests/LosLms.Tests/` folder for its feature area (`Digio/`, `Origination/`,
+  `Tenancy/`, …), the same area as the code under `src/LosLms/Services/`. Keep the `LosLms.Tests` namespace.
 - Add or update tests with every behaviour change. Prefer testing real behaviour over mocks; the Digio fake returns
   captured sandbox shapes from `docs/digio/samples/`.
 - Some tests scan the source tree (billing declarations, who may mark an instalment paid). They expect the `src/LosLms`
