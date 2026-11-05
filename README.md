@@ -26,7 +26,9 @@ src/
   LosLms.Server/       Windows launcher (desktop edition)
   LosLms.Shell/        WebView2 window used by the launcher
 tests/
-  LosLms.Tests/        automated tests (xUnit)
+  LosLms.Tests/        automated tests (xUnit), one folder per feature area:
+                       Billing, Digio, Disbursal, Documents, Integrations, Origination,
+                       PartnerApi, Platform, Security, Servicing, Tenancy
 docs/                  all documentation, start at docs/README.md
 deploy/                files shipped inside the desktop client package
 tools/                 operational PowerShell scripts (backup restore, cloud migration, runtime dependencies)

@@ -14,6 +14,7 @@ Start here. Everything is grouped by who needs it.
 | Onboard a new client, issue or renew a licence | [`operations/NEW-CLIENT-ONBOARDING.md`](operations/NEW-CLIENT-ONBOARDING.md) |
 | Work on the Digio integration (KYC, e-Sign, e-NACH, collections) | [`digio/00-MASTER-PLAN.md`](digio/00-MASTER-PLAN.md), then `01`…`06` in that folder |
 | See which provider integrations are live or waiting for keys | [`integrations/PENDING-API-INTEGRATIONS.md`](integrations/PENDING-API-INTEGRATIONS.md) |
+| Turn on "Continue with Google" sign-in | [`integrations/GOOGLE-LOGIN-SETUP.md`](integrations/GOOGLE-LOGIN-SETUP.md) |
 | Know which business assumptions are still unconfirmed | [`project/OPEN-QUESTIONS.md`](project/OPEN-QUESTIONS.md) |
 | Get test logins and sample data for manual testing | [`testing/`](testing/) |
 | Look at the original screen designs or the first walkthroughs | [`archive/`](archive/) (historical) |
@@ -25,7 +26,7 @@ docs/
   development/    how to build on the code            ARCHITECTURE, SETUP
   operations/     how to run and ship it              CLOUD-DEPLOY, BACKUP-RESTORE, DESKTOP-RELEASE-AND-UPDATES, NEW-CLIENT-ONBOARDING
   digio/          the Digio integration plan          00-MASTER-PLAN … 06-NACH, DECISIONS, samples/ (captured sandbox responses), appendix/
-  integrations/   status of third-party integrations
+  integrations/   status of third-party integrations, Google sign-in setup
   project/        decisions and open questions
   testing/        manual-test logins and data
   archive/        historical material, kept for reference
