@@ -30,7 +30,7 @@
          circuits — SQLite's single-writer model does not fit that. -->
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
-    <PackageReference Include="QuestPDF" Version="2026.7.2" />
+    <PackageReference Include="QuestPDF" Version="2026.9.1" />
   </ItemGroup>
 
   <!-- Security pins for TRANSITIVE dependencies flagged by the CI vulnerability scan (dotnet list package
